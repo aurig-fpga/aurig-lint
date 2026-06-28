@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VHDL Lint Rules Reference</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; line-height: 1.6; }
+        .container { display: flex; max-width: 1400px; margin: 0 auto; }
+        .sidebar { width: 250px; background: #f5f5f5; padding: 20px; position: fixed; height: 100vh; overflow-y: auto; }
+        .content { margin-left: 290px; padding: 20px; flex: 1; }
+        h1 { color: #333; border-bottom: 3px solid #0066cc; padding-bottom: 10px; }
+        h2 { color: #0066cc; margin-top: 40px; border-bottom: 2px solid #eee; padding-bottom: 8px; }
+        .rule-nav { list-style: none; padding: 0; }
+        .rule-nav li { margin: 8px 0; }
+        .rule-nav a { text-decoration: none; color: #0066cc; }
+        .rule-nav a:hover { text-decoration: underline; }
+        code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace; }
+        pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; border-left: 4px solid #0066cc; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #0066cc; color: white; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        .meta-info { background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h3>Rules</h3>
+            <ul class="rule-nav">
+                <li><a href="#allowed-libraries">allowed_libraries</a></li>
+                <li><a href="#architecture-naming">architecture_naming</a></li>
+                <li><a href="#clock-reset-naming">clock_reset_naming</a></li>
+                <li><a href="#constant-naming">constant_naming</a></li>
+                <li><a href="#entity-naming">entity_naming</a></li>
+                <li><a href="#forbid-bit-types">forbid_bit_types</a></li>
+                <li><a href="#forbid-latch-inference">forbid_latch_inference</a></li>
+                <li><a href="#forbid-nonstandard-arith">forbid_nonstandard_arith</a></li>
+                <li><a href="#forbid-positional-genericmap">forbid_positional_genericmap</a></li>
+                <li><a href="#forbid-positional-portmap">forbid_positional_portmap</a></li>
+                <li><a href="#forbid-tabs">forbid_tabs</a></li>
+                <li><a href="#forbid-unconstrained-ports">forbid_unconstrained_ports</a></li>
+                <li><a href="#forbid-wait-statements">forbid_wait_statements</a></li>
+                <li><a href="#generic-naming">generic_naming</a></li>
+                <li><a href="#identifier-case">identifier_case</a></li>
+                <li><a href="#keyword-lowercase">keyword_lowercase</a></li>
+                <li><a href="#library-naming">library_naming</a></li>
+                <li><a href="#max-line-length">max_line_length</a></li>
+                <li><a href="#naming-conventions-pack">naming_conventions_pack</a></li>
+                <li><a href="#package-naming">package_naming</a></li>
+                <li><a href="#port-in-naming">port_in_naming</a></li>
+                <li><a href="#port-inout-naming">port_inout_naming</a></li>
+                <li><a href="#port-out-naming">port_out_naming</a></li>
+                <li><a href="#require-meaningful-comments">require_meaningful_comments</a></li>
+                <li><a href="#require-reset-in-clocked-process">require_reset_in_clocked_process</a></li>
+                <li><a href="#same-file-units">same_file_units</a></li>
+                <li><a href="#signal-naming">signal_naming</a></li>
+                <li><a href="#subtype-naming">subtype_naming</a></li>
+                <li><a href="#type-naming">type_naming</a></li>
+                <li><a href="#variable-naming">variable_naming</a></li>
+            </ul>
+        </div>
+        <div class="content">
+            <h1>VHDL Lint Rules Reference</h1>
+            <div class="meta-info">
+                <strong>Auto-generated</strong> from <code>lint/metadata.json</code><br>
+                <strong>Last updated:</strong> 2026-05-26 18:14:29
+            </div>
+            <h2 id="allowed-libraries">allowed_libraries</h2>
+            <p><strong>Type:</strong> <code>library</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "allowed_libraries": {
+    "allowed": [
+      "ieee",
+      "std",
+      "work"
+    ],
+    "enabled": true,
+    "message": "Library '${library}' is not in allowed list: ${allowed}",
+    "severity": "warning",
+    "type": "library"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>allowed</code></td><td>array</td><td><code>["ieee", "std", "work"]</code></td><td>Configuration option</td></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>true</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Library '${library}' is not in allowed list: ${allowed}</code></td><td>Custom message template</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>library</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "allowed_libraries": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="architecture-naming">architecture_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "architecture_naming": {
+    "binding_message": "Architecture '${name}' for entity '${entity}' (suffix '${suffix}') must be one of: ${allowed}",
+    "enabled": false,
+    "entity_suffix_bindings": {},
+    "message": "Architecture '${name}' should be one of: rtl, struct, behavioral, tb",
+    "pattern": "^(rtl|struct|behavioral|tb)$",
+    "scope": "architecture",
+    "severity": "info",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>binding_message</code></td><td>string</td><td><code>Architecture '${name}' for entity '${entity}' (suffix '${suffix}') must be one of: ${allowed}</code></td><td>Diagnostic message template for `entity_suffix_bindings` violations. Variables: `${name}` (architecture name), `${entity}` (parent entity name), `${suffix}` (the matched suffix), `${allowed}` (comma-separated allowed list)</td></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>entity_suffix_bindings</code></td><td>object</td><td><code>{}</code></td><td>Dict mapping entity-name suffix → list of allowed architecture names for entities with that suffix. When set, the binding OVERRIDES the regex `pattern` check for architectures whose parent entity matches one of the configured suffixes (longest match wins). Entities not matching any suffix fall through to the `pattern` check. Use for guidelines that bind e.g. `_tb` entities to `beh` and `_bfm` entities to `bfm` regardless of what the global pattern allows. Default `{}` preserves back-compat (regex-only behaviour)</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Architecture '${name}' should be one of: rtl, struct, behavioral, tb</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^(rtl|struct|behavioral|tb)$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>architecture</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>info</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "architecture_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="clock-reset-naming">clock_reset_naming</h2>
+            <p><strong>Type:</strong> <code>clock_reset_naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "clock_reset_naming": {
+    "clock_message": "Clock port '${name}' should match pattern '${pattern}'",
+    "clock_pattern": "^clk_",
+    "enabled": false,
+    "enforce_message": "Reset port should be named '${expected}', found '${name}'",
+    "enforce_reset_name": "",
+    "reset_message": "Reset port '${name}' should match pattern '${pattern}'",
+    "reset_pattern": "^rst_",
+    "severity": "warning",
+    "type": "clock_reset_naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>clock_message</code></td><td>string</td><td><code>Clock port '${name}' should match pattern '${pattern}'</code></td><td>Configuration option</td></tr>
+                <tr><td><code>clock_pattern</code></td><td>string</td><td><code>^clk_</code></td><td>Configuration option</td></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>enforce_message</code></td><td>string</td><td><code>Reset port should be named '${expected}', found '${name}'</code></td><td>Configuration option</td></tr>
+                <tr><td><code>enforce_reset_name</code></td><td>string</td><td><code>(empty)</code></td><td>Configuration option</td></tr>
+                <tr><td><code>reset_message</code></td><td>string</td><td><code>Reset port '${name}' should match pattern '${pattern}'</code></td><td>Configuration option</td></tr>
+                <tr><td><code>reset_pattern</code></td><td>string</td><td><code>^rst_</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>clock_reset_naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "clock_reset_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="constant-naming">constant_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "constant_naming": {
+    "enabled": true,
+    "message": "Constant '${name}' should be UPPERCASE with underscores",
+    "pattern": "^[A-Z][A-Z0-9_]*$",
+    "scope": "constant",
+    "severity": "warning",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>true</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Constant '${name}' should be UPPERCASE with underscores</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[A-Z][A-Z0-9_]*$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>constant</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "constant_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="entity-naming">entity_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "entity_naming": {
+    "enabled": true,
+    "message": "Entity '${name}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "scope": "entity",
+    "severity": "warning",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>true</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Entity '${name}' should be lowercase with underscores</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>entity</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "entity_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="forbid-bit-types">forbid_bit_types</h2>
+            <p><strong>Type:</strong> <code>forbid_bit_types</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "forbid_bit_types": {
+    "enabled": false,
+    "message": "Use of '${type}' type detected; use std_logic or std_logic_vector instead",
+    "severity": "error",
+    "type": "forbid_bit_types",
+    "whitelist": []
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Use of '${type}' type detected; use std_logic or std_logic_vector instead</code></td><td>Custom message template</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>error</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>forbid_bit_types</code></td><td>Rule handler type</td></tr>
+                <tr><td><code>whitelist</code></td><td>array</td><td><code>[]</code></td><td>Identifiers / types / libraries explicitly allowed even when the rule would otherwise flag them</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "forbid_bit_types": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="forbid-latch-inference">forbid_latch_inference</h2>
+            <p><strong>Type:</strong> <code>forbid_latch_inference</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "forbid_latch_inference": {
+    "enabled": false,
+    "ignore_variables": true,
+    "message": "Signal '${signal}' may infer a latch in process '${process}' - missing default assignment",
+    "severity": "warning",
+    "type": "forbid_latch_inference"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>ignore_variables</code></td><td>boolean</td><td><code>true</code></td><td>Skip variable checking</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Signal '${signal}' may infer a latch in process '${process}' - missing default assignment</code></td><td>Custom message template</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>forbid_latch_inference</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "forbid_latch_inference": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="forbid-nonstandard-arith">forbid_nonstandard_arith</h2>
+            <p><strong>Type:</strong> <code>forbid_nonstandard_arith</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "forbid_nonstandard_arith": {
+    "enabled": true,
+    "message": "Non-standard arithmetic library '${library}' detected; use ieee.numeric_std instead",
+    "severity": "error",
+    "type": "forbid_nonstandard_arith",
+    "whitelist": []
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>true</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Non-standard arithmetic library '${library}' detected; use ieee.numeric_std instead</code></td><td>Custom message template</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>error</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>forbid_nonstandard_arith</code></td><td>Rule handler type</td></tr>
+                <tr><td><code>whitelist</code></td><td>array</td><td><code>[]</code></td><td>Identifiers / types / libraries explicitly allowed even when the rule would otherwise flag them</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "forbid_nonstandard_arith": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="forbid-positional-genericmap">forbid_positional_genericmap</h2>
+            <p><strong>Type:</strong> <code>forbid_positional_genericmap</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "forbid_positional_genericmap": {
+    "enabled": false,
+    "message": "Positional generic mapping detected; use named associations (generic =&gt; value)",
+    "severity": "warning",
+    "type": "forbid_positional_genericmap"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Positional generic mapping detected; use named associations (generic =&gt; value)</code></td><td>Custom message template</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>forbid_positional_genericmap</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "forbid_positional_genericmap": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="forbid-positional-portmap">forbid_positional_portmap</h2>
+            <p><strong>Type:</strong> <code>forbid_positional_portmap</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "forbid_positional_portmap": {
+    "enabled": true,
+    "message": "Positional port mapping detected; use named associations (port =&gt; signal)",
+    "severity": "warning",
+    "type": "forbid_positional_portmap"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>true</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Positional port mapping detected; use named associations (port =&gt; signal)</code></td><td>Custom message template</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>forbid_positional_portmap</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "forbid_positional_portmap": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="forbid-tabs">forbid_tabs</h2>
+            <p><strong>Type:</strong> <code>forbid_tabs</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "forbid_tabs": {
+    "enabled": false,
+    "message": "Tab character found at column ${column}; use spaces instead",
+    "severity": "warning",
+    "type": "forbid_tabs"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Tab character found at column ${column}; use spaces instead</code></td><td>Custom message template</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>forbid_tabs</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "forbid_tabs": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="forbid-unconstrained-ports">forbid_unconstrained_ports</h2>
+            <p><strong>Type:</strong> <code>forbid_unconstrained_ports</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "forbid_unconstrained_ports": {
+    "allow_patterns": [],
+    "enabled": false,
+    "message": "Port '${port}' in entity '${entity}' is unconstrained - may cause synthesis issues",
+    "severity": "warning",
+    "type": "forbid_unconstrained_ports"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>allow_patterns</code></td><td>array</td><td><code>[]</code></td><td>Patterns to allow/ignore</td></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Port '${port}' in entity '${entity}' is unconstrained - may cause synthesis issues</code></td><td>Custom message template</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>forbid_unconstrained_ports</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "forbid_unconstrained_ports": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="forbid-wait-statements">forbid_wait_statements</h2>
+            <p><strong>Type:</strong> <code>forbid_wait_statements</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "forbid_wait_statements": {
+    "enabled": false,
+    "message": "Wait statement in process '${process}' - not synthesizable",
+    "severity": "error",
+    "testbench_patterns": [
+      "tb_*.vhd",
+      "*_tb.vhd",
+      "*_testbench.vhd"
+    ],
+    "type": "forbid_wait_statements"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Wait statement in process '${process}' - not synthesizable</code></td><td>Custom message template</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>error</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>testbench_patterns</code></td><td>array</td><td><code>["tb_*.vhd", "*_tb.vhd", "*_testbench.vhd"]</code></td><td>Testbench file patterns</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>forbid_wait_statements</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "forbid_wait_statements": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="generic-naming">generic_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "generic_naming": {
+    "enabled": true,
+    "message": "Generic '${name}' should be UPPERCASE with underscores",
+    "pattern": "^[A-Z][A-Z0-9_]*$",
+    "scope": "generic",
+    "severity": "warning",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>true</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Generic '${name}' should be UPPERCASE with underscores</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[A-Z][A-Z0-9_]*$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>generic</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "generic_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="identifier-case">identifier_case</h2>
+            <p><strong>Type:</strong> <code>identifier_case</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "identifier_case": {
+    "constant_message": "Constant '${name}' should be UPPERCASE",
+    "enabled": false,
+    "lowercase_message": "Identifier '${name}' (${scope}) should be lowercase",
+    "severity": "warning",
+    "type": "identifier_case"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>constant_message</code></td><td>string</td><td><code>Constant '${name}' should be UPPERCASE</code></td><td>Configuration option</td></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>lowercase_message</code></td><td>string</td><td><code>Identifier '${name}' (${scope}) should be lowercase</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>identifier_case</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "identifier_case": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="keyword-lowercase">keyword_lowercase</h2>
+            <p><strong>Type:</strong> <code>keyword_case</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "keyword_lowercase": {
+    "case": "lowercase",
+    "enabled": false,
+    "message": "Keyword '${keyword}' should be ${expected}",
+    "severity": "info",
+    "type": "keyword_case"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>case</code></td><td>string</td><td><code>lowercase</code></td><td>Configuration option</td></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Keyword '${keyword}' should be ${expected}</code></td><td>Custom message template</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>info</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>keyword_case</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "keyword_lowercase": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="library-naming">library_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "library_naming": {
+    "enabled": false,
+    "message": "Library '${name}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "scope": "library",
+    "severity": "info",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Library '${name}' should be lowercase with underscores</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>library</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>info</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "library_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="max-line-length">max_line_length</h2>
+            <p><strong>Type:</strong> <code>max_line_length</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "max_line_length": {
+    "enabled": false,
+    "exclude_comments": false,
+    "max_length": 120,
+    "message": "Line exceeds maximum length of ${max} characters (actual: ${actual})",
+    "severity": "warning",
+    "type": "max_line_length"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>exclude_comments</code></td><td>boolean</td><td><code>false</code></td><td>Configuration option</td></tr>
+                <tr><td><code>max_length</code></td><td>integer</td><td><code>120</code></td><td>Configuration option</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Line exceeds maximum length of ${max} characters (actual: ${actual})</code></td><td>Custom message template</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>max_line_length</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "max_line_length": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="naming-conventions-pack">naming_conventions_pack</h2>
+            <p><strong>Type:</strong> <code>naming_conventions_pack</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "naming_conventions_pack": {
+    "enabled": false,
+    "message": "Naming violation: ${scope} '${name}' doesn't match pattern '${pattern}'",
+    "patterns": {
+      "port_in": "^.*_i$",
+      "port_out": "^.*_o$",
+      "port_inout": "^.*_io$",
+      "generic": "^g_",
+      "signal": "^s_",
+      "variable": "^v_",
+      "type": "^t_",
+      "constant": "^C_[A-Z0-9_]+$",
+      "function": "^f_",
+      "procedure": "^p_",
+      "instance": "^inst_",
+      "process": "^proc_",
+      "generate": "^gen_",
+      "architecture": "^a_"
+    },
+    "severity": "warning",
+    "type": "naming_conventions_pack"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Naming violation: ${scope} '${name}' doesn't match pattern '${pattern}'</code></td><td>Custom message template</td></tr>
+                <tr><td><code>patterns</code></td><td>object</td><td><code>{"port_in": "^.*_i$", "port_out": "^.*_o$", "port_inout": "^.*_io$", "generic": "^g_", "signal": "^s_", "variable": "^v_", "type": "^t_", "constant": "^C_[A-Z0-9_]+$", "function": "^f_", "procedure": "^p_", "instance": "^inst_", "process": "^proc_", "generate": "^gen_", "architecture": "^a_"}</code></td><td>Naming patterns configuration</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming_conventions_pack</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "naming_conventions_pack": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="package-naming">package_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "package_naming": {
+    "enabled": true,
+    "message": "Package '${name}' should be lowercase, optionally ending with '_pkg'",
+    "pattern": "^[a-z][a-z0-9_]*(_pkg)?$",
+    "scope": "package",
+    "severity": "warning",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>true</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Package '${name}' should be lowercase, optionally ending with '_pkg'</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*(_pkg)?$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>package</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "package_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="port-in-naming">port_in_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "port_in_naming": {
+    "enabled": false,
+    "message": "Input port '${name}' should be lowercase, optionally ending with '_i'",
+    "pattern": "^[a-z][a-z0-9_]*(_i)?$",
+    "scope": "port_in",
+    "severity": "info",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Input port '${name}' should be lowercase, optionally ending with '_i'</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*(_i)?$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>port_in</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>info</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "port_in_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="port-inout-naming">port_inout_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "port_inout_naming": {
+    "enabled": false,
+    "message": "Bidirectional port '${name}' should be lowercase, optionally ending with '_io'",
+    "pattern": "^[a-z][a-z0-9_]*(_io)?$",
+    "scope": "port_inout",
+    "severity": "info",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Bidirectional port '${name}' should be lowercase, optionally ending with '_io'</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*(_io)?$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>port_inout</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>info</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "port_inout_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="port-out-naming">port_out_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "port_out_naming": {
+    "enabled": false,
+    "message": "Output port '${name}' should be lowercase, optionally ending with '_o'",
+    "pattern": "^[a-z][a-z0-9_]*(_o)?$",
+    "scope": "port_out",
+    "severity": "info",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Output port '${name}' should be lowercase, optionally ending with '_o'</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*(_o)?$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>port_out</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>info</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "port_out_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="require-meaningful-comments">require_meaningful_comments</h2>
+            <p><strong>Type:</strong> <code>require_meaningful_comments</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "require_meaningful_comments": {
+    "constants_required": false,
+    "enabled": false,
+    "file_header_required": true,
+    "generics_comment_style": "either",
+    "generics_required": true,
+    "header_keywords": [],
+    "header_keywords_mode": "any",
+    "header_min_lines": 3,
+    "instantiations_required": false,
+    "major_signal_regex": "clk|rst|reset|enable|valid|ready|data|addr|ctrl",
+    "message": "",
+    "ports_comment_style": "either",
+    "ports_required": true,
+    "processes_required": false,
+    "severity": "warning",
+    "signals_required": false,
+    "skip_testbenches": true,
+    "type": "require_meaningful_comments"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>constants_required</code></td><td>boolean</td><td><code>false</code></td><td>Require constant documentation</td></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>file_header_required</code></td><td>boolean</td><td><code>true</code></td><td>Require file header block</td></tr>
+                <tr><td><code>generics_comment_style</code></td><td>string</td><td><code>either</code></td><td>Generic comment style</td></tr>
+                <tr><td><code>generics_required</code></td><td>boolean</td><td><code>true</code></td><td>Require generic documentation</td></tr>
+                <tr><td><code>header_keywords</code></td><td>array</td><td><code>[]</code></td><td>Required header keywords</td></tr>
+                <tr><td><code>header_keywords_mode</code></td><td>string</td><td><code>any</code></td><td>Header-keywords match mode: "any" (default — at least one keyword present) or "all" (every listed keyword must appear)</td></tr>
+                <tr><td><code>header_min_lines</code></td><td>integer</td><td><code>3</code></td><td>Minimum header lines</td></tr>
+                <tr><td><code>instantiations_required</code></td><td>boolean</td><td><code>false</code></td><td>Require instantiation documentation</td></tr>
+                <tr><td><code>major_signal_regex</code></td><td>string</td><td><code>clk|rst|reset|enable|valid|ready|data|addr|ctrl</code></td><td>Pattern for major signals</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>(empty)</code></td><td>Custom message template</td></tr>
+                <tr><td><code>ports_comment_style</code></td><td>string</td><td><code>either</code></td><td>Port comment style (inline/block/either)</td></tr>
+                <tr><td><code>ports_required</code></td><td>boolean</td><td><code>true</code></td><td>Require port documentation</td></tr>
+                <tr><td><code>processes_required</code></td><td>boolean</td><td><code>false</code></td><td>Require process documentation</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>signals_required</code></td><td>boolean</td><td><code>false</code></td><td>Require signal documentation</td></tr>
+                <tr><td><code>skip_testbenches</code></td><td>boolean</td><td><code>true</code></td><td>Skip testbench files</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>require_meaningful_comments</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "require_meaningful_comments": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="require-reset-in-clocked-process">require_reset_in_clocked_process</h2>
+            <p><strong>Type:</strong> <code>require_reset_in_clocked_process</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "require_reset_in_clocked_process": {
+    "bfm_patterns": [
+      "*_bfm.vhd"
+    ],
+    "enabled": false,
+    "excluded_architectures": [
+      "bfm"
+    ],
+    "excluded_processes": [],
+    "message": "Clocked process '${process}' missing ${policy} reset",
+    "reset_policy": "either",
+    "severity": "warning",
+    "testbench_patterns": [
+      "tb_*.vhd",
+      "*_tb.vhd",
+      "*_testbench.vhd"
+    ],
+    "type": "require_reset_in_clocked_process"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>bfm_patterns</code></td><td>array</td><td><code>["*_bfm.vhd"]</code></td><td>BFM (bus-functional model) file-name glob patterns that bypass the rule (case-sensitive, replaces — does not extend — the default; aligned with the testbench_patterns semantics on the same rule); use for files matching the _bfm.vhd suffix/pattern whose architecture name does not match excluded_architectures. A project using mixed-case filenames (e.g. Dac_BFM.vhd) must list each variant explicitly</td></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>excluded_architectures</code></td><td>array</td><td><code>["bfm"]</code></td><td>Architecture names that bypass the rule (case-insensitive, replaces — does not extend — the default)</td></tr>
+                <tr><td><code>excluded_processes</code></td><td>array</td><td><code>[]</code></td><td>Process labels that bypass the rule (case-insensitive); use for reset synchronizers and similar by-design no-reset processes</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Clocked process '${process}' missing ${policy} reset</code></td><td>Custom message template</td></tr>
+                <tr><td><code>reset_policy</code></td><td>string</td><td><code>either</code></td><td>Reset style requirement</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>testbench_patterns</code></td><td>array</td><td><code>["tb_*.vhd", "*_tb.vhd", "*_testbench.vhd"]</code></td><td>Testbench file patterns</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>require_reset_in_clocked_process</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "require_reset_in_clocked_process": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="same-file-units">same_file_units</h2>
+            <p><strong>Type:</strong> <code>same_file_units</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "same_file_units": {
+    "architecture_message": "Architecture for entity '${name}' has no entity declaration in this file",
+    "check_package_body": false,
+    "enabled": false,
+    "entity_message": "Entity '${name}' has no architecture in this file",
+    "package_body_message": "Package body for '${name}' has no package declaration in this file",
+    "package_message": "Package '${name}' may need a package body in this file",
+    "severity": "warning",
+    "type": "same_file_units"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>architecture_message</code></td><td>string</td><td><code>Architecture for entity '${name}' has no entity declaration in this file</code></td><td>Configuration option</td></tr>
+                <tr><td><code>check_package_body</code></td><td>boolean</td><td><code>false</code></td><td>Configuration option</td></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>entity_message</code></td><td>string</td><td><code>Entity '${name}' has no architecture in this file</code></td><td>Configuration option</td></tr>
+                <tr><td><code>package_body_message</code></td><td>string</td><td><code>Package body for '${name}' has no package declaration in this file</code></td><td>Configuration option</td></tr>
+                <tr><td><code>package_message</code></td><td>string</td><td><code>Package '${name}' may need a package body in this file</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>same_file_units</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "same_file_units": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="signal-naming">signal_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "signal_naming": {
+    "enabled": true,
+    "message": "Signal '${name}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "scope": "signal",
+    "severity": "warning",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>true</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Signal '${name}' should be lowercase with underscores</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>signal</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "signal_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="subtype-naming">subtype_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "subtype_naming": {
+    "enabled": true,
+    "message": "Subtype '${name}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "scope": "subtype",
+    "severity": "warning",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>true</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Subtype '${name}' should be lowercase with underscores</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>subtype</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "subtype_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="type-naming">type_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "type_naming": {
+    "enabled": true,
+    "message": "Type '${name}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "scope": "type",
+    "severity": "warning",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>true</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Type '${name}' should be lowercase with underscores</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>type</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "type_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="variable-naming">variable_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "variable_naming": {
+    "enabled": true,
+    "message": "Variable '${name}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "scope": "variable",
+    "severity": "warning",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>true</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Variable '${name}' should be lowercase with underscores</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>variable</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "variable_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+        </div>
+    </div>
+</body>
+</html>

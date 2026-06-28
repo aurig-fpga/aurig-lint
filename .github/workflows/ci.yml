@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 LogiMentor S.r.l.
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # aurig-lint itself.
+      - name: Checkout aurig-lint
+        uses: actions/checkout@v6
+        with:
+          path: aurig-lint
+
+      # The cross-repo dependency: aurig-lint does NOT bundle the parser/util
+      # core -- it requires aurig::core off ::auto_path. We check the PUBLIC
+      # aurig-fpga/aurig-core repo out into a sibling dir and point TCLLIBPATH
+      # at it. No token needed: the repo is public, so the default GITHUB_TOKEN
+      # suffices.
+      - name: Checkout aurig-core (dependency)
+        uses: actions/checkout@v6
+        with:
+          repository: aurig-fpga/aurig-core
+          path: aurig-core
+
+      - name: Install Tcl 8.6 + tcllib
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tcl tcllib
+          tclsh <<'EOF'
+          puts "tcl patchlevel: [info patchlevel]"
+          EOF
+
+      - name: Run cross-repo dependency proof + ported lint tests
+        working-directory: aurig-lint
+        env:
+          # TCLLIBPATH is a Tcl list of dirs prepended to ::auto_path; point it
+          # at the aurig-core checkout so `package require aurig::core`
+          # resolves (and is pulled transitively by aurig::lint).
+          TCLLIBPATH: ${{ github.workspace }}/aurig-core
+        run: |
+          set -e
+          fail=0
+          tests=(
+            test/test_lint_dependency.tcl
+            test/test_lint_cli_fail_on_severity.tcl
+            test/test_lint_cli_json_escape.tcl
+            test/test_lint_cli_report_formats.tcl
+            test/test_lint_cli_source_rc2.tcl
+            test/test_lint_cli_source_safety.tcl
+            test/test_lint_pragma_suppression.tcl
+            test/test_run_lint_project_baseline.tcl
+            test/test_run_lint_project_excludes.tcl
+            test/test_run_lint_project_fail_on_and_manifest.tcl
+            test/test_run_lint_project_md_skipped_escape.tcl
+            test/test_lint_project_required_packages.tcl
+            test/test_generate_rules_reference.tcl
+          )
+          for t in "${tests[@]}"; do
+            echo "==================== $t ===================="
+            if tclsh "$t"; then
+              echo "RESULT: PASS  $t"
+            else
+              echo "RESULT: FAIL  $t (exit $?)"
+              fail=1
+            fi
+          done
+          exit $fail

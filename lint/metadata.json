@@ -1,0 +1,268 @@
+{
+  "comment": "Default lint metadata - defines available rules and their default configurations. FPGA-relevant rules: forbid_nonstandard_arith (detect non-IEEE arithmetic libraries), forbid_positional_portmap (require named port associations)",
+  "version": "1.0.0",
+  "rules": {
+    "signal_naming": {
+      "type": "naming",
+      "scope": "signal",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "enabled": true,
+      "severity": "warning",
+      "message": "Signal '${name}' should be lowercase with underscores"
+    },
+    "constant_naming": {
+      "type": "naming",
+      "scope": "constant",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "enabled": true,
+      "severity": "warning",
+      "message": "Constant '${name}' should be UPPERCASE with underscores"
+    },
+    "variable_naming": {
+      "type": "naming",
+      "scope": "variable",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "enabled": true,
+      "severity": "warning",
+      "message": "Variable '${name}' should be lowercase with underscores"
+    },
+    "port_in_naming": {
+      "type": "naming",
+      "scope": "port_in",
+      "pattern": "^[a-z][a-z0-9_]*(_i)?$",
+      "enabled": false,
+      "severity": "info",
+      "message": "Input port '${name}' should be lowercase, optionally ending with '_i'"
+    },
+    "port_out_naming": {
+      "type": "naming",
+      "scope": "port_out",
+      "pattern": "^[a-z][a-z0-9_]*(_o)?$",
+      "enabled": false,
+      "severity": "info",
+      "message": "Output port '${name}' should be lowercase, optionally ending with '_o'"
+    },
+    "port_inout_naming": {
+      "type": "naming",
+      "scope": "port_inout",
+      "pattern": "^[a-z][a-z0-9_]*(_io)?$",
+      "enabled": false,
+      "severity": "info",
+      "message": "Bidirectional port '${name}' should be lowercase, optionally ending with '_io'"
+    },
+    "library_naming": {
+      "type": "naming",
+      "scope": "library",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "enabled": false,
+      "severity": "info",
+      "message": "Library '${name}' should be lowercase with underscores"
+    },
+    "generic_naming": {
+      "type": "naming",
+      "scope": "generic",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "enabled": true,
+      "severity": "warning",
+      "message": "Generic '${name}' should be UPPERCASE with underscores"
+    },
+    "entity_naming": {
+      "type": "naming",
+      "scope": "entity",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "enabled": true,
+      "severity": "warning",
+      "message": "Entity '${name}' should be lowercase with underscores"
+    },
+    "architecture_naming": {
+      "type": "naming",
+      "scope": "architecture",
+      "pattern": "^(rtl|struct|behavioral|tb)$",
+      "enabled": false,
+      "severity": "info",
+      "entity_suffix_bindings": {},
+      "binding_message": "Architecture '${name}' for entity '${entity}' (suffix '${suffix}') must be one of: ${allowed}",
+      "message": "Architecture '${name}' should be one of: rtl, struct, behavioral, tb"
+    },
+    "package_naming": {
+      "type": "naming",
+      "scope": "package",
+      "pattern": "^[a-z][a-z0-9_]*(_pkg)?$",
+      "enabled": true,
+      "severity": "warning",
+      "message": "Package '${name}' should be lowercase, optionally ending with '_pkg'"
+    },
+    "type_naming": {
+      "type": "naming",
+      "scope": "type",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "enabled": true,
+      "severity": "warning",
+      "message": "Type '${name}' should be lowercase with underscores"
+    },
+    "subtype_naming": {
+      "type": "naming",
+      "scope": "subtype",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "enabled": true,
+      "severity": "warning",
+      "message": "Subtype '${name}' should be lowercase with underscores"
+    },
+    "allowed_libraries": {
+      "type": "library",
+      "allowed": ["ieee", "std", "work"],
+      "enabled": true,
+      "severity": "warning",
+      "message": "Library '${library}' is not in allowed list: ${allowed}"
+    },
+    "keyword_lowercase": {
+      "type": "keyword_case",
+      "case": "lowercase",
+      "enabled": false,
+      "severity": "info",
+      "message": "Keyword '${keyword}' should be ${expected}"
+    },
+    "max_line_length": {
+      "type": "max_line_length",
+      "max_length": 120,
+      "exclude_comments": false,
+      "enabled": false,
+      "severity": "warning",
+      "message": "Line exceeds maximum length of ${max} characters (actual: ${actual})"
+    },
+    "forbid_tabs": {
+      "type": "forbid_tabs",
+      "enabled": false,
+      "severity": "warning",
+      "message": "Tab character found at column ${column}; use spaces instead"
+    },
+    "forbid_nonstandard_arith": {
+      "type": "forbid_nonstandard_arith",
+      "enabled": true,
+      "severity": "error",
+      "whitelist": [],
+      "message": "Non-standard arithmetic library '${library}' detected; use ieee.numeric_std instead"
+    },
+    "forbid_positional_portmap": {
+      "type": "forbid_positional_portmap",
+      "enabled": true,
+      "severity": "warning",
+      "message": "Positional port mapping detected; use named associations (port => signal)"
+    },
+    "naming_conventions_pack": {
+      "type": "naming_conventions_pack",
+      "enabled": false,
+      "severity": "warning",
+      "patterns": {
+        "port_in": "^.*_i$",
+        "port_out": "^.*_o$",
+        "port_inout": "^.*_io$",
+        "generic": "^g_",
+        "signal": "^s_",
+        "variable": "^v_",
+        "type": "^t_",
+        "constant": "^C_[A-Z0-9_]+$",
+        "function": "^f_",
+        "procedure": "^p_",
+        "instance": "^inst_",
+        "process": "^proc_",
+        "generate": "^gen_",
+        "architecture": "^a_"
+      },
+      "message": "Naming violation: ${scope} '${name}' doesn't match pattern '${pattern}'"
+    },
+    "clock_reset_naming": {
+      "type": "clock_reset_naming",
+      "enabled": false,
+      "severity": "warning",
+      "clock_pattern": "^clk_",
+      "reset_pattern": "^rst_",
+      "enforce_reset_name": "",
+      "clock_message": "Clock port '${name}' should match pattern '${pattern}'",
+      "reset_message": "Reset port '${name}' should match pattern '${pattern}'",
+      "enforce_message": "Reset port should be named '${expected}', found '${name}'"
+    },
+    "identifier_case": {
+      "type": "identifier_case",
+      "enabled": false,
+      "severity": "warning",
+      "constant_message": "Constant '${name}' should be UPPERCASE",
+      "lowercase_message": "Identifier '${name}' (${scope}) should be lowercase"
+    },
+    "same_file_units": {
+      "type": "same_file_units",
+      "enabled": false,
+      "severity": "warning",
+      "check_package_body": false,
+      "entity_message": "Entity '${name}' has no architecture in this file",
+      "architecture_message": "Architecture for entity '${name}' has no entity declaration in this file",
+      "package_message": "Package '${name}' may need a package body in this file",
+      "package_body_message": "Package body for '${name}' has no package declaration in this file"
+    },
+    "forbid_bit_types": {
+      "type": "forbid_bit_types",
+      "enabled": false,
+      "severity": "error",
+      "whitelist": [],
+      "message": "Use of '${type}' type detected; use std_logic or std_logic_vector instead"
+    },
+    "forbid_positional_genericmap": {
+      "type": "forbid_positional_genericmap",
+      "enabled": false,
+      "severity": "warning",
+      "message": "Positional generic mapping detected; use named associations (generic => value)"
+    },
+    "forbid_latch_inference": {
+      "type": "forbid_latch_inference",
+      "enabled": false,
+      "severity": "warning",
+      "ignore_variables": true,
+      "message": "Signal '${signal}' may infer a latch in process '${process}' - missing default assignment"
+    },
+    "require_reset_in_clocked_process": {
+      "type": "require_reset_in_clocked_process",
+      "enabled": false,
+      "severity": "warning",
+      "reset_policy": "either",
+      "testbench_patterns": ["tb_*.vhd", "*_tb.vhd", "*_testbench.vhd"],
+      "bfm_patterns": ["*_bfm.vhd"],
+      "excluded_architectures": ["bfm"],
+      "excluded_processes": [],
+      "message": "Clocked process '${process}' missing ${policy} reset"
+    },
+    "forbid_wait_statements": {
+      "type": "forbid_wait_statements",
+      "enabled": false,
+      "severity": "error",
+      "testbench_patterns": ["tb_*.vhd", "*_tb.vhd", "*_testbench.vhd"],
+      "message": "Wait statement in process '${process}' - not synthesizable"
+    },
+    "forbid_unconstrained_ports": {
+      "type": "forbid_unconstrained_ports",
+      "enabled": false,
+      "severity": "warning",
+      "allow_patterns": [],
+      "message": "Port '${port}' in entity '${entity}' is unconstrained - may cause synthesis issues"
+    },
+    "require_meaningful_comments": {
+      "type": "require_meaningful_comments",
+      "enabled": false,
+      "severity": "warning",
+      "file_header_required": true,
+      "header_min_lines": 3,
+      "header_keywords": [],
+      "header_keywords_mode": "any",
+      "ports_required": true,
+      "generics_required": true,
+      "ports_comment_style": "either",
+      "generics_comment_style": "either",
+      "signals_required": false,
+      "constants_required": false,
+      "major_signal_regex": "clk|rst|reset|enable|valid|ready|data|addr|ctrl",
+      "processes_required": false,
+      "instantiations_required": false,
+      "skip_testbenches": true,
+      "message": ""
+    }
+  }
+}

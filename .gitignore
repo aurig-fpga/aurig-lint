@@ -1,0 +1,9 @@
+# AI-assistant scratch dir (never tracked)
+.claude/
+
+# Test scratch / runtime artifacts
+test/.tmp_*
+test/**/.tmp_*
+**/_tmp_*
+test/smoke/.test_single_file_output/
+*.bak
