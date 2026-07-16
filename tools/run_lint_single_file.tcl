@@ -89,12 +89,12 @@ proc print_usage {} {
 #-----------------------------------------------------------------------------
 for {set i 0} {$i < [llength $argv]} {incr i} {
     set arg [lindex $argv $i]
-    
+
     if {$arg eq "-h" || $arg eq "-help" || $arg eq "--help"} {
         print_usage
         exit 0
     }
-    
+
     if {$arg eq "-file"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -105,7 +105,7 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         set input_file [lindex $argv $i]
         continue
     }
-    
+
     if {$arg eq "-policy"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -116,7 +116,7 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         set policy_file [lindex $argv $i]
         continue
     }
-    
+
     if {$arg eq "-format"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -127,7 +127,7 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         set output_format [lindex $argv $i]
         continue
     }
-    
+
     if {$arg eq "-outdir"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -138,7 +138,7 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         set output_dir [lindex $argv $i]
         continue
     }
-    
+
     # Unknown argument
     puts stderr "ERROR: Unknown argument: $arg"
     print_usage
@@ -236,7 +236,7 @@ if {[catch {
 } else {
     # Lint engine succeeded - count diagnostics
     set diag_count [llength $diagnostics]
-    
+
     foreach diag $diagnostics {
         set sev [dict get $diag severity]
         switch -exact -- $sev {
@@ -245,7 +245,7 @@ if {[catch {
             "info"    { incr info_count }
         }
     }
-    
+
     # Determine result state
     if {$diag_count == 0} {
         set result_state "OK"
@@ -270,12 +270,12 @@ if {$result_state eq "TOOL_ERROR"} {
     } elseif {$output_format eq "text"} {
         set report_path [file join $output_dir "lint_report.txt"]
     }
-    
+
     # HTML escape helper
     proc escape_html {text} {
         string map {& &amp; < &lt; > &gt; \" &quot;} $text
     }
-    
+
     if {$output_format eq "html"} {
         set html "<!DOCTYPE html>\n<html><head><title>Lint Tool Error</title></head>\n"
         append html "<body style='font-family: sans-serif; padding: 40px;'>\n"
@@ -284,7 +284,7 @@ if {$result_state eq "TOOL_ERROR"} {
         append html "<h2>Error Details:</h2>\n"
         append html "<pre style='background: #2c3e50; color: #ecf0f1; padding: 20px; overflow-x: auto;'>[escape_html $tool_error_msg]</pre>\n"
         append html "</body></html>\n"
-        
+
         set f [open $report_path w]
         puts $f $html
         close $f
@@ -292,7 +292,7 @@ if {$result_state eq "TOOL_ERROR"} {
         set md "# Lint Tool Error\n\n"
         append md "**File:** `$input_file`\n\n"
         append md "## Error Details\n\n```\n$tool_error_msg\n```\n"
-        
+
         set f [open $report_path w]
         puts $f $md
         close $f
@@ -302,7 +302,7 @@ if {$result_state eq "TOOL_ERROR"} {
         append txt "===============\n\n"
         append txt "File: $input_file\n\n"
         append txt "ERROR:\n$tool_error_msg\n"
-        
+
         set f [open $report_path w]
         puts $f $txt
         close $f
@@ -334,7 +334,7 @@ if {$result_state eq "TOOL_ERROR"} {
             puts $f "  Info:     $info_count"
             puts $f "  Total:    $diag_count"
             puts $f ""
-            
+
             if {$diag_count > 0} {
                 puts $f "Diagnostics:"
                 puts $f "------------"

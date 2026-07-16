@@ -40,7 +40,7 @@ set fail_count 0
 proc test_assert {condition description} {
     global test_count pass_count fail_count
     incr test_count
-    
+
     set result [uplevel 1 [list expr $condition]]
     if {$result} {
         incr pass_count
@@ -57,7 +57,7 @@ proc test_summary {} {
     puts "========================================"
     puts "TEST SUMMARY: $pass_count/$test_count passed"
     puts "========================================"
-    
+
     if {$fail_count > 0} {
         puts "RESULT: FAILED ($fail_count failure(s))"
         return 1
@@ -85,21 +85,21 @@ if {![file exists $test1_file]} {
 
 if {[file exists $test1_file]} {
     puts "Using fixture: $test1_file"
-    
+
     # Run the single-file linter
     set run_script [file join $tools_dir run_lint_single_file.tcl]
     set cmd [list [info nameofexecutable] $run_script -file $test1_file -format html -outdir $test1_outdir]
-    
+
     puts "Command: $cmd"
     puts ""
-    
+
     # Execute and capture result
     set stdout_temp [file join $test_outdir ".test1_stdout.tmp"]
     set stderr_temp [file join $test_outdir ".test1_stderr.tmp"]
     file mkdir $test_outdir
-    
+
     set exit_code [catch {exec {*}$cmd > $stdout_temp 2> $stderr_temp} exec_result]
-    
+
     # Read output
     set stdout_text ""
     set stderr_text ""
@@ -113,7 +113,7 @@ if {[file exists $test1_file]} {
         set stderr_text [read $f]
         close $f
     }
-    
+
     puts "Exit code: $exit_code"
     puts "Stdout:"
     puts $stdout_text
@@ -122,11 +122,11 @@ if {[file exists $test1_file]} {
         puts $stderr_text
     }
     puts ""
-    
+
     # Check assertions
     # Exit code: catch returns 1 if command returned non-zero, but we need to parse output
     # to determine if it was TOOL_ERROR (exit 2) vs LINT_ISSUES (exit 1)
-    
+
     # Look for Status: in output
     set status_line ""
     foreach line [split $stdout_text \n] {
@@ -135,14 +135,14 @@ if {[file exists $test1_file]} {
             break
         }
     }
-    
+
     # Check for report file
     set report_exists [file exists [file join $test1_outdir "index.html"]]
-    
+
     test_assert {$status_line ne "TOOL_ERROR"} "Status is not TOOL_ERROR (got: $status_line)"
     test_assert {$status_line in {OK LINT_ISSUES}} "Status is OK or LINT_ISSUES (got: $status_line)"
     test_assert {$report_exists} "Report file exists at $test1_outdir/index.html"
-    
+
     # If TOOL_ERROR, show details
     if {$status_line eq "TOOL_ERROR"} {
         puts ""
@@ -168,30 +168,30 @@ set test2_outdir [file join $test_outdir "test2"]
 
 if {[file exists $test2_file]} {
     puts "Using fixture: $test2_file"
-    
+
     set run_script [file join $tools_dir run_lint_single_file.tcl]
     set cmd [list [info nameofexecutable] $run_script -file $test2_file -format html -outdir $test2_outdir]
-    
+
     puts "Command: $cmd"
     puts ""
-    
+
     set stdout_temp [file join $test_outdir ".test2_stdout.tmp"]
     set stderr_temp [file join $test_outdir ".test2_stderr.tmp"]
-    
+
     set exit_code [catch {exec {*}$cmd > $stdout_temp 2> $stderr_temp} exec_result]
-    
+
     set stdout_text ""
     if {[file exists $stdout_temp]} {
         set f [open $stdout_temp r]
         set stdout_text [read $f]
         close $f
     }
-    
+
     puts "Exit code: $exit_code"
     puts "Stdout:"
     puts $stdout_text
     puts ""
-    
+
     # Parse status
     set status_line ""
     foreach line [split $stdout_text \n] {
@@ -200,9 +200,9 @@ if {[file exists $test2_file]} {
             break
         }
     }
-    
+
     set report_exists [file exists [file join $test2_outdir "index.html"]]
-    
+
     test_assert {$status_line ne "TOOL_ERROR"} "Status is not TOOL_ERROR (got: $status_line)"
     test_assert {$report_exists} "Report file exists at $test2_outdir/index.html"
 } else {
@@ -225,29 +225,29 @@ set test3_outdir [file join $test_outdir "test3"]
 
 if {[file exists $test3_file]} {
     puts "Using fixture: $test3_file"
-    
+
     set run_script [file join $tools_dir run_lint_single_file.tcl]
     set cmd [list [info nameofexecutable] $run_script -file $test3_file -format md -outdir $test3_outdir]
-    
+
     puts "Command: $cmd"
     puts ""
-    
+
     set stdout_temp [file join $test_outdir ".test3_stdout.tmp"]
     set stderr_temp [file join $test_outdir ".test3_stderr.tmp"]
-    
+
     set exit_code [catch {exec {*}$cmd > $stdout_temp 2> $stderr_temp} exec_result]
-    
+
     set stdout_text ""
     if {[file exists $stdout_temp]} {
         set f [open $stdout_temp r]
         set stdout_text [read $f]
         close $f
     }
-    
+
     puts "Stdout (truncated):"
     puts [string range $stdout_text 0 500]
     puts ""
-    
+
     # Parse status
     set status_line ""
     foreach line [split $stdout_text \n] {
@@ -256,9 +256,9 @@ if {[file exists $test3_file]} {
             break
         }
     }
-    
+
     set md_report_exists [file exists [file join $test3_outdir "lint_report.md"]]
-    
+
     test_assert {$status_line ne "TOOL_ERROR"} "Status is not TOOL_ERROR (got: $status_line)"
     test_assert {$md_report_exists} "Markdown report exists at $test3_outdir/lint_report.md"
 } else {

@@ -156,12 +156,12 @@ proc generate_markdown {rules rule_ids} {
     # Pull the centralised type allowlists into the proc scope.
     global ARRAY_TYPED_FIELDS OBJECT_TYPED_FIELDS
     set output {}
-    
+
     append output "# VHDL Lint Rules Reference\n\n"
     append output "This document is auto-generated from `lint/metadata.json`.\n\n"
     append output "**Last updated:** [clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}]\n\n"
     append output "---\n\n"
-    
+
     # Table of contents
     append output "## Table of Contents\n\n"
     foreach rule_id $rule_ids {
@@ -169,30 +169,30 @@ proc generate_markdown {rules rule_ids} {
         append output "- \[$rule_id\](#$anchor)\n"
     }
     append output "\n---\n\n"
-    
+
     # Individual rule sections
     foreach rule_id $rule_ids {
         set rule [dict get $rules $rule_id]
         set anchor [string map {_ - : -} [string tolower $rule_id]]
-        
+
         append output "## $rule_id\n\n"
-        
+
         # Type
         if {[dict exists $rule type]} {
             append output "**Type:** `[dict get $rule type]`\n\n"
         }
-        
+
         # Default settings
         append output "**Default Configuration:**\n\n"
         append output "```json\n"
         append output "\{\n"
         append output "  \"$rule_id\": \{\n"
-        
+
         # Sort keys for deterministic output
         set keys [lsort [dict keys $rule]]
         set key_count [llength $keys]
         set key_idx 0
-        
+
         foreach key $keys {
             set value [dict get $rule $key]
             incr key_idx
@@ -320,14 +320,14 @@ proc generate_markdown {rules rule_ids} {
                     set value "(empty)"
                 }
             }
-            
+
             # Description based on key name
             set desc [get_option_description $key]
-            
+
             append output "| `$key` | $type | `$value` | $desc |\n"
         }
         append output "\n"
-        
+
         # Example override
         append output "**Example Override:**\n\n"
         append output "```json\n"
@@ -340,10 +340,10 @@ proc generate_markdown {rules rule_ids} {
         append output "  \}\n"
         append output "\}\n"
         append output "```\n\n"
-        
+
         append output "---\n\n"
     }
-    
+
     return $output
 }
 
@@ -390,7 +390,7 @@ proc get_option_description {key} {
 proc generate_html {rules rule_ids} {
     global ARRAY_TYPED_FIELDS OBJECT_TYPED_FIELDS
     set output {}
-    
+
     append output "<!DOCTYPE html>\n"
     append output "<html lang=\"en\">\n"
     append output "<head>\n"
@@ -422,12 +422,12 @@ proc generate_html {rules rule_ids} {
     append output "        <div class=\"sidebar\">\n"
     append output "            <h3>Rules</h3>\n"
     append output "            <ul class=\"rule-nav\">\n"
-    
+
     foreach rule_id $rule_ids {
         set anchor [string map {_ - : -} [string tolower $rule_id]]
         append output "                <li><a href=\"#$anchor\">$rule_id</a></li>\n"
     }
-    
+
     append output "            </ul>\n"
     append output "        </div>\n"
     append output "        <div class=\"content\">\n"
@@ -436,25 +436,25 @@ proc generate_html {rules rule_ids} {
     append output "                <strong>Auto-generated</strong> from <code>lint/metadata.json</code><br>\n"
     append output "                <strong>Last updated:</strong> [clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}]\n"
     append output "            </div>\n"
-    
+
     foreach rule_id $rule_ids {
         set rule [dict get $rules $rule_id]
         set anchor [string map {_ - : -} [string tolower $rule_id]]
-        
+
         append output "            <h2 id=\"$anchor\">$rule_id</h2>\n"
-        
+
         if {[dict exists $rule type]} {
             append output "            <p><strong>Type:</strong> <code>[dict get $rule type]</code></p>\n"
         }
-        
+
         append output "            <h3>Default Configuration</h3>\n"
         append output "            <pre><code>\{\n"
         append output "  \"$rule_id\": \{\n"
-        
+
         set keys [lsort [dict keys $rule]]
         set key_count [llength $keys]
         set key_idx 0
-        
+
         foreach key $keys {
             set value [dict get $rule $key]
             incr key_idx
@@ -520,11 +520,11 @@ proc generate_html {rules rule_ids} {
 
         append output "  \}\n"
         append output "\}</code></pre>\n"
-        
+
         append output "            <h3>Configuration Options</h3>\n"
         append output "            <table>\n"
         append output "                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>\n"
-        
+
         foreach key [lsort [dict keys $rule]] {
             set value [dict get $rule $key]
 
@@ -574,9 +574,9 @@ proc generate_html {rules rule_ids} {
             set desc [get_option_description $key]
             append output "                <tr><td><code>$key</code></td><td>$type</td><td><code>$value</code></td><td>$desc</td></tr>\n"
         }
-        
+
         append output "            </table>\n"
-        
+
         append output "            <h3>Example Override</h3>\n"
         append output "            <pre><code>\{\n"
         append output "  \"rules\": \{\n"
@@ -587,12 +587,12 @@ proc generate_html {rules rule_ids} {
         append output "  \}\n"
         append output "\}</code></pre>\n"
     }
-    
+
     append output "        </div>\n"
     append output "    </div>\n"
     append output "</body>\n"
     append output "</html>\n"
-    
+
     return $output
 }
 

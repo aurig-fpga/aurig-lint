@@ -1,0 +1,49 @@
+# Pre-commit hooks for aurig-lint
+# Run on every commit (locally + CI).
+# Install locally: pip install pre-commit && pre-commit install && pre-commit install --hook-type commit-msg
+#
+# Revs are aligned with aurig-sentinel's .pre-commit-config.yaml; keep the
+# three Tcl repos (doc/core/lint) and sentinel on the same pins.
+#
+# Repo-context excludes on the three rewriting hooks (beyond the shared
+# \.(bat|ps1)$ rule):
+#   - test/lint/fixtures/: byte-sensitive VHDL inputs for the lint tests;
+#     whitespace there may be intentional (mirrors the aurig-core decision
+#     for test/parser/fixtures/).
+
+repos:
+  # Standard hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.(bat|ps1)$|^test/lint/fixtures/'
+      - id: end-of-file-fixer
+        exclude: '\.(bat|ps1)$|^test/lint/fixtures/'
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+        exclude: '\.(bat|ps1)$|^test/lint/fixtures/'
+
+  # Secrets scanner. CI is the authoritative run; local runs may fail to
+  # build gitleaks on restricted networks (proxy.golang.org TLS) -- skip
+  # locally with SKIP=gitleaks if that bites.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.0
+    hooks:
+      - id: gitleaks
+
+  # Custom local hooks
+  - repo: local
+    hooks:
+      - id: no-ai-attribution
+        name: Block AI attribution in commit messages
+        language: pygrep
+        # KEEP IN SYNC (verbatim) with the no-ai-attribution job in
+        # .github/workflows/ci.yml -- same pattern, same escaping.
+        entry: '(?i)(co-authored-by:.*(claude|copilot|codex|anthropic|openai|chatgpt)|assisted-by:.*(claude|copilot|codex|anthropic|openai|chatgpt)|generated.with.*(claude|copilot|codex|anthropic|openai|chatgpt)|noreply@anthropic\.com|🤖.*generated)'
+        stages: [commit-msg]

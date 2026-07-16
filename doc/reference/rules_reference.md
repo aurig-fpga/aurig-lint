@@ -1435,4 +1435,3 @@ This document is auto-generated from `lint/metadata.json`.
 ```
 
 ---
-
