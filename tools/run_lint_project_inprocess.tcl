@@ -300,12 +300,12 @@ proc print_usage {} {
 #-----------------------------------------------------------------------------
 for {set i 0} {$i < [llength $argv]} {incr i} {
     set arg [lindex $argv $i]
-    
+
     if {$arg eq "-h" || $arg eq "-help" || $arg eq "--help"} {
         print_usage
         exit 0
     }
-    
+
     if {$arg eq "-project_root"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -349,7 +349,7 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         set opts(policy) [lindex $argv $i]
         continue
     }
-    
+
     if {$arg eq "-format"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -360,7 +360,7 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         set opts(format) [lindex $argv $i]
         continue
     }
-    
+
     if {$arg eq "-outdir"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -371,7 +371,7 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         set opts(outdir) [lindex $argv $i]
         continue
     }
-    
+
     if {$arg eq "-limit"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -382,7 +382,7 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         set opts(limit) [lindex $argv $i]
         continue
     }
-    
+
     if {$arg eq "-include"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -393,7 +393,7 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         set opts(include) [lindex $argv $i]
         continue
     }
-    
+
     if {$arg eq "-exclude"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -404,7 +404,7 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         set opts(exclude) [lindex $argv $i]
         continue
     }
-    
+
     if {$arg eq "-stop_on_tool_error"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -415,7 +415,7 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         set opts(stop_on_tool_error) [lindex $argv $i]
         continue
     }
-    
+
     if {$arg eq "-html_preview_count"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -426,7 +426,7 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         set opts(html_preview_count) [lindex $argv $i]
         continue
     }
-    
+
     if {$arg eq "-html_default_collapsed"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -437,7 +437,7 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         set opts(html_default_collapsed) [lindex $argv $i]
         continue
     }
-    
+
     if {$arg eq "-max_diags_per_rule_per_file"} {
         incr i
         if {$i >= [llength $argv]} {
@@ -711,22 +711,22 @@ proc lint_project_cap_diagnostics {diagnostics max_count} {
         # No cap
         return $diagnostics
     }
-    
+
     # Count diagnostics per rule_id
     array set rule_counts {}
     array set rule_capped {}
-    
+
     set capped_diagnostics [list]
-    
+
     foreach diag $diagnostics {
         set rule_id [dict get $diag rule_id]
-        
+
         if {![info exists rule_counts($rule_id)]} {
             set rule_counts($rule_id) 0
         }
-        
+
         incr rule_counts($rule_id)
-        
+
         if {$rule_counts($rule_id) <= $max_count} {
             # Under cap, keep the diagnostic
             lappend capped_diagnostics $diag
@@ -737,13 +737,13 @@ proc lint_project_cap_diagnostics {diagnostics max_count} {
         }
         # If > max_count + 1, silently skip
     }
-    
+
     # Add suppression messages for capped rules
     foreach rule_id [array names rule_capped] {
         set total $rule_counts($rule_id)
         set suppressed [expr {$total - $max_count}]
         set msg "Suppressed $suppressed additional diagnostics for '$rule_id' after $max_count occurrences (configurable via -max_diags_per_rule_per_file)"
-        
+
         # Get file from first diagnostic with this rule_id (they're all same file)
         set filename ""
         foreach d $diagnostics {
@@ -752,7 +752,7 @@ proc lint_project_cap_diagnostics {diagnostics max_count} {
                 break
             }
         }
-        
+
         # Create synthetic suppression diagnostic
         set suppression_diag [dict create \
             rule_id $rule_id \
@@ -764,7 +764,7 @@ proc lint_project_cap_diagnostics {diagnostics max_count} {
             scope "suppression" \
             name "" \
             context ""]
-        
+
         lappend capped_diagnostics $suppression_diag
     }
 
@@ -958,13 +958,13 @@ proc lint_project_source_filename {fullpath project_root} {
             set rel [string trimleft $rel {/\\}]
         }
     }
-    
+
     # Make filesystem-safe: replace path separators with double underscore
     set safe [string map {/ __ \\ __ : _} $rel]
-    
+
     # Ensure uniqueness with hash suffix
     set hash [format "%08x" [lint_project_hash32 $norm_full]]
-    
+
     # Return safe filename (without .html extension)
     return "${safe}_${hash}"
 }
@@ -977,16 +977,16 @@ proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
     if {![file exists $sourceFile]} {
         return 0
     }
-    
+
     set fp [open $sourceFile r]
     fconfigure $fp -encoding utf-8
     set sourceCode [read $fp]
     close $fp
-    
+
     # Escape HTML special characters for CodeMirror textarea
     set sourceCode [string map {& &amp; < &lt; > &gt; ' &#39;} $sourceCode]
     set sourceCode [string map [list \" &quot;] $sourceCode]
-    
+
     # Build line-based diagnostic lookup for highlighting
     array set diagLines {}
     foreach diag $diagnostics {
@@ -996,11 +996,11 @@ proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
             set diagLines($line) $sev
         }
     }
-    
+
     # Generate HTML with CodeMirror and line jump support
     set out [open $outFile w]
     fconfigure $out -translation lf -encoding utf-8
-    
+
     puts $out "<!DOCTYPE html>"
     puts $out "<html><head><meta charset=\"utf-8\"><title>$fileName - Source Code</title>"
     puts $out "<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css\">"
@@ -1037,7 +1037,7 @@ proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
     puts $out "<div class='file-info'>File: <code>[lint_project_escape_html $fileName]</code></div>"
     puts $out "<textarea id='code'>$sourceCode</textarea>"
     puts $out "</div>"
-    
+
     # Footer with logo (only when the asset was actually copied to assets/)
     puts $out "<div class='footer'>"
     if {[info exists ::lint_project_logo_present] && $::lint_project_logo_present} {
@@ -1046,7 +1046,7 @@ proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
     puts $out "Generated by <strong>AURIG Lint</strong> &mdash; <a href=\"https://www.logimentor.com\">LogiMentor</a><br>"
     puts $out "on [clock format [clock seconds] -format {%B %d, %Y}]"
     puts $out " at [clock format [clock seconds] -format {%H:%M:%S}]</div>"
-    
+
     puts $out "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js\"></script>"
     puts $out "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/vhdl/vhdl.min.js\"></script>"
     puts $out "<script>"
@@ -1058,21 +1058,21 @@ proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
     puts $out "  lineWrapping: false,"
     puts $out "  viewportMargin: Infinity"
     puts $out "});"
-    
+
     # Diagnostic lines to highlight (from Tcl array)
     puts $out "var diagLines = \{"
     foreach line [array names diagLines] {
         puts $out "  $line: '$diagLines($line)',"
     }
     puts $out "\};"
-    
+
     # Mark diagnostic lines
     puts $out "for (var ln in diagLines) {"
     puts $out "  var lineNum = parseInt(ln) - 1;"
     puts $out "  var cls = 'highlight-' + diagLines\[ln\];"
     puts $out "  editor.addLineClass(lineNum, 'background', cls);"
     puts $out "}"
-    
+
     # Line jump support via URL hash #L<line>
     puts $out "function jumpToLine(lineNum) {"
     puts $out "  if (lineNum > 0) {"
@@ -1082,7 +1082,7 @@ proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
     puts $out "    setTimeout(function() { editor.setCursor(ln, 0); }, 100);"
     puts $out "  }"
     puts $out "}"
-    
+
     puts $out "function parseLineFromHash() {"
     puts $out "  var hash = window.location.hash;"
     puts $out "  if (hash && hash.match(/^#L\\d+\$/)) {"
@@ -1090,20 +1090,20 @@ proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
     puts $out "  }"
     puts $out "  return 0;"
     puts $out "}"
-    
+
     puts $out "window.onload = function() {"
     puts $out "  var line = parseLineFromHash();"
     puts $out "  if (line > 0) jumpToLine(line);"
     puts $out "};"
-    
+
     puts $out "window.onhashchange = function() {"
     puts $out "  var line = parseLineFromHash();"
     puts $out "  if (line > 0) jumpToLine(line);"
     puts $out "};"
-    
+
     puts $out "</script>"
     puts $out "</body></html>"
-    
+
     close $out
     return 1
 }
@@ -1123,7 +1123,7 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
             set metadata_dict [json::json2dict $json_text]
         }
     }
-    
+
     # Load policy if provided
     set policy_dict [dict create]
     if {$policy_path ne "" && [file exists $policy_path]} {
@@ -1134,7 +1134,7 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
             set policy_dict [json::json2dict $json_text]
         }
     }
-    
+
     # Merge: start with metadata, overlay policy
     set effective [dict create rules [dict create]]
     if {[dict exists $metadata_dict rules]} {
@@ -1151,7 +1151,7 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
             }
         }
     }
-    
+
     # Export JSON
     set json_file [file join $outdir "effective_policy.json"]
     set f [open $json_file w]
@@ -1159,19 +1159,19 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
     puts $f "  \"comment\": \"Effective lint policy (metadata + user policy merged)\","
     puts $f "  \"generated\": \"[clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}]\","
     puts $f "  \"rules\": \{"
-    
+
     set rule_ids [lsort [dict keys [dict get $effective rules]]]
     set rule_count [llength $rule_ids]
     set rule_idx 0
-    
+
     foreach rule_id $rule_ids {
         set cfg [dict get $effective rules $rule_id]
         puts -nonewline $f "    \"$rule_id\": \{"
-        
+
         set keys [lsort [dict keys $cfg]]
         set key_count [llength $keys]
         set key_idx 0
-        
+
         foreach key $keys {
             set val [dict get $cfg $key]
             # Simple JSON escaping
@@ -1189,7 +1189,7 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
                 puts -nonewline $f ", "
             }
         }
-        
+
         incr rule_idx
         if {$rule_idx < $rule_count} {
             puts $f "\},"
@@ -1197,11 +1197,11 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
             puts $f "\}"
         }
     }
-    
+
     puts $f "  \}"
     puts $f "\}"
     close $f
-    
+
     # Export Markdown
     set md_file [file join $outdir "effective_policy.md"]
     set f [open $md_file w]
@@ -1209,7 +1209,7 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
     puts $f "**Generated:** [clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}]\n"
     puts $f "This shows the merged configuration from metadata.json and your policy file.\n"
     puts $f "---\n"
-    
+
     foreach rule_id [lsort [dict keys [dict get $effective rules]]] {
         set cfg [dict get $effective rules $rule_id]
         set enabled "NO"
@@ -1226,7 +1226,7 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
         puts $f ""
     }
     close $f
-    
+
     return [list $json_file $md_file]
 }
 
@@ -1372,7 +1372,7 @@ if {[info commands ::aurig::core::util::collect_project_files] ne ""} {
         puts stderr "Falling back to recursive glob..."
         set fileDict {}
     }
-    
+
     # Filter for VHDL files only
     dict for {idx rec} $fileDict {
         if {[dict get $rec type] eq "vhdl"} {
@@ -1552,14 +1552,14 @@ foreach vhdl_file $vhdl_files {
     set normalized_path [file normalize $vhdl_file]
     # Compute relative path from project root for display
     set rel_path [lint_project_relative_path $normalized_path $opts(project_root)]
-    
+
     if {$opts(verbose)} {
         puts "\n\[$current/$file_count\] $rel_path"
     } else {
         puts -nonewline "."
         flush stdout
     }
-    
+
     # Initialize result for this file
     set result_state "OK"
     set diagnostics [list]
@@ -1568,7 +1568,7 @@ foreach vhdl_file $vhdl_files {
     set warning_count 0
     set info_count 0
     set tool_error_msg ""
-    
+
     # Call lint engine DIRECTLY (in-process, no exec)
     if {[catch {
         set lint_args [list -input $normalized_path -metadata $metadata_path -mode lint]
@@ -1594,10 +1594,10 @@ foreach vhdl_file $vhdl_files {
         set diagnostics_uncapped $diagnostics
         # Apply diagnostic cap per rule per file
         set diagnostics [lint_project_cap_diagnostics $diagnostics $opts(max_diags_per_rule_per_file)]
-        
+
         # Lint engine succeeded - count diagnostics
         set diag_count [llength $diagnostics]
-        
+
         foreach diag $diagnostics {
             set sev [dict get $diag severity]
             switch -exact -- $sev {
@@ -1606,7 +1606,7 @@ foreach vhdl_file $vhdl_files {
                 "info"    { incr info_count }
             }
         }
-        
+
         # Determine result state
         if {$diag_count == 0} {
             set result_state "OK"
@@ -1617,7 +1617,7 @@ foreach vhdl_file $vhdl_files {
             set result_state "OK"
         }
     }
-    
+
     # Update counters
     switch -- $result_state {
         OK {
@@ -1631,7 +1631,7 @@ foreach vhdl_file $vhdl_files {
             incr tool_error_count
         }
     }
-    
+
     # Store result
     # Track the uncapped diagnostic list separately. On the TOOL_ERROR
     # branch it stays empty (lint engine threw before producing
@@ -1653,7 +1653,7 @@ foreach vhdl_file $vhdl_files {
         tool_error_msg $tool_error_msg]
     lappend all_results $file_result
     unset -nocomplain diagnostics_uncapped
-    
+
     # Verbose output
     if {$opts(verbose)} {
         puts "  Status: $result_state"
@@ -1664,7 +1664,7 @@ foreach vhdl_file $vhdl_files {
             puts "  Error: [string range $tool_error_msg 0 200]..."
         }
     }
-    
+
     # Stop on tool error if requested
     if {$result_state eq "TOOL_ERROR" && $opts(stop_on_tool_error)} {
         if {!$opts(verbose)} {
@@ -1789,7 +1789,7 @@ if {$opts(format) eq "html"} {
     set sources_dir [file join $opts(outdir) "sources"]
     file mkdir $assets_dir
     file mkdir $sources_dir
-    
+
     #-------------------------------------------------------------------------
     # Copy logo to assets. The <img> emitters below key off
     # ::lint_project_logo_present so the HTML never references an asset that was
@@ -1801,13 +1801,13 @@ if {$opts(format) eq "html"} {
         set ::lint_project_logo_present 1
         puts "  Copied logo to assets/"
     }
-    
+
     #-------------------------------------------------------------------------
     # Export effective policy
     #-------------------------------------------------------------------------
     set policy_files [lint_project_export_policy $metadata_path $opts(policy) $opts(outdir)]
     puts "  Exported effective policy: [file tail [lindex $policy_files 0]]"
-    
+
     #-------------------------------------------------------------------------
     # Generate source viewer HTML files and build mapping
     #-------------------------------------------------------------------------
@@ -1839,7 +1839,7 @@ if {$opts(format) eq "html"} {
         lint_project_emit_source_viewer $fullpath $source_path $filename $diagnostics
     }
     puts "  Generated [array size source_viewer_map] source viewer(s)"
-    
+
     #-------------------------------------------------------------------------
     # Generate HTML index
     #-------------------------------------------------------------------------
@@ -2035,7 +2035,7 @@ if {$opts(format) eq "html"} {
     # All files section
     puts $f "<h2 id=\"section-all\">Results by File</h2>"
     puts $f "<ul class=\"file-list\">"
-    
+
     # Get preview count option
     set preview_count $opts(html_preview_count)
     set default_collapsed $opts(html_default_collapsed)
@@ -2051,13 +2051,13 @@ if {$opts(format) eq "html"} {
         set badge_class "badge-ok"
         set badge_label "OK"
         set anchor_id [format "file-%08x" [lint_project_hash32 $fullpath]]
-        
+
         # Get source viewer link
         set source_link ""
         if {[info exists source_viewer_map($fullpath)]} {
             set source_link $source_viewer_map($fullpath)
         }
-        
+
         switch -- $status {
             LINT_ISSUES {
                 set badge_class "badge-lint"
@@ -2076,13 +2076,13 @@ if {$opts(format) eq "html"} {
         set escaped_name [lint_project_escape_html $filename]
         # Display relative path from project root, not absolute path
         set escaped_path [lint_project_escape_html $filename]
-        
+
         # Determine initial collapsed state
         set collapsed_class [expr {$default_collapsed ? "collapsed" : ""}]
         set diag_count [llength $diagnostics]
 
         puts $f "<li class=\"file-item status-$status_class\" id=\"$anchor_id\">"
-        
+
         # Collapsible header (only for files with issues)
         if {$status eq "LINT_ISSUES"} {
             puts $f "<div class=\"file-header $collapsed_class\" id=\"header-$anchor_id\" onclick=\"toggleFile('$anchor_id')\">"
@@ -2130,7 +2130,7 @@ if {$opts(format) eq "html"} {
                 puts $f "<div class=\"preview-note\">Click header to see all $diag_count diagnostics</div>"
                 puts $f "</div>"
             }
-            
+
             # Full details (hidden when collapsed)
             set details_class [expr {$default_collapsed ? "collapsed" : ""}]
             puts $f "<div id=\"details-$anchor_id\" class=\"file-details $details_class\">"
@@ -2144,13 +2144,13 @@ if {$opts(format) eq "html"} {
                 set msg [lint_project_escape_html [dict get $diag message]]
                 set rule [dict get $diag rule_id]
                 set sev_class "diag-[string tolower $sev]"
-                
+
                 # Link to source viewer with line number
                 set source_cell ""
                 if {$source_link ne ""} {
                     set source_cell "<a href=\"${source_link}#L${line}\" title=\"Jump to line $line\">View</a>"
                 }
-                
+
                 puts $f "<tr><td>$line</td><td class=\"$sev_class\">$sev</td><td>$rule</td><td>$msg</td><td>$source_cell</td></tr>"
             }
             puts $f "</table>"
@@ -2172,7 +2172,7 @@ if {$opts(format) eq "html"} {
     }
 
     puts $f "</ul>"
-    
+
     # Lint issues only section
     puts $f "<h2 id=\"section-lint\">Files with Lint Issues</h2>"
     set lint_files [list]
@@ -2194,7 +2194,7 @@ if {$opts(format) eq "html"} {
         }
         puts $f "</ul>"
     }
-    
+
     # Tool errors section
     puts $f "<h2 id=\"section-errors\">Files with Tool Errors</h2>"
     set error_files [list]
@@ -2215,7 +2215,7 @@ if {$opts(format) eq "html"} {
         }
         puts $f "</ul>"
     }
-    
+
     # OK files section
     puts $f "<h2 id=\"section-ok\">Files OK</h2>"
     set ok_files [list]
@@ -2275,7 +2275,7 @@ if {$opts(format) eq "html"} {
     # BY RULE VIEW
     #=========================================================================
     puts $f "<div id=\"view-by-rule\" class=\"view-container\">"
-    
+
     # Aggregate diagnostics by rule_id
     # Structure: rule_id -> {total N error N warning N info N occurrences {list of {file line severity message path}}}
     array set rule_stats {}
@@ -2284,34 +2284,34 @@ if {$opts(format) eq "html"} {
         set filename [dict get $result file]
         set fullpath [dict get $result path]
         set diagnostics [dict get $result diagnostics]
-        
+
         foreach diag $diagnostics {
             set rule_id [dict get $diag rule_id]
             set severity [dict get $diag severity]
             set line [dict get $diag line]
             set message [dict get $diag message]
-            
+
             # Initialize rule stats if needed
             if {![info exists rule_stats($rule_id)]} {
                 set rule_stats($rule_id) [dict create total 0 error 0 warning 0 info 0 occurrences {}]
             }
-            
+
             # Update counts
             dict incr rule_stats($rule_id) total
             set sev_lower [string tolower $severity]
             if {$sev_lower in {error warning info}} {
                 dict incr rule_stats($rule_id) $sev_lower
             }
-            
+
             # Add occurrence
             set occ [dict create file $filename line $line severity $severity message $message path $fullpath]
             dict lappend rule_stats($rule_id) occurrences $occ
         }
     }
-    
+
     # Get sorted list of rule_ids
     set sorted_rules [lsort [array names rule_stats]]
-    
+
     # Violations by Rule summary
     puts $f "<div class=\"rule-summary\">"
     puts $f "<h2>Violations by Rule</h2>"
@@ -2325,17 +2325,17 @@ if {$opts(format) eq "html"} {
             set err_count [dict get $stats error]
             set warn_count [dict get $stats warning]
             set info_count [dict get $stats info]
-            
+
             # Build breakdown string
             set breakdown_parts {}
             if {$err_count > 0} { lappend breakdown_parts "$err_count error" }
             if {$warn_count > 0} { lappend breakdown_parts "$warn_count warning" }
             if {$info_count > 0} { lappend breakdown_parts "$info_count info" }
             set breakdown [join $breakdown_parts ", "]
-            
+
             # Safe anchor for rule_id
             set rule_anchor "rule-[lint_project_hash32 $rule_id]"
-            
+
             puts $f "<div class=\"rule-card\">"
             puts $f "<h4><a href=\"#$rule_anchor\">$rule_id</a></h4>"
             puts $f "<div class=\"rule-count\">$total</div>"
@@ -2345,7 +2345,7 @@ if {$opts(format) eq "html"} {
         puts $f "</div>"
     }
     puts $f "</div>"
-    
+
     # Rule detail sections
     puts $f "<h2>Rule Details</h2>"
     foreach rule_id $sorted_rules {
@@ -2353,7 +2353,7 @@ if {$opts(format) eq "html"} {
         set total [dict get $stats total]
         set occurrences [dict get $stats occurrences]
         set rule_anchor "rule-[lint_project_hash32 $rule_id]"
-        
+
         # Sort occurrences by file then by line
         set sorted_occs [lsort -command {apply {{a b} {
             set fa [dict get $a file]
@@ -2364,7 +2364,7 @@ if {$opts(format) eq "html"} {
             set lb [dict get $b line]
             return [expr {$la - $lb}]
         }}} $occurrences]
-        
+
         puts $f "<div class=\"rule-detail\" id=\"$rule_anchor\">"
         # Collapsible header for rule
         set rule_collapsed $default_collapsed
@@ -2372,12 +2372,12 @@ if {$opts(format) eq "html"} {
         puts $f "<div class=\"file-header rule-header $collapsed_class\" id=\"rule-header-$rule_anchor\" onclick=\"toggleRule('$rule_anchor')\">"
         puts $f "<h3><span class=\"toggle-icon\">&#x25BC;</span> $rule_id <span class=\"rule-total\">($total occurrences)</span></h3>"
         puts $f "</div>"
-        
+
         set details_class [expr {$rule_collapsed ? "collapsed" : ""}]
         puts $f "<div id=\"rule-details-$rule_anchor\" class=\"file-details $details_class\">"
         puts $f "<table class=\"diag-table\">"
         puts $f "<tr><th>File</th><th>Line</th><th>Severity</th><th>Message</th><th>View</th><th>File Section</th></tr>"
-        
+
         foreach occ $sorted_occs {
             set occ_file [dict get $occ file]
             set occ_line [dict get $occ line]
@@ -2385,7 +2385,7 @@ if {$opts(format) eq "html"} {
             set occ_msg [lint_project_escape_html [dict get $occ message]]
             set occ_path [dict get $occ path]
             set sev_class "diag-[string tolower $occ_sev]"
-            
+
             # Source link
             set source_cell ""
             if {[info exists source_viewer_map($occ_path)]} {
@@ -2396,11 +2396,11 @@ if {$opts(format) eq "html"} {
                     set source_cell "<a href=\"$src_link\" title=\"View source\">View</a>"
                 }
             }
-            
+
             # File section link (jump to file in By File view)
             set file_anchor [format "file-%08x" [lint_project_hash32 $occ_path]]
             set file_section_link "<a href=\"#$file_anchor\" onclick=\"switchView('view-by-file')\" title=\"Jump to file section\">&#x1F4C4;</a>"
-            
+
             puts $f "<tr>"
             puts $f "<td>[lint_project_escape_html $occ_file]</td>"
             puts $f "<td>$occ_line</td>"
@@ -2414,7 +2414,7 @@ if {$opts(format) eq "html"} {
         puts $f "</div>"
         puts $f "</div>"
     }
-    
+
     # Close "By Rule" view container
     puts $f "</div>"
 
@@ -2439,7 +2439,7 @@ if {$opts(format) eq "html"} {
     # Generate Markdown report
     set report_file [file join $opts(outdir) "lint_report.md"]
     set f [open $report_file w]
-    
+
     puts $f "# Project Lint Report"
     puts $f ""
     puts $f "**Project:** [file tail $opts(project_root)]"
@@ -2457,7 +2457,7 @@ if {$opts(format) eq "html"} {
     puts $f "| Files Skipped (excluded) | $skipped_count |"
     puts $f "| Total Diagnostics | $total_diagnostics |"
     puts $f ""
-    
+
     # Files with issues
     puts $f "## Files with Lint Issues"
     puts $f ""
@@ -2487,7 +2487,7 @@ if {$opts(format) eq "html"} {
         puts $f "[OK] No files with lint issues."
         puts $f ""
     }
-    
+
     # Files with tool errors
     puts $f "## Files with Tool Errors"
     puts $f ""
@@ -2509,7 +2509,7 @@ if {$opts(format) eq "html"} {
         puts $f "[OK] No tool errors."
         puts $f ""
     }
-    
+
     # OK files
     puts $f "## Files OK"
     puts $f ""
@@ -2636,7 +2636,7 @@ if {$opts(format) eq "html"} {
     # Text format
     set report_file [file join $opts(outdir) "lint_report.txt"]
     set f [open $report_file w]
-    
+
     puts $f "PROJECT LINT REPORT"
     puts $f "==================="
     puts $f ""
@@ -2654,7 +2654,7 @@ if {$opts(format) eq "html"} {
     puts $f "Total Diagnostics: $total_diagnostics"
     puts $f ""
     puts $f [string repeat "=" 70]
-    
+
     # Output diagnostics grouped by file
     foreach result $all_results {
         set status [dict get $result status]
@@ -2688,7 +2688,7 @@ if {$opts(format) eq "html"} {
             puts $f "SKIPPED by $source pattern: $pattern"
         }
     }
-    
+
     puts $f ""
     puts $f [string repeat "=" 70]
     puts $f "END OF REPORT"

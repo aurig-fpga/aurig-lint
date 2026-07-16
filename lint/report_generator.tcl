@@ -23,22 +23,22 @@ proc ::aurig::lint::report::get_code_excerpt {file_path line_num {context 5}} {
     if {![file exists $file_path]} {
         return [list error "File not found: $file_path"]
     }
-    
+
     set f [open $file_path r]
     set all_lines [split [read $f] \n]
     close $f
-    
+
     set total_lines [llength $all_lines]
     set start_line [expr {max(1, $line_num - $context)}]
     set end_line [expr {min($total_lines, $line_num + $context)}]
-    
+
     set excerpt [list]
     for {set i $start_line} {$i <= $end_line} {incr i} {
         set line_text [lindex $all_lines [expr {$i - 1}]]
         set is_target [expr {$i == $line_num}]
         lappend excerpt [list $i $line_text $is_target]
     }
-    
+
     return [list ok $excerpt]
 }
 
@@ -57,13 +57,13 @@ proc ::aurig::lint::report::group_by_file {diagnostics} {
         }
         dict lappend by_file $file $diag
     }
-    
+
     # Sort each file's diagnostics by line number
     dict for {file diags} $by_file {
         set sorted [lsort -command ::aurig::lint::report::cmp_by_line $diags]
         dict set by_file $file $sorted
     }
-    
+
     return $by_file
 }
 
@@ -100,16 +100,16 @@ proc ::aurig::lint::report::count_by_rule {diagnostics} {
 # Generate Markdown report with code excerpts
 proc ::aurig::lint::report::format_markdown {diagnostics input_file} {
     set output ""
-    
+
     # Header
     append output "# VHDL Lint Report\n\n"
     append output "**Input File:** `$input_file`  \n"
     append output "**Generated:** [clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}]  \n\n"
-    
+
     # Summary statistics
     set sev_counts [count_by_severity $diagnostics]
     set total [expr {[dict get $sev_counts error] + [dict get $sev_counts warning] + [dict get $sev_counts info]}]
-    
+
     append output "## Summary\n\n"
     append output "| Severity | Count |\n"
     append output "|----------|-------|\n"
@@ -117,7 +117,7 @@ proc ::aurig::lint::report::format_markdown {diagnostics input_file} {
     append output "| Warnings | [dict get $sev_counts warning] |\n"
     append output "| Info     | [dict get $sev_counts info] |\n"
     append output "| **Total** | **$total** |\n\n"
-    
+
     # By rule statistics
     set rule_counts [count_by_rule $diagnostics]
     if {[dict size $rule_counts] > 0} {
@@ -129,7 +129,7 @@ proc ::aurig::lint::report::format_markdown {diagnostics input_file} {
         }
         append output "\n"
     }
-    
+
     # Group by file and show diagnostics
     set by_file [group_by_file $diagnostics]
 
@@ -185,9 +185,9 @@ proc ::aurig::lint::report::format_markdown {diagnostics input_file} {
 # Generate HTML report with sidebar navigation
 proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
     file mkdir $output_dir
-    
+
     set html ""
-    
+
     # HTML header with embedded CSS
     append html "<!DOCTYPE html>\n"
     append html "<html lang=\"en\">\n"
@@ -199,27 +199,27 @@ proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
     append html {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; height: 100vh; overflow: hidden; }
-    
+
     #sidebar { width: 300px; background: #2c3e50; color: #ecf0f1; overflow-y: auto; padding: 20px; }
     #sidebar h1 { font-size: 20px; margin-bottom: 10px; color: #3498db; }
     #sidebar .meta { font-size: 12px; margin-bottom: 20px; color: #95a5a6; }
-    
+
     #sidebar .summary { margin-bottom: 30px; }
     #sidebar .summary h2 { font-size: 16px; margin-bottom: 10px; color: #ecf0f1; }
     #sidebar .summary table { width: 100%; font-size: 13px; border-collapse: collapse; }
     #sidebar .summary td { padding: 5px; border-bottom: 1px solid #34495e; }
     #sidebar .summary td:first-child { color: #95a5a6; }
     #sidebar .summary td:last-child { text-align: right; font-weight: bold; }
-    
+
     #sidebar .file-nav { list-style: none; }
     #sidebar .file-nav li { margin-bottom: 15px; }
     #sidebar .file-nav a { display: block; padding: 10px; background: #34495e; color: #ecf0f1; text-decoration: none; border-radius: 4px; font-size: 13px; transition: background 0.2s; }
     #sidebar .file-nav a:hover { background: #3498db; }
     #sidebar .file-nav .count { float: right; background: #e74c3c; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
-    
+
     #content { flex: 1; overflow-y: auto; padding: 40px; background: #ecf0f1; }
     #content h2 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; margin-bottom: 20px; }
-    
+
     .diagnostic { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     .diagnostic .header { margin-bottom: 15px; }
     .diagnostic .header .line { font-size: 18px; font-weight: bold; color: #2c3e50; }
@@ -227,23 +227,23 @@ proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
     .diagnostic .header .severity.error { background: #e74c3c; color: white; }
     .diagnostic .header .severity.warning { background: #f39c12; color: white; }
     .diagnostic .header .severity.info { background: #3498db; color: white; }
-    
+
     .diagnostic .meta { margin-bottom: 10px; font-size: 14px; color: #7f8c8d; }
     .diagnostic .meta .rule { background: #ecf0f1; padding: 2px 8px; border-radius: 4px; font-family: monospace; }
-    
+
     .diagnostic .message { margin-bottom: 15px; padding: 10px; background: #fff3cd; border-left: 4px solid #f39c12; font-size: 14px; }
-    
+
     .code-excerpt { background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 4px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.5; }
     .code-excerpt .line { white-space: pre; }
     .code-excerpt .line.target { background: #e74c3c; color: white; margin: 0 -15px; padding: 0 15px; }
     .code-excerpt .line-num { display: inline-block; width: 50px; color: #95a5a6; user-select: none; }
-    
+
     .no-issues { text-align: center; padding: 60px; color: #27ae60; font-size: 24px; }
     }
     append html "  </style>\n"
     append html "</head>\n"
     append html "<body>\n"
-    
+
     # Sidebar
     append html "  <div id=\"sidebar\">\n"
     append html "    <h1>VHDL Lint Report</h1>\n"
@@ -251,11 +251,11 @@ proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
     append html "      <div>Input: [html_escape $input_file]</div>\n"
     append html "      <div>[clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}]</div>\n"
     append html "    </div>\n"
-    
+
     # Summary
     set sev_counts [count_by_severity $diagnostics]
     set total [expr {[dict get $sev_counts error] + [dict get $sev_counts warning] + [dict get $sev_counts info]}]
-    
+
     append html "    <div class=\"summary\">\n"
     append html "      <h2>Summary</h2>\n"
     append html "      <table>\n"
@@ -265,7 +265,7 @@ proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
     append html "        <tr><td><strong>Total</strong></td><td><strong>$total</strong></td></tr>\n"
     append html "      </table>\n"
     append html "    </div>\n"
-    
+
     # File navigation
     if {$total > 0} {
         set by_file [group_by_file $diagnostics]
@@ -279,30 +279,30 @@ proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
         }
         append html "    </ul>\n"
     }
-    
+
     append html "  </div>\n"
-    
+
     # Main content
     append html "  <div id=\"content\">\n"
-    
+
     if {$total == 0} {
         append html "    <div class=\"no-issues\">✓ No issues found!</div>\n"
     } else {
         set by_file [group_by_file $diagnostics]
-        
+
         foreach file [lsort [dict keys $by_file]] {
             set file_diags [dict get $by_file $file]
             set count [llength $file_diags]
             set anchor [string map {/ _ \\ _ : _ . _} $file]
-            
+
             append html "    <h2 id=\"$anchor\">[html_escape $file] <span style=\"font-size: 14px; color: #95a5a6;\">($count issue(s))</span></h2>\n"
-            
+
             foreach diag $file_diags {
                 set line [dict get $diag line]
                 set sev [dict get $diag severity]
                 set msg [dict get $diag message]
                 set rule [dict get $diag rule_id]
-                
+
                 append html "    <div class=\"diagnostic\">\n"
                 append html "      <div class=\"header\">\n"
                 append html "        <span class=\"line\">Line $line</span>\n"
@@ -310,7 +310,7 @@ proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
                 append html "      </div>\n"
                 append html "      <div class=\"meta\">Rule: <span class=\"rule\">$rule</span></div>\n"
                 append html "      <div class=\"message\">[html_escape $msg]</div>\n"
-                
+
                 # Code excerpt
                 set excerpt_result [get_code_excerpt $file $line 3]
                 if {[lindex $excerpt_result 0] eq "ok"} {
@@ -324,12 +324,12 @@ proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
                     }
                     append html "      </div>\n"
                 }
-                
+
                 append html "    </div>\n"
             }
         }
     }
-    
+
     # Footer lives INSIDE #content (the scrollable column) so it sits at the
     # bottom of the content area. Placing it as a sibling of #content under the
     # display:flex body would make it a third flex column and clip it.
@@ -337,13 +337,13 @@ proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
     append html "  </div>\n"
     append html "</body>\n"
     append html "</html>\n"
-    
+
     # Write to file
     set output_file [file join $output_dir "index.html"]
     set f [open $output_file w]
     puts -nonewline $f $html
     close $f
-    
+
     return $output_file
 }
 
@@ -353,12 +353,12 @@ proc ::aurig::lint::report::json_escape {val} {
     if {$val eq "true" || $val eq "false"} {
         return $val
     }
-    
+
     # Check if it's a number
     if {[string is integer -strict $val] || [string is double -strict $val]} {
         return $val
     }
-    
+
     # Otherwise, escape as string
     set escaped [string map {
         \\ \\\\
@@ -367,7 +367,7 @@ proc ::aurig::lint::report::json_escape {val} {
         \r \\r
         \t \\t
     } $val]
-    
+
     return "\"$escaped\""
 }
 
@@ -375,14 +375,14 @@ proc ::aurig::lint::report::json_escape {val} {
 proc ::aurig::lint::report::export_rules {metadata_dict policy_dict output_file} {
     # Merge metadata and policy
     set effective [dict create rules [dict create]]
-    
+
     # Start with metadata
     if {[dict exists $metadata_dict rules]} {
         dict for {rule_id rule_config} [dict get $metadata_dict rules] {
             dict set effective rules $rule_id $rule_config
         }
     }
-    
+
     # Overlay policy
     if {[dict exists $policy_dict rules]} {
         dict for {rule_id rule_overrides} [dict get $policy_dict rules] {
@@ -394,39 +394,39 @@ proc ::aurig::lint::report::export_rules {metadata_dict policy_dict output_file}
             }
         }
     }
-    
+
     # Determine format from extension
     set ext [file extension $output_file]
-    
+
     if {$ext eq ".json"} {
         # JSON format - manually construct to avoid json::write package issues
         set f [open $output_file w]
         puts $f "\{"
         puts $f "  \"rules\": \{"
-        
+
         set rule_ids [lsort [dict keys [dict get $effective rules]]]
         set rule_count [llength $rule_ids]
         set rule_idx 0
-        
+
         foreach rule_id $rule_ids {
             set cfg [dict get $effective rules $rule_id]
             puts -nonewline $f "    \"$rule_id\": \{"
-            
+
             set keys [lsort [dict keys $cfg]]
             set key_count [llength $keys]
             set key_idx 0
-            
+
             foreach key $keys {
                 set val [dict get $cfg $key]
                 set json_val [json_escape $val]
                 puts -nonewline $f "\"$key\": $json_val"
-                
+
                 incr key_idx
                 if {$key_idx < $key_count} {
                     puts -nonewline $f ", "
                 }
             }
-            
+
             incr rule_idx
             if {$rule_idx < $rule_count} {
                 puts $f "\},"
@@ -434,7 +434,7 @@ proc ::aurig::lint::report::export_rules {metadata_dict policy_dict output_file}
                 puts $f "\}"
             }
         }
-        
+
         puts $f "  \}"
         puts $f "\}"
         close $f
@@ -445,7 +445,7 @@ proc ::aurig::lint::report::export_rules {metadata_dict policy_dict output_file}
         puts $f "**Generated:** [clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}]\n"
         puts $f "This shows the merged configuration from metadata.json and your policy file.\n"
         puts $f "---\n"
-        
+
         foreach rule_id [lsort [dict keys [dict get $effective rules]]] {
             set cfg [dict get $effective rules $rule_id]
             puts $f "## $rule_id\n"
@@ -479,7 +479,7 @@ proc ::aurig::lint::report::export_rules {metadata_dict policy_dict output_file}
         puts $f "<p><strong>Generated:</strong> [clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}]</p>"
         puts $f "<p>This shows the merged configuration from metadata.json and your policy file.</p>"
         puts $f "<hr>"
-        
+
         foreach rule_id [lsort [dict keys [dict get $effective rules]]] {
             set cfg [dict get $effective rules $rule_id]
             puts $f "<h2>$rule_id</h2>"
@@ -491,13 +491,13 @@ proc ::aurig::lint::report::export_rules {metadata_dict policy_dict output_file}
             }
             puts $f "</table>"
         }
-        
+
         puts $f "</body></html>"
         close $f
     } else {
         error "Unknown output format: $ext (use .json, .md, or .html)"
     }
-    
+
     return $output_file
 }
 

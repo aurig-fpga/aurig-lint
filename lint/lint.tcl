@@ -2,7 +2,7 @@
 # Copyright 2024-2026 LogiMentor S.r.l.
 
 # AURIG Lint Engine - Refactored with Rule Dispatcher Architecture
-# 
+#
 # Purpose: Provides VHDL linting capabilities by analyzing parser output
 # and applying configurable rules to detect naming conventions, style violations,
 # and other quality issues.
@@ -43,21 +43,21 @@ package require aurig::core
 
 namespace eval ::aurig::lint {
     variable version 0.1.0
-    
+
     # Always use manual JSON for baseline writing (json::write can cause tclIndex issues)
     variable json_write_available 0
-    
+
     # Loaded rules configuration
     variable rules_config {}
-    
+
     # Current mode: lint or doc
     variable mode "lint"
-    
+
     # File content cache: maps filename -> list of lines
     # Used for efficient column computation and file-level rules
     variable file_cache
     array set file_cache {}
-    
+
     namespace export run
 }
 
@@ -69,7 +69,7 @@ namespace eval ::aurig::lint::rule {}
 #=============================================================================
 
 # Main entry point for lint engine
-# 
+#
 # Arguments:
 #   -input <file>     : VHDL source file to lint
 #   -metadata <file>  : JSON file with rule metadata/defaults
@@ -88,7 +88,7 @@ proc ::aurig::lint::run {args} {
 
     # Clear file cache for fresh run
     array unset file_cache *
-    
+
     # Parse arguments
     array set opts {
         -input ""
@@ -96,7 +96,7 @@ proc ::aurig::lint::run {args} {
         -policy ""
         -mode "lint"
     }
-    
+
     for {set i 0} {$i < [llength $args]} {incr i} {
         set arg [lindex $args $i]
         if {[string match -* $arg]} {
@@ -104,21 +104,21 @@ proc ::aurig::lint::run {args} {
             set opts($arg) $value
         }
     }
-    
+
     # Validate required arguments
     if {$opts(-input) eq ""} {
         error "Missing required argument: -input"
     }
-    
+
     # Set mode
     set mode $opts(-mode)
     if {$mode ni {lint doc}} {
         error "Invalid mode: $mode (must be 'lint' or 'doc')"
     }
-    
+
     # Load and merge rules configuration
     set rules_config [load_rules_config $opts(-metadata) $opts(-policy)]
-    
+
     # Parse the input file using existing parser
     if {[catch {
         set parse_result [::aurig::core::analyze::vhdlscan -in $opts(-input)]
@@ -129,22 +129,22 @@ proc ::aurig::lint::run {args} {
             "parser_error" $severity "Parser failed: $err" \
             $opts(-input) 0 0 "" "" ""]]
     }
-    
+
     # Build normalized symbol list from parser output
     set symbols [build_symbol_list $parse_result $opts(-input)]
-    
+
     # Parse suppression directives from file
     set suppressions [parse_suppressions $opts(-input)]
-    
+
     # Run dispatcher to collect diagnostics from all enabled rules
     set diagnostics [dispatch_rules $symbols $parse_result $opts(-input)]
-    
+
     # Filter out suppressed diagnostics
     set diagnostics [filter_suppressed_diagnostics $diagnostics $suppressions]
-    
+
     # Sort diagnostics deterministically by file, line, col
     set sorted [lsort -command compare_diagnostics $diagnostics]
-    
+
     return $sorted
 }
 
@@ -161,35 +161,35 @@ proc ::aurig::lint::run {args} {
 # Returns: Merged rules configuration dict
 proc ::aurig::lint::load_rules_config {metadata_file policy_file} {
     set config [dict create]
-    
+
     # Load metadata (defaults)
     if {$metadata_file ne "" && [file exists $metadata_file]} {
         set fp [open $metadata_file r]
         set json_data [read $fp]
         close $fp
-        
+
         set metadata [::json::json2dict $json_data]
         set config [dict merge $config $metadata]
     }
-    
+
     # Load policy (user overrides)
     if {$policy_file ne "" && [file exists $policy_file]} {
         set fp [open $policy_file r]
         set json_data [read $fp]
         close $fp
-        
+
         set policy [::json::json2dict $json_data]
-        
+
         # Merge policy into config (policy overrides metadata)
         if {[dict exists $policy rules]} {
             set policy_rules [dict get $policy rules]
-            
+
             if {![dict exists $config rules]} {
                 dict set config rules {}
             }
-            
+
             set config_rules [dict get $config rules]
-            
+
             # Merge each rule
             dict for {rule_id rule_policy} $policy_rules {
                 if {[dict exists $config_rules $rule_id]} {
@@ -202,11 +202,11 @@ proc ::aurig::lint::load_rules_config {metadata_file policy_file} {
                     dict set config_rules $rule_id $rule_policy
                 }
             }
-            
+
             dict set config rules $config_rules
         }
     }
-    
+
     return $config
 }
 
@@ -231,7 +231,7 @@ proc ::aurig::lint::load_rules_config {metadata_file policy_file} {
 # Returns: List of symbol dicts
 proc ::aurig::lint::build_symbol_list {parse_result filename} {
     set symbols {}
-    
+
     # Extract entities
     if {[dict exists $parse_result entities]} {
         foreach entity [dict get $parse_result entities] {
@@ -241,7 +241,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             set line [dict get $location line]
             set col [dict get $location col]
             set ctx [build_context_path $parse_result [dict create entity_name $name]]
-            
+
             lappend symbols [dict create \
                 scope "entity" \
                 name $name \
@@ -249,7 +249,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
                 col $col \
                 context_path $ctx \
                 raw_data $entity]
-            
+
             # Extract generics
             if {[dict exists $entity generics]} {
                 foreach generic [dict get $entity generics] {
@@ -259,7 +259,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
                     set gen_line [dict get $gen_location line]
                     set gen_col [dict get $gen_location col]
                     set gen_ctx [build_context_path $parse_result [dict create entity_name $name]]
-                    
+
                     lappend symbols [dict create \
                         scope "generic" \
                         name $gen_name \
@@ -269,7 +269,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
                         raw_data $generic]
                 }
             }
-            
+
             # Extract ports
             if {[dict exists $entity ports]} {
                 foreach port [dict get $entity ports] {
@@ -280,12 +280,12 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
                     set port_col [dict get $port_location col]
                     set port_ctx [build_context_path $parse_result [dict create entity_name $name]]
                     set port_mode [dict_get_default $port mode ""]
-                    
+
                     set port_scope "port"
                     if {$port_mode ne ""} {
                         set port_scope "port_${port_mode}"
                     }
-                    
+
                     lappend symbols [dict create \
                         scope $port_scope \
                         name $port_name \
@@ -298,7 +298,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             }
         }
     }
-    
+
     # Extract architectures
     if {[dict exists $parse_result architectures]} {
         foreach arch [dict get $parse_result architectures] {
@@ -324,7 +324,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
 
             set ctx_info [dict create arch_name $name]
             set ctx [build_context_path $parse_result $ctx_info]
-            
+
             lappend symbols [dict create \
                 scope "architecture" \
                 name $name \
@@ -333,7 +333,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
                 context_path $ctx \
                 entity_name $entity_name \
                 raw_data $arch]
-            
+
             # Extract declarations (signals, constants, variables)
             if {[dict exists $arch declarations]} {
                 foreach decl [dict get $arch declarations] {
@@ -407,7 +407,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             }
         }
     }
-    
+
     # Extract packages
     if {[dict exists $parse_result packages]} {
         foreach pkg [dict get $parse_result packages] {
@@ -545,7 +545,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             set location [resolve_location $filename $parser_line $name]
             set line [dict get $location line]
             set col [dict get $location col]
-            
+
             lappend symbols [dict create \
                 scope "library" \
                 name $name \
@@ -555,7 +555,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
                 raw_data $lib]
         }
     }
-    
+
     return $symbols
 }
 
@@ -573,16 +573,16 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::dispatch_rules {symbols parse_result filename} {
     variable rules_config
-    
+
     set diagnostics {}
-    
+
     # Check if rules are defined
     if {![dict exists $rules_config rules]} {
         return {}
     }
-    
+
     set rules [dict get $rules_config rules]
-    
+
     # Dispatch each enabled rule to its handler
     dict for {rule_id rule_config} $rules {
         # Check if rule is enabled
@@ -590,20 +590,20 @@ proc ::aurig::lint::dispatch_rules {symbols parse_result filename} {
         if {[dict exists $rule_config enabled]} {
             set enabled [dict get $rule_config enabled]
         }
-        
+
         if {!$enabled} {
             continue
         }
-        
+
         # Get rule type
         if {![dict exists $rule_config type]} {
             continue
         }
         set rule_type [dict get $rule_config type]
-        
+
         # Dispatch to appropriate handler
         set handler_proc "::aurig::lint::rule::${rule_type}"
-        
+
         if {[info procs $handler_proc] ne ""} {
             # Call handler with normalized inputs
             set rule_diags [$handler_proc $symbols $parse_result $filename $rule_id $rule_config]
@@ -612,7 +612,7 @@ proc ::aurig::lint::dispatch_rules {symbols parse_result filename} {
             # Unknown rule type - skip silently
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -671,24 +671,24 @@ proc ::aurig::lint::rule::_ends_with {str suffix} {
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::rule::naming {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get rule parameters
     if {![dict exists $rule_config scope]} {
         return {}
     }
     set target_scope [dict get $rule_config scope]
-    
+
     if {![dict exists $rule_config pattern]} {
         return {}
     }
     set pattern [dict get $rule_config pattern]
-    
+
     # Get severity (default: warning)
     set severity "warning"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Get message template
     set message_template "Name '\${name}' does not match pattern: $pattern"
     if {[dict exists $rule_config message]} {
@@ -745,7 +745,7 @@ proc ::aurig::lint::rule::naming {symbols parse_result filename rule_id rule_con
     # Check each symbol matching the target scope
     foreach symbol $symbols {
         set scope [dict get $symbol scope]
-        
+
         # Check if scope matches (handle port_in, port_out, port_inout, port)
         set check_symbol 0
         if {$scope eq $target_scope} {
@@ -758,7 +758,7 @@ proc ::aurig::lint::rule::naming {symbols parse_result filename rule_id rule_con
                 set check_symbol 1
             }
         }
-        
+
         # Apply pattern check
         if {$check_symbol} {
             set name [dict get $symbol name]
@@ -867,49 +867,49 @@ proc ::aurig::lint::rule::naming {symbols parse_result filename rule_id rule_con
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::rule::library {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get allowed libraries list
     if {![dict exists $rule_config allowed]} {
         return {}
     }
     set allowed_libs [dict get $rule_config allowed]
-    
+
     # Get severity (default: warning)
     set severity "warning"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Check each library symbol
     foreach symbol $symbols {
         set scope [dict get $symbol scope]
-        
+
         if {$scope eq "library"} {
             set lib_name [dict get $symbol name]
-            
+
             # Skip 'work' library (implicit)
             if {$lib_name eq "work"} {
                 continue
             }
-            
+
             # Check if library is in allowed list
             if {$lib_name ni $allowed_libs} {
                 set line [dict get $symbol line]
                 set col [dict get $symbol col]
                 set context_path [dict get $symbol context_path]
-                
+
                 set msg "Library '$lib_name' is not in the allowed list: [join $allowed_libs {, }]"
                 if {[dict exists $rule_config message]} {
                     set msg [dict get $rule_config message]
                     set msg [string map [list \${library} $lib_name \${allowed} [join $allowed_libs {, }]] $msg]
                 }
-                
+
                 lappend diagnostics [::aurig::lint::create_diagnostic \
                     $rule_id $severity $msg $filename $line $col "library" $lib_name $context_path]
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -932,19 +932,19 @@ proc ::aurig::lint::rule::library {symbols parse_result filename rule_id rule_co
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::rule::keyword_case {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get expected case (default: lowercase)
     set expected_case "lowercase"
     if {[dict exists $rule_config case]} {
         set expected_case [dict get $rule_config case]
     }
-    
+
     # Get severity (default: info)
     set severity "info"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # VHDL keywords (most common ones)
     set vhdl_keywords {
         entity architecture package is begin end
@@ -974,43 +974,43 @@ proc ::aurig::lint::rule::keyword_case {symbols parse_result filename rule_id ru
         transport unaffected units
         until wait with
     }
-    
+
     # Read file lines
     set lines [::aurig::lint::cache_file_lines $filename]
-    
+
     set line_num 0
     foreach line $lines {
         incr line_num
-        
+
         # Skip empty lines
         if {[string trim $line] eq ""} {
             continue
         }
-        
+
         # Remove string literals (single quotes for characters, double quotes for strings)
         # This is a simple approach - doesn't handle all edge cases
         set cleaned_line $line
         regsub -all {'[^']*'} $cleaned_line { } cleaned_line
         regsub -all {"[^"]*"} $cleaned_line { } cleaned_line
-        
+
         # Remove comments (-- to end of line)
         set comment_pos [string first "--" $cleaned_line]
         if {$comment_pos >= 0} {
             set cleaned_line [string range $cleaned_line 0 [expr {$comment_pos - 1}]]
         }
-        
+
         # Check each keyword
         foreach keyword $vhdl_keywords {
             # Create pattern that matches keyword as whole word
             set pattern "\\m${keyword}\\M"
-            
+
             # Find all occurrences
             set start 0
             while {[regexp -nocase -indices -start $start $pattern $cleaned_line match]} {
                 set match_start [lindex $match 0]
                 set match_end [lindex $match 1]
                 set found_keyword [string range $cleaned_line $match_start $match_end]
-                
+
                 # Check case
                 set is_wrong_case 0
                 if {$expected_case eq "lowercase" && $found_keyword ne [string tolower $found_keyword]} {
@@ -1018,7 +1018,7 @@ proc ::aurig::lint::rule::keyword_case {symbols parse_result filename rule_id ru
                 } elseif {$expected_case eq "uppercase" && $found_keyword ne [string toupper $found_keyword]} {
                     set is_wrong_case 1
                 }
-                
+
                 if {$is_wrong_case} {
                     set expected_keyword [expr {$expected_case eq "lowercase" ? [string tolower $keyword] : [string toupper $keyword]}]
                     set msg "Keyword '$found_keyword' should be $expected_case: '$expected_keyword'"
@@ -1026,17 +1026,17 @@ proc ::aurig::lint::rule::keyword_case {symbols parse_result filename rule_id ru
                         set msg [dict get $rule_config message]
                         set msg [string map [list \${keyword} $found_keyword \${expected} $expected_keyword] $msg]
                     }
-                    
+
                     lappend diagnostics [::aurig::lint::create_diagnostic \
                         $rule_id $severity $msg $filename $line_num $match_start "keyword" $found_keyword ""]
                 }
-                
+
                 # Move to next occurrence
                 set start [expr {$match_end + 1}]
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -1059,45 +1059,45 @@ proc ::aurig::lint::rule::keyword_case {symbols parse_result filename rule_id ru
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::rule::max_line_length {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get max length (default: 80)
     set max_length 80
     if {[dict exists $rule_config max_length]} {
         set max_length [dict get $rule_config max_length]
     }
-    
+
     # Get exclude_comments flag (default: false)
     set exclude_comments 0
     if {[dict exists $rule_config exclude_comments]} {
         set exclude_comments [dict get $rule_config exclude_comments]
     }
-    
+
     # Get severity (default: warning)
     set severity "warning"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Read file lines
     set lines [::aurig::lint::cache_file_lines $filename]
-    
+
     set line_num 0
     foreach line $lines {
         incr line_num
-        
+
         set line_length [string length $line]
-        
+
         # Check if line is comment-only (starts with --, possibly with whitespace)
         set is_comment_only 0
         if {[regexp {^\s*--} $line]} {
             set is_comment_only 1
         }
-        
+
         # Skip if excluding comments and this is a comment line
         if {$exclude_comments && $is_comment_only} {
             continue
         }
-        
+
         # Check length
         if {$line_length > $max_length} {
             set msg "Line exceeds maximum length of $max_length characters (actual: $line_length)"
@@ -1105,12 +1105,12 @@ proc ::aurig::lint::rule::max_line_length {symbols parse_result filename rule_id
                 set msg [dict get $rule_config message]
                 set msg [string map [list \${max} $max_length \${actual} $line_length] $msg]
             }
-            
+
             lappend diagnostics [::aurig::lint::create_diagnostic \
                 $rule_id $severity $msg $filename $line_num 0 "line" "" ""]
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -1132,31 +1132,31 @@ proc ::aurig::lint::rule::max_line_length {symbols parse_result filename rule_id
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::rule::forbid_tabs {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: warning)
     set severity "warning"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Read file lines
     set lines [::aurig::lint::cache_file_lines $filename]
-    
+
     set line_num 0
     foreach line $lines {
         incr line_num
-        
+
         # Remove string literals and character literals
         set cleaned_line $line
         regsub -all {'[^']*'} $cleaned_line { } cleaned_line
         regsub -all {"[^"]*"} $cleaned_line { } cleaned_line
-        
+
         # Remove comments
         set comment_pos [string first "--" $cleaned_line]
         if {$comment_pos >= 0} {
             set cleaned_line [string range $cleaned_line 0 [expr {$comment_pos - 1}]]
         }
-        
+
         # Check for tabs in cleaned line
         set tab_pos [string first "\t" $cleaned_line]
         if {$tab_pos >= 0} {
@@ -1165,12 +1165,12 @@ proc ::aurig::lint::rule::forbid_tabs {symbols parse_result filename rule_id rul
                 set msg [dict get $rule_config message]
                 set msg [string map [list \${column} $tab_pos] $msg]
             }
-            
+
             lappend diagnostics [::aurig::lint::create_diagnostic \
                 $rule_id $severity $msg $filename $line_num $tab_pos "tab" "" ""]
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -1198,34 +1198,34 @@ proc ::aurig::lint::rule::forbid_tabs {symbols parse_result filename rule_id rul
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::rule::forbid_nonstandard_arith {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: error)
     set severity "error"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Get whitelist (optional)
     set whitelist {}
     if {[dict exists $rule_config whitelist]} {
         set whitelist [dict get $rule_config whitelist]
     }
-    
+
     # Non-standard libraries to detect
     set forbidden_libs {std_logic_arith std_logic_unsigned std_logic_signed}
-    
+
     # Read file lines
     set lines [::aurig::lint::cache_file_lines $filename]
-    
+
     set line_num 0
     foreach line $lines {
         incr line_num
-        
+
         # Remove string literals
         set cleaned_line $line
         regsub -all {'[^']*'} $cleaned_line { } cleaned_line
         regsub -all {"[^"]*"} $cleaned_line { } cleaned_line
-        
+
         # Check if this is a use clause
         # Pattern matches: use library.package
         if {[regexp -nocase {^\s*use\s+([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)} $cleaned_line -> lib_name pkg_name]} {
@@ -1235,19 +1235,19 @@ proc ::aurig::lint::rule::forbid_nonstandard_arith {symbols parse_result filenam
                 if {[regexp {^\s*use\s+} $line match]} {
                     set col [string length $match]
                 }
-                
+
                 set msg "Non-standard arithmetic library '$pkg_name' detected; use ieee.numeric_std instead"
                 if {[dict exists $rule_config message]} {
                     set msg [dict get $rule_config message]
                     set msg [string map [list \${library} $pkg_name] $msg]
                 }
-                
+
                 lappend diagnostics [::aurig::lint::create_diagnostic \
                     $rule_id $severity $msg $filename $line_num $col "use_clause" $pkg_name ""]
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -1273,132 +1273,132 @@ proc ::aurig::lint::rule::forbid_nonstandard_arith {symbols parse_result filenam
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::rule::forbid_positional_portmap {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: warning)
     set severity "warning"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Read file lines
     set lines [::aurig::lint::cache_file_lines $filename]
-    
+
     # Track if we're inside a port map
     set in_portmap 0
     set portmap_start_line 0
     set portmap_content ""
     set inst_name ""
-    
+
     set line_num 0
     foreach line $lines {
         incr line_num
-        
+
         # Remove string literals and character literals
         set cleaned_line $line
         regsub -all {'[^']*'} $cleaned_line { } cleaned_line
         regsub -all {"[^"]*"} $cleaned_line { } cleaned_line
-        
+
         # Remove comments
         set comment_pos [string first "--" $cleaned_line]
         if {$comment_pos >= 0} {
             set cleaned_line [string range $cleaned_line 0 [expr {$comment_pos - 1}]]
         }
-        
+
         # Check for port map start
         if {[regexp -nocase {port\s+map\s*\(} $cleaned_line]} {
             set in_portmap 1
             set portmap_start_line $line_num
             set portmap_content $cleaned_line
-            
+
             # Try to extract instance name
             if {[regexp -nocase {(\w+)\s*:\s*\w+\s+port\s+map} $cleaned_line -> name]} {
                 set inst_name $name
             }
-            
+
             # Check if port map closes on the same line
             if {[regexp {\)} $cleaned_line]} {
                 set in_portmap 0
-                
+
                 # Extract content between parentheses
                 if {[regexp -nocase {port\s+map\s*\((.*?)\)} $portmap_content -> map_content]} {
                     # Check if this is positional mapping
                     set has_comma [regexp {,} $map_content]
                     set has_arrow [regexp {=>} $map_content]
-                    
+
                     if {$has_comma && !$has_arrow} {
                         set col 0
                         if {[regexp {port\s+map} $cleaned_line match]} {
                             set col [string length $match]
                         }
-                        
+
                         set msg "Positional port mapping detected; use named associations (port => signal)"
                         if {[dict exists $rule_config message]} {
                             set msg [dict get $rule_config message]
                         }
-                        
+
                         set symbol_name $inst_name
                         if {$symbol_name eq ""} {
                             set symbol_name "<anonymous>"
                         }
-                        
+
                         lappend diagnostics [::aurig::lint::create_diagnostic \
                             $rule_id $severity $msg $filename $portmap_start_line $col "instance" $symbol_name ""]
                     }
                 }
-                
+
                 # Reset
                 set portmap_content ""
                 set inst_name ""
             }
             continue
         }
-        
+
         # Accumulate port map content (multiline case)
         if {$in_portmap} {
             append portmap_content " " $cleaned_line
-            
+
             # Check for port map end
             if {[regexp {\)} $cleaned_line]} {
                 set in_portmap 0
-                
+
                 # Extract content between parentheses
                 if {[regexp -nocase {port\s+map\s*\((.*?)\)} $portmap_content -> map_content]} {
                     # Check if this is positional mapping
                     # Positional: has commas but no =>
                     # Named: has => for associations
                     # Empty or single-item: ignore
-                    
+
                     set has_comma [regexp {,} $map_content]
                     set has_arrow [regexp {=>} $map_content]
-                    
+
                     if {$has_comma && !$has_arrow} {
                         set col 0
                         if {[regexp {port\s+map} $line match]} {
                             set col [string length $match]
                         }
-                        
+
                         set msg "Positional port mapping detected; use named associations (port => signal)"
                         if {[dict exists $rule_config message]} {
                             set msg [dict get $rule_config message]
                         }
-                        
+
                         set symbol_name $inst_name
                         if {$symbol_name eq ""} {
                             set symbol_name "<anonymous>"
                         }
-                        
+
                         lappend diagnostics [::aurig::lint::create_diagnostic \
                             $rule_id $severity $msg $filename $portmap_start_line $col "instance" $symbol_name ""]
                     }
                 }
-                
+
                 # Reset for next instance
                 set portmap_content ""
                 set inst_name ""
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -1420,13 +1420,13 @@ proc ::aurig::lint::rule::forbid_positional_portmap {symbols parse_result filena
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::rule::naming_conventions_pack {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: warning)
     set severity "warning"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Default patterns for each scope
     array set default_patterns {
         port_in      {^.*_i$}
@@ -1444,7 +1444,7 @@ proc ::aurig::lint::rule::naming_conventions_pack {symbols parse_result filename
         generate     {^gen_}
         architecture {^a_}
     }
-    
+
     # Get patterns from config (override defaults)
     if {[dict exists $rule_config patterns]} {
         set patterns_dict [dict get $rule_config patterns]
@@ -1452,7 +1452,7 @@ proc ::aurig::lint::rule::naming_conventions_pack {symbols parse_result filename
             set default_patterns($scope) $pattern
         }
     }
-    
+
     # Check each symbol
     foreach symbol $symbols {
         set scope [dict get $symbol scope]
@@ -1460,7 +1460,7 @@ proc ::aurig::lint::rule::naming_conventions_pack {symbols parse_result filename
         set line [dict get $symbol line]
         set col [dict get $symbol col]
         set context_path [dict get $symbol context_path]
-        
+
         # BUG FIX: Skip symbols with invalid names
         # These can occur from parser misinterpreting attribute statements like:
         #   attribute noprune of signal_name : signal is true;
@@ -1474,7 +1474,7 @@ proc ::aurig::lint::rule::naming_conventions_pack {symbols parse_result filename
             # Skip - name starts with "is " (from attribute statement parsing)
             continue
         }
-        
+
         # Map scope to pattern key
         set pattern_key ""
         if {$scope eq "port_in"} {
@@ -1506,24 +1506,24 @@ proc ::aurig::lint::rule::naming_conventions_pack {symbols parse_result filename
         } elseif {$scope eq "architecture"} {
             set pattern_key "architecture"
         }
-        
+
         # Check if pattern exists for this scope
         if {$pattern_key ne "" && [info exists default_patterns($pattern_key)]} {
             set pattern $default_patterns($pattern_key)
-            
+
             if {![regexp $pattern $name]} {
                 set msg "Naming violation: $scope '$name' doesn't match pattern '$pattern'"
                 if {[dict exists $rule_config message]} {
                     set msg [dict get $rule_config message]
                     set msg [string map [list \${scope} $scope \${name} $name \${pattern} $pattern] $msg]
                 }
-                
+
                 lappend diagnostics [::aurig::lint::create_diagnostic \
                     $rule_id $severity $msg $filename $line $col $scope $name $context_path]
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -1545,30 +1545,30 @@ proc ::aurig::lint::rule::naming_conventions_pack {symbols parse_result filename
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::rule::clock_reset_naming {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: warning)
     set severity "warning"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Get patterns (default: clk_*, rst_*)
     set clock_pattern {^clk_}
     if {[dict exists $rule_config clock_pattern]} {
         set clock_pattern [dict get $rule_config clock_pattern]
     }
-    
+
     set reset_pattern {^rst_}
     if {[dict exists $rule_config reset_pattern]} {
         set reset_pattern [dict get $rule_config reset_pattern]
     }
-    
+
     # Optional: enforce specific reset name
     set enforce_reset_name ""
     if {[dict exists $rule_config enforce_reset_name]} {
         set enforce_reset_name [dict get $rule_config enforce_reset_name]
     }
-    
+
     # Check each port symbol
     foreach symbol $symbols {
         set scope [dict get $symbol scope]
@@ -1576,14 +1576,14 @@ proc ::aurig::lint::rule::clock_reset_naming {symbols parse_result filename rule
         set line [dict get $symbol line]
         set col [dict get $symbol col]
         set context_path [dict get $symbol context_path]
-        
+
         # Only check ports
         if {$scope ni {port port_in port_out port_inout}} {
             continue
         }
-        
+
         set name_lower [string tolower $name]
-        
+
         # Check for clock ports
         if {[string match "*clk*" $name_lower] || [string match "*clock*" $name_lower]} {
             if {![regexp $clock_pattern $name]} {
@@ -1592,12 +1592,12 @@ proc ::aurig::lint::rule::clock_reset_naming {symbols parse_result filename rule
                     set msg [dict get $rule_config clock_message]
                     set msg [string map [list \${name} $name \${pattern} $clock_pattern] $msg]
                 }
-                
+
                 lappend diagnostics [::aurig::lint::create_diagnostic \
                     $rule_id $severity $msg $filename $line $col $scope $name $context_path]
             }
         }
-        
+
         # Check for reset ports
         if {[string match "*rst*" $name_lower] || [string match "*reset*" $name_lower]} {
             if {![regexp $reset_pattern $name]} {
@@ -1606,11 +1606,11 @@ proc ::aurig::lint::rule::clock_reset_naming {symbols parse_result filename rule
                     set msg [dict get $rule_config reset_message]
                     set msg [string map [list \${name} $name \${pattern} $reset_pattern] $msg]
                 }
-                
+
                 lappend diagnostics [::aurig::lint::create_diagnostic \
                     $rule_id $severity $msg $filename $line $col $scope $name $context_path]
             }
-            
+
             # Check specific reset name if enforced
             if {$enforce_reset_name ne "" && $name ne $enforce_reset_name} {
                 set msg "Reset port should be named '$enforce_reset_name', found '$name'"
@@ -1618,13 +1618,13 @@ proc ::aurig::lint::rule::clock_reset_naming {symbols parse_result filename rule
                     set msg [dict get $rule_config enforce_message]
                     set msg [string map [list \${name} $name \${expected} $enforce_reset_name] $msg]
                 }
-                
+
                 lappend diagnostics [::aurig::lint::create_diagnostic \
                     $rule_id $severity $msg $filename $line $col $scope $name $context_path]
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -1646,13 +1646,13 @@ proc ::aurig::lint::rule::clock_reset_naming {symbols parse_result filename rule
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::rule::identifier_case {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: warning)
     set severity "warning"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Check each symbol
     foreach symbol $symbols {
         set scope [dict get $symbol scope]
@@ -1660,12 +1660,12 @@ proc ::aurig::lint::rule::identifier_case {symbols parse_result filename rule_id
         set line [dict get $symbol line]
         set col [dict get $symbol col]
         set context_path [dict get $symbol context_path]
-        
+
         # Skip library scope (ieee, std, etc. are lowercase by convention)
         if {$scope eq "library"} {
             continue
         }
-        
+
         # Constants must be uppercase
         if {$scope eq "constant"} {
             if {$name ne [string toupper $name]} {
@@ -1674,7 +1674,7 @@ proc ::aurig::lint::rule::identifier_case {symbols parse_result filename rule_id
                     set msg [dict get $rule_config constant_message]
                     set msg [string map [list \${name} $name] $msg]
                 }
-                
+
                 lappend diagnostics [::aurig::lint::create_diagnostic \
                     $rule_id $severity $msg $filename $line $col $scope $name $context_path]
             }
@@ -1686,13 +1686,13 @@ proc ::aurig::lint::rule::identifier_case {symbols parse_result filename rule_id
                     set msg [dict get $rule_config lowercase_message]
                     set msg [string map [list \${name} $name \${scope} $scope] $msg]
                 }
-                
+
                 lappend diagnostics [::aurig::lint::create_diagnostic \
                     $rule_id $severity $msg $filename $line $col $scope $name $context_path]
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -1714,17 +1714,17 @@ proc ::aurig::lint::rule::identifier_case {symbols parse_result filename rule_id
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::rule::same_file_units {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: warning)
     set severity "warning"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Collect entities and architectures (using lowercase for comparison - VHDL is case-insensitive)
     set entities {}
     set entities_orig {}  ;# Keep original names for messages
-    
+
     if {[dict exists $parse_result entities]} {
         foreach entity [dict get $parse_result entities] {
             set name [dict get $entity name]
@@ -1732,11 +1732,11 @@ proc ::aurig::lint::rule::same_file_units {symbols parse_result filename rule_id
             lappend entities_orig $name
         }
     }
-    
+
     # Collect architectures with their entity references (lowercase for comparison)
     set architectures {}
     set architectures_orig {}
-    
+
     if {[dict exists $parse_result architectures]} {
         foreach arch [dict get $parse_result architectures] {
             if {[dict exists $arch entity]} {
@@ -1746,7 +1746,7 @@ proc ::aurig::lint::rule::same_file_units {symbols parse_result filename rule_id
             }
         }
     }
-    
+
     # Check for entities without architectures (case-insensitive)
     set idx 0
     foreach entity_lower $entities {
@@ -1757,13 +1757,13 @@ proc ::aurig::lint::rule::same_file_units {symbols parse_result filename rule_id
                 set msg [dict get $rule_config entity_message]
                 set msg [string map [list \${name} $entity_name] $msg]
             }
-            
+
             lappend diagnostics [::aurig::lint::create_diagnostic \
                 $rule_id $severity $msg $filename 0 0 "entity" $entity_name ""]
         }
         incr idx
     }
-    
+
     # Check for architectures without entities (case-insensitive)
     set unique_archs {}
     set unique_archs_orig {}
@@ -1775,7 +1775,7 @@ proc ::aurig::lint::rule::same_file_units {symbols parse_result filename rule_id
         }
         incr idx
     }
-    
+
     set idx 0
     foreach arch_entity $unique_archs {
         set arch_entity_orig [lindex $unique_archs_orig $idx]
@@ -1785,19 +1785,19 @@ proc ::aurig::lint::rule::same_file_units {symbols parse_result filename rule_id
                 set msg [dict get $rule_config architecture_message]
                 set msg [string map [list \${name} $arch_entity_orig] $msg]
             }
-            
+
             lappend diagnostics [::aurig::lint::create_diagnostic \
                 $rule_id $severity $msg $filename 0 0 "architecture" $arch_entity_orig ""]
         }
         incr idx
     }
-    
+
     # Collect packages and package bodies (lowercase for comparison)
     set packages {}
     set packages_orig {}
     set package_bodies {}
     set package_bodies_orig {}
-    
+
     if {[dict exists $parse_result packages]} {
         foreach pkg [dict get $parse_result packages] {
             set name [dict get $pkg name]
@@ -1805,7 +1805,7 @@ proc ::aurig::lint::rule::same_file_units {symbols parse_result filename rule_id
             lappend packages_orig $name
         }
     }
-    
+
     if {[dict exists $parse_result package_bodies]} {
         foreach pkg_body [dict get $parse_result package_bodies] {
             set name [dict get $pkg_body name]
@@ -1813,7 +1813,7 @@ proc ::aurig::lint::rule::same_file_units {symbols parse_result filename rule_id
             lappend package_bodies_orig $name
         }
     }
-    
+
     # Check for packages without bodies (warning only if body needed)
     set idx 0
     foreach pkg_lower $packages {
@@ -1826,7 +1826,7 @@ proc ::aurig::lint::rule::same_file_units {symbols parse_result filename rule_id
                 set msg [dict get $rule_config package_message]
                 set msg [string map [list \${name} $pkg_name] $msg]
             }
-            
+
             # Only report if check_package_body is enabled
             if {[dict exists $rule_config check_package_body] && [dict get $rule_config check_package_body]} {
                 lappend diagnostics [::aurig::lint::create_diagnostic \
@@ -1835,7 +1835,7 @@ proc ::aurig::lint::rule::same_file_units {symbols parse_result filename rule_id
         }
         incr idx
     }
-    
+
     # Check for package bodies without packages (case-insensitive)
     set idx 0
     foreach pkg_body_lower $package_bodies {
@@ -1846,13 +1846,13 @@ proc ::aurig::lint::rule::same_file_units {symbols parse_result filename rule_id
                 set msg [dict get $rule_config package_body_message]
                 set msg [string map [list \${name} $pkg_body_name] $msg]
             }
-            
+
             lappend diagnostics [::aurig::lint::create_diagnostic \
                 $rule_id $severity $msg $filename 0 0 "package_body" $pkg_body_name ""]
         }
         incr idx
     }
-    
+
     return $diagnostics
 }
 
@@ -1874,57 +1874,57 @@ proc ::aurig::lint::rule::same_file_units {symbols parse_result filename rule_id
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::rule::forbid_bit_types {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: error)
     set severity "error"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Get whitelist (optional)
     set whitelist {}
     if {[dict exists $rule_config whitelist]} {
         set whitelist [dict get $rule_config whitelist]
     }
-    
+
     # Read file lines to scan for bit/bit_vector types
     set lines [::aurig::lint::cache_file_lines $filename]
-    
+
     set line_num 0
     foreach line $lines {
         incr line_num
-        
+
         # Remove string literals and comments
         set cleaned_line $line
         regsub -all {'[^']*'} $cleaned_line { } cleaned_line
         regsub -all {"[^"]*"} $cleaned_line { } cleaned_line
-        
+
         set comment_pos [string first "--" $cleaned_line]
         if {$comment_pos >= 0} {
             set cleaned_line [string range $cleaned_line 0 [expr {$comment_pos - 1}]]
         }
-        
+
         # Check for bit or bit_vector types
         if {[regexp -nocase {\m(bit|bit_vector)\M} $cleaned_line match type_name]} {
             set type_lower [string tolower $type_name]
-            
+
             # Skip if in whitelist
             if {$type_lower ni $whitelist} {
                 set col [string first $match $cleaned_line]
                 if {$col < 0} {set col 0}
-                
+
                 set msg "Use of '$type_name' type detected; use std_logic or std_logic_vector instead"
                 if {[dict exists $rule_config message]} {
                     set msg [dict get $rule_config message]
                     set msg [string map [list \${type} $type_name] $msg]
                 }
-                
+
                 lappend diagnostics [::aurig::lint::create_diagnostic \
                     $rule_id $severity $msg $filename $line_num $col "type_usage" $type_name ""]
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -1946,125 +1946,125 @@ proc ::aurig::lint::rule::forbid_bit_types {symbols parse_result filename rule_i
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::rule::forbid_positional_genericmap {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: warning)
     set severity "warning"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Read file lines
     set lines [::aurig::lint::cache_file_lines $filename]
-    
+
     # Track if we're inside a generic map
     set in_genericmap 0
     set genericmap_start_line 0
     set genericmap_content ""
     set inst_name ""
-    
+
     set line_num 0
     foreach line $lines {
         incr line_num
-        
+
         # Remove string literals and character literals
         set cleaned_line $line
         regsub -all {'[^']*'} $cleaned_line { } cleaned_line
         regsub -all {"[^"]*"} $cleaned_line { } cleaned_line
-        
+
         # Remove comments
         set comment_pos [string first "--" $cleaned_line]
         if {$comment_pos >= 0} {
             set cleaned_line [string range $cleaned_line 0 [expr {$comment_pos - 1}]]
         }
-        
+
         # Check for generic map start
         if {[regexp -nocase {generic\s+map\s*\(} $cleaned_line]} {
             set in_genericmap 1
             set genericmap_start_line $line_num
             set genericmap_content $cleaned_line
-            
+
             # Try to extract instance name
             if {[regexp -nocase {(\w+)\s*:\s*\w+\s+generic\s+map} $cleaned_line -> name]} {
                 set inst_name $name
             }
-            
+
             # Check if generic map closes on the same line
             if {[regexp {\)} $cleaned_line]} {
                 set in_genericmap 0
-                
+
                 # Extract content between parentheses
                 if {[regexp -nocase {generic\s+map\s*\((.*?)\)} $genericmap_content -> map_content]} {
                     # Check if this is positional mapping
                     set has_comma [regexp {,} $map_content]
                     set has_arrow [regexp {=>} $map_content]
-                    
+
                     if {$has_comma && !$has_arrow} {
                         set col 0
                         if {[regexp {generic\s+map} $cleaned_line match]} {
                             set col [string length $match]
                         }
-                        
+
                         set msg "Positional generic mapping detected; use named associations (generic => value)"
                         if {[dict exists $rule_config message]} {
                             set msg [dict get $rule_config message]
                         }
-                        
+
                         set symbol_name $inst_name
                         if {$symbol_name eq ""} {
                             set symbol_name "<anonymous>"
                         }
-                        
+
                         lappend diagnostics [::aurig::lint::create_diagnostic \
                             $rule_id $severity $msg $filename $genericmap_start_line $col "instance" $symbol_name ""]
                     }
                 }
-                
+
                 # Reset
                 set genericmap_content ""
                 set inst_name ""
             }
             continue
         }
-        
+
         # Accumulate generic map content (multiline case)
         if {$in_genericmap} {
             append genericmap_content " " $cleaned_line
-            
+
             # Check for generic map end
             if {[regexp {\)} $cleaned_line]} {
                 set in_genericmap 0
-                
+
                 # Extract content between parentheses
                 if {[regexp -nocase {generic\s+map\s*\((.*?)\)} $genericmap_content -> map_content]} {
                     # Check if this is positional mapping
                     set has_comma [regexp {,} $map_content]
                     set has_arrow [regexp {=>} $map_content]
-                    
+
                     if {$has_comma && !$has_arrow} {
                         set col 0
-                        
+
                         set msg "Positional generic mapping detected; use named associations (generic => value)"
                         if {[dict exists $rule_config message]} {
                             set msg [dict get $rule_config message]
                         }
-                        
+
                         set symbol_name $inst_name
                         if {$symbol_name eq ""} {
                             set symbol_name "<anonymous>"
                         }
-                        
+
                         lappend diagnostics [::aurig::lint::create_diagnostic \
                             $rule_id $severity $msg $filename $genericmap_start_line $col "instance" $symbol_name ""]
                     }
                 }
-                
+
                 # Reset for next instance
                 set genericmap_content ""
                 set inst_name ""
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -2088,22 +2088,22 @@ proc ::aurig::lint::rule::forbid_positional_genericmap {symbols parse_result fil
 #          Value = list of rule_ids to suppress on that line
 proc ::aurig::lint::parse_suppressions {filename} {
     set suppressions [dict create]
-    
+
     # Read file lines
     set lines [cache_file_lines $filename]
-    
+
     # Track globally disabled rules (from "disable" directive)
     set globally_disabled {}
-    
+
     set line_num 0
     foreach line $lines {
         incr line_num
-        
+
         # Remove string literals to avoid parsing directives inside strings
         set cleaned_line $line
         regsub -all {'[^']*'} $cleaned_line { } cleaned_line
         regsub -all {"[^"]*"} $cleaned_line { } cleaned_line
-        
+
         # Look for comment marker
         set comment_pos [string first "--" $cleaned_line]
         if {$comment_pos < 0} {
@@ -2113,10 +2113,10 @@ proc ::aurig::lint::parse_suppressions {filename} {
             }
             continue
         }
-        
+
         # Extract comment portion
         set comment [string range $cleaned_line $comment_pos end]
-        
+
         # Check for aurig-lint directives
         # Pattern: -- aurig-lint: disable-next-line rule1,rule2
         if {[regexp -nocase -- {--\s*aurig-lint:\s*disable-next-line\s+([a-z0-9_,\s]+)} $comment -> rules_str]} {
@@ -2129,7 +2129,7 @@ proc ::aurig::lint::parse_suppressions {filename} {
                     lappend rule_list $rule
                 }
             }
-            
+
             # Apply to next line
             set next_line [expr {$line_num + 1}]
             if {[dict exists $suppressions $next_line]} {
@@ -2149,7 +2149,7 @@ proc ::aurig::lint::parse_suppressions {filename} {
                 }
             }
         }
-        
+
         # Apply current global suppressions to this line
         if {[llength $globally_disabled] > 0} {
             if {[dict exists $suppressions $line_num]} {
@@ -2160,7 +2160,7 @@ proc ::aurig::lint::parse_suppressions {filename} {
             }
         }
     }
-    
+
     return $suppressions
 }
 
@@ -2173,11 +2173,11 @@ proc ::aurig::lint::parse_suppressions {filename} {
 # Returns: Filtered list of diagnostics with suppressed ones removed
 proc ::aurig::lint::filter_suppressed_diagnostics {diagnostics suppressions} {
     set filtered {}
-    
+
     foreach diag $diagnostics {
         set line [dict get $diag line]
         set rule_id [dict get $diag rule_id]
-        
+
         # Check if this line has suppressions
         set is_suppressed 0
         if {[dict exists $suppressions $line]} {
@@ -2186,13 +2186,13 @@ proc ::aurig::lint::filter_suppressed_diagnostics {diagnostics suppressions} {
                 set is_suppressed 1
             }
         }
-        
+
         # Keep diagnostic if not suppressed
         if {!$is_suppressed} {
             lappend filtered $diag
         }
     }
-    
+
     return $filtered
 }
 
@@ -2222,28 +2222,28 @@ proc ::aurig::lint::create_diagnostic {rule_id severity message file line col sy
 # Returns: List of lines (1-based indexing)
 proc ::aurig::lint::cache_file_lines {filename} {
     variable file_cache
-    
+
     # Return cached version if available
     if {[info exists file_cache($filename)]} {
         return $file_cache($filename)
     }
-    
+
     # Read file and cache lines
     if {[catch {
         set fp [open $filename r]
         set content [read $fp]
         close $fp
-        
+
         # Split into lines (preserving empty lines)
         set lines [split $content "\n"]
-        
+
         # Cache for future lookups
         set file_cache($filename) $lines
     } err]} {
         # If file can't be read, return empty list
         return {}
     }
-    
+
     # Return the cached lines
     return $file_cache($filename)
 }
@@ -2270,7 +2270,7 @@ proc ::aurig::lint::resolve_location {filename line_num symbol_name} {
     # Get cached file lines
     set lines [cache_file_lines $filename]
     set total_lines [llength $lines]
-    
+
     # Validate line number range
     if {$line_num < 1} {
         set line_num 1
@@ -2278,7 +2278,7 @@ proc ::aurig::lint::resolve_location {filename line_num symbol_name} {
     if {$line_num > $total_lines} {
         set line_num $total_lines
     }
-    
+
     # Helper proc to search for symbol on a specific line
     # Returns column (0-based) or -1 if not found
     proc find_on_line {lines total_lines check_line symbol_name} {
@@ -2293,18 +2293,18 @@ proc ::aurig::lint::resolve_location {filename line_num symbol_name} {
         }
         return -1
     }
-    
+
     # Step 1: Try parser-reported line
     set col [find_on_line $lines $total_lines $line_num $symbol_name]
     if {$col >= 0} {
         return [dict create line $line_num col $col]
     }
-    
+
     # Step 2: Search nearby window (prefer lines before the reported line,
     # as parser often reports a line after the actual declaration)
     # Search -3 to +12 range
     set candidates {}
-    
+
     for {set offset -3} {$offset <= 12} {incr offset} {
         if {$offset == 0} continue ;# Already checked
         set check_line [expr {$line_num + $offset}]
@@ -2315,7 +2315,7 @@ proc ::aurig::lint::resolve_location {filename line_num symbol_name} {
             lappend candidates [list $distance $offset $check_line $col]
         }
     }
-    
+
     # If found in nearby window, return closest match
     # If multiple at same distance, prefer the one before (negative offset)
     if {[llength $candidates] > 0} {
@@ -2325,11 +2325,11 @@ proc ::aurig::lint::resolve_location {filename line_num symbol_name} {
         set best_col [lindex $best 3]
         return [dict create line $best_line col $best_col]
     }
-    
+
     # Step 3: Search entire file (fallback)
     # Find all occurrences and pick closest to reported line
     set candidates {}
-    
+
     for {set check_line 1} {$check_line <= $total_lines} {incr check_line} {
         set col [find_on_line $lines $total_lines $check_line $symbol_name]
         if {$col >= 0} {
@@ -2337,7 +2337,7 @@ proc ::aurig::lint::resolve_location {filename line_num symbol_name} {
             lappend candidates [list $distance $check_line $col]
         }
     }
-    
+
     if {[llength $candidates] > 0} {
         # Sort by distance, then by line number (prefer earlier line if tied)
         set candidates [lsort -command [list apply {{a b} {
@@ -2351,13 +2351,13 @@ proc ::aurig::lint::resolve_location {filename line_num symbol_name} {
             set l2 [lindex $b 1]
             return [expr {$l1 - $l2}]
         }}] $candidates]
-        
+
         set best [lindex $candidates 0]
         set best_line [lindex $best 1]
         set best_col [lindex $best 2]
         return [dict create line $best_line col $best_col]
     }
-    
+
     # If not found anywhere, return original line with col 0
     return [dict create line $line_num col 0]
 }
@@ -2385,27 +2385,27 @@ proc ::aurig::lint::compute_column {filename line_num symbol_name} {
 # Returns: Context path string (e.g., "entity:foo/arch:rtl" or "pkg:bar")
 proc ::aurig::lint::build_context_path {parse_result symbol_info} {
     set path_parts {}
-    
+
     # Check for entity context
     if {[dict exists $symbol_info entity_name]} {
         lappend path_parts "entity:[dict get $symbol_info entity_name]"
     }
-    
+
     # Check for architecture context
     if {[dict exists $symbol_info arch_name]} {
         lappend path_parts "arch:[dict get $symbol_info arch_name]"
     }
-    
+
     # Check for package context
     if {[dict exists $symbol_info pkg_name]} {
         lappend path_parts "pkg:[dict get $symbol_info pkg_name]"
     }
-    
+
     # Check for package body context
     if {[dict exists $symbol_info pkg_body_name]} {
         lappend path_parts "pkg_body:[dict get $symbol_info pkg_body_name]"
     }
-    
+
     return [join $path_parts "/"]
 }
 
@@ -2426,7 +2426,7 @@ proc ::aurig::lint::compare_diagnostics {diag1 diag2} {
     if {$cmp != 0} {
         return $cmp
     }
-    
+
     # Sort by line
     set line1 [dict get $diag1 line]
     set line2 [dict get $diag2 line]
@@ -2435,7 +2435,7 @@ proc ::aurig::lint::compare_diagnostics {diag1 diag2} {
     } elseif {$line1 > $line2} {
         return 1
     }
-    
+
     # Sort by column
     set col1 [dict get $diag1 col]
     set col2 [dict get $diag2 col]
@@ -2444,7 +2444,7 @@ proc ::aurig::lint::compare_diagnostics {diag1 diag2} {
     } elseif {$col1 > $col2} {
         return 1
     }
-    
+
     return 0
 }
 
@@ -2471,12 +2471,12 @@ proc ::aurig::lint::compute_fingerprint {diagnostic {base_dir ""}} {
     set line [dict get $diagnostic line]
     set symbol_kind [dict_get_default $diagnostic symbol_kind ""]
     set symbol_name [dict_get_default $diagnostic symbol_name ""]
-    
+
     # Normalize file path to relative
     if {$base_dir ne "" && [file exists $base_dir]} {
         set base_dir [file normalize $base_dir]
         set file_norm [file normalize $file]
-        
+
         # Try to make relative
         if {[string match "${base_dir}*" $file_norm]} {
             set rel_path [string range $file_norm [string length $base_dir] end]
@@ -2484,16 +2484,16 @@ proc ::aurig::lint::compute_fingerprint {diagnostic {base_dir ""}} {
             set file $rel_path
         }
     }
-    
+
     # Normalize file path separators to forward slashes
     set file [string map {\\ /} $file]
-    
+
     # Build fingerprint components
     set components [list $rule_id $severity $file $line $symbol_kind $symbol_name]
-    
+
     # Join with separator
     set fingerprint_data [join $components "|"]
-    
+
     # For now, return the data directly (could hash with MD5/SHA if needed)
     # Using a simple base64-style encoding to make it opaque
     return "fp:[string map {| _ / -} $fingerprint_data]"
@@ -2522,16 +2522,16 @@ proc ::aurig::lint::load_baseline {baseline_file} {
     close $fp
 
     set baseline_data [::json::json2dict $content]
-    
+
     # Validate schema
     if {![dict exists $baseline_data schema_version]} {
         error "Invalid baseline file: missing schema_version"
     }
-    
+
     if {![dict exists $baseline_data fingerprints]} {
         error "Invalid baseline file: missing fingerprints"
     }
-    
+
     return $baseline_data
 }
 
@@ -2547,16 +2547,16 @@ proc ::aurig::lint::save_baseline {baseline_file diagnostics {base_dir ""}} {
     foreach diag $diagnostics {
         lappend fingerprints [compute_fingerprint $diag $base_dir]
     }
-    
+
     # Build baseline data
     set baseline_data [dict create \
         schema_version 1 \
         created_at [clock format [clock seconds] -format "%Y-%m-%d %H:%M:%S"] \
         fingerprints $fingerprints]
-    
+
     # Write to file
     set file_handle [open $baseline_file w]
-    
+
     if {$::aurig::lint::json_write_available} {
         # Use json::write if available
         puts $file_handle [json::write::object \
@@ -2583,7 +2583,7 @@ proc ::aurig::lint::save_baseline {baseline_file diagnostics {base_dir ""}} {
         puts $file_handle "  \]"
         puts $file_handle "\}"
     }
-    
+
     close $file_handle
 }
 
@@ -2597,13 +2597,13 @@ proc ::aurig::lint::save_baseline {baseline_file diagnostics {base_dir ""}} {
 # Returns: List of diagnostics not in baseline
 proc ::aurig::lint::filter_baseline {diagnostics baseline {base_dir ""}} {
     set baseline_fps [dict get $baseline fingerprints]
-    
+
     # Build a set of baseline fingerprints for fast lookup
     array set baseline_set {}
     foreach fp $baseline_fps {
         set baseline_set($fp) 1
     }
-    
+
     # Filter diagnostics
     set new_diagnostics {}
     foreach diag $diagnostics {
@@ -2612,7 +2612,7 @@ proc ::aurig::lint::filter_baseline {diagnostics baseline {base_dir ""}} {
             lappend new_diagnostics $diag
         }
     }
-    
+
     return $new_diagnostics
 }
 
@@ -2650,27 +2650,27 @@ proc ::aurig::lint::filter_baseline {diagnostics baseline {base_dir ""}} {
 proc ::aurig::lint::has_default_assignment {body signal_name} {
     # Remove comments to avoid false matches
     set body [regsub -all -line -- {--.*$} $body ""]
-    
+
     # Track nesting level: 0 = outside all conditionals
     set nesting 0
     set found_default false
-    
+
     # Process line by line
     set lines [split $body "\n"]
     foreach line $lines {
         set line [string trim $line]
-        
+
         # Skip empty lines
         if {$line eq ""} {
             continue
         }
-        
+
         # Track conditional depth
         # Opening: if, case
         if {[regexp -nocase {\m(if|case)\M} $line]} {
             incr nesting
         }
-        
+
         # Closing: end if, end case
         if {[regexp -nocase {\mend\s+(if|case)\M} $line]} {
             incr nesting -1
@@ -2678,7 +2678,7 @@ proc ::aurig::lint::has_default_assignment {body signal_name} {
                 set nesting 0
             }
         }
-        
+
         # Check for assignment to this signal at nesting level 0
         if {$nesting == 0} {
             if {[regexp -nocase "\\m${signal_name}\\s*<=" $line]} {
@@ -2687,7 +2687,7 @@ proc ::aurig::lint::has_default_assignment {body signal_name} {
             }
         }
     }
-    
+
     # If no default found, check for complete if-else coverage (simple pattern)
     # Pattern: one top-level if with else, signal assigned in both branches
     if {!$found_default} {
@@ -2706,7 +2706,7 @@ proc ::aurig::lint::has_default_assignment {body signal_name} {
                 set found_default true
             }
         }
-        
+
         # Also check for case with "others" clause (considered complete)
         if {[regexp -nocase "\\mcase\\M.*\\mothers\\M.*\\mend\\s+case\\M" $body]} {
             # If signal assigned in case with others, considered safe
@@ -2722,7 +2722,7 @@ proc ::aurig::lint::has_default_assignment {body signal_name} {
             }
         }
     }
-    
+
     return $found_default
 }
 
@@ -2730,7 +2730,7 @@ proc ::aurig::lint::has_default_assignment {body signal_name} {
 proc ::aurig::lint::analyze_combinational_process {body} {
     # Extract all signals assigned in this process
     set assigned_signals {}
-    
+
     # Match pattern: signal_name <=
     # Collect unique signal names
     foreach {match sig} [regexp -all -inline -nocase {(\w+)\s*<=} $body] {
@@ -2738,29 +2738,29 @@ proc ::aurig::lint::analyze_combinational_process {body} {
             lappend assigned_signals $sig
         }
     }
-    
+
     return $assigned_signals
 }
 
 proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: warning)
     set severity [expr {[dict exists $rule_config severity] ? [dict get $rule_config severity] : "warning"}]
-    
+
     # Check if we should ignore variables (default: true, only check signals)
     set ignore_variables [expr {[dict exists $rule_config ignore_variables] ? [dict get $rule_config ignore_variables] : true}]
-    
+
     # Iterate through all architectures
     if {![dict exists $parse_result architectures]} {
         return $diagnostics
     }
-    
+
     foreach arch [dict get $parse_result architectures] {
         if {![dict exists $arch processes]} {
             continue
         }
-        
+
         # Check each process
         foreach proc [dict get $arch processes] {
             # Get process body
@@ -2770,7 +2770,7 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
             set body [dict get $proc body]
             set proc_line [expr {[dict exists $proc line] ? [dict get $proc line] : 0}]
             set proc_label [expr {[dict exists $proc label] ? [dict get $proc label] : ""}]
-            
+
             # Check if this is a clocked process (has rising_edge, falling_edge, or clk'event pattern)
             # Patterns for clocked processes:
             # - rising_edge(clk) / falling_edge(clk)
@@ -2789,27 +2789,27 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
                 # Explicit clock'event pattern, skip latch detection
                 continue
             }
-            
+
             # Check if process has any conditionals
             if {![regexp -nocase {\m(if|case)\M} $body]} {
                 # No conditionals, no risk of latches
                 continue
             }
-            
+
             # This is a combinational process with conditionals
             # Extract all assigned signals
             set assigned_signals [::aurig::lint::analyze_combinational_process $body]
-            
+
             # For each assigned signal, check if it has a default assignment
             foreach sig $assigned_signals {
                 # Skip if configured to ignore variables and this looks like a variable
                 if {$ignore_variables && [regexp -nocase {^v_} $sig]} {
                     continue
                 }
-                
+
                 # Check for default assignment before any conditional
                 set has_default [::aurig::lint::has_default_assignment $body $sig]
-                
+
                 # If no default found, potential latch
                 if {!$has_default} {
                     set msg "Signal '$sig' may infer a latch in combinational process"
@@ -2817,20 +2817,20 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
                         append msg " '$proc_label'"
                     }
                     append msg " - missing default assignment before conditionals"
-                    
+
                     # Allow custom message template
                     if {[dict exists $rule_config message]} {
                         set msg [dict get $rule_config message]
                         set msg [string map [list \${signal} $sig \${process} $proc_label] $msg]
                     }
-                    
+
                     lappend diagnostics [::aurig::lint::create_diagnostic \
                         $rule_id $severity $msg $filename $proc_line 0 "signal" $sig ""]
                 }
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -2856,19 +2856,19 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
 #
 proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: warning)
     set severity "warning"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Get reset policy: sync, async, or either (default)
     set reset_policy "either"
     if {[dict exists $rule_config reset_policy]} {
         set reset_policy [dict get $rule_config reset_policy]
     }
-    
+
     # Check if this file is a testbench (rule doesn't apply to testbenches)
     set testbench_patterns {}
     if {[dict exists $rule_config testbench_patterns]} {
@@ -2972,7 +2972,7 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
         if {![dict exists $arch processes]} {
             continue
         }
-        
+
         # Check each process
         foreach proc [dict get $arch processes] {
             if {![dict exists $proc body]} {
@@ -3003,11 +3003,11 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
                 # Not a clocked process, skip
                 continue
             }
-            
+
             # Check for actual reset usage in code (not just sensitivity list)
             set has_async_reset false
             set has_sync_reset false
-            
+
             # Reset-signal identifier-segment matcher.
             #
             # The naive `(rst|reset)` substring matches inside
@@ -3065,7 +3065,7 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
             if {[regexp $sync_pat $body]} {
                 set has_sync_reset true
             }
-            
+
             # Determine if reset requirement is satisfied
             set reset_ok false
             if {$reset_policy eq "either"} {
@@ -3075,7 +3075,7 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
             } elseif {$reset_policy eq "async"} {
                 set reset_ok $has_async_reset
             }
-            
+
             if {!$reset_ok} {
                 set msg "Clocked process"
                 if {$proc_label ne ""} {
@@ -3086,18 +3086,18 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
                 } else {
                     append msg " missing $reset_policy reset"
                 }
-                
+
                 if {[dict exists $rule_config message]} {
                     set msg [dict get $rule_config message]
                     set msg [string map [list \${process} $proc_label \${policy} $reset_policy] $msg]
                 }
-                
+
                 lappend diagnostics [::aurig::lint::create_diagnostic \
                     $rule_id $severity $msg $filename $proc_line 0 "process" $proc_label ""]
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -3105,19 +3105,19 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
 # Flags wait statements in synthesizable code
 proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: error)
     set severity "error"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Get testbench patterns (default: tb_*.vhd, *_tb.vhd)
     set tb_patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
     if {[dict exists $rule_config testbench_patterns]} {
         set tb_patterns [dict get $rule_config testbench_patterns]
     }
-    
+
     # Check if this file matches testbench patterns
     set basename [file tail $filename]
     set is_testbench false
@@ -3127,22 +3127,22 @@ proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename 
             break
         }
     }
-    
+
     # Skip testbench files if configured
     if {$is_testbench} {
         return $diagnostics
     }
-    
+
     # Iterate through all architectures
     if {![dict exists $parse_result architectures]} {
         return $diagnostics
     }
-    
+
     foreach arch [dict get $parse_result architectures] {
         if {![dict exists $arch processes]} {
             continue
         }
-        
+
         # Check each process for wait statements
         foreach proc [dict get $arch processes] {
             if {![dict exists $proc body]} {
@@ -3151,7 +3151,7 @@ proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename 
             set body [dict get $proc body]
             set proc_line [expr {[dict exists $proc line] ? [dict get $proc line] : 0}]
             set proc_label [expr {[dict exists $proc label] ? [dict get $proc label] : ""}]
-            
+
             # Search for wait statements
             if {[regexp -nocase {\mwait\s+(for|until|on)\M} $body match wait_type]} {
                 set msg "Wait statement found in synthesizable code"
@@ -3159,18 +3159,18 @@ proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename 
                     append msg " (process '$proc_label')"
                 }
                 append msg " - not synthesizable"
-                
+
                 if {[dict exists $rule_config message]} {
                     set msg [dict get $rule_config message]
                     set msg [string map [list \${process} $proc_label] $msg]
                 }
-                
+
                 lappend diagnostics [::aurig::lint::create_diagnostic \
                     $rule_id $severity $msg $filename $proc_line 0 "process" $proc_label ""]
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -3178,37 +3178,37 @@ proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename 
 # Detects unconstrained vector/array ports in entities
 proc ::aurig::lint::rule::forbid_unconstrained_ports {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: warning)
     set severity "warning"
     if {[dict exists $rule_config severity]} {
         set severity [dict get $rule_config severity]
     }
-    
+
     # Get allowed patterns (ports matching these are allowed to be unconstrained)
     set allow_patterns {}
     if {[dict exists $rule_config allow_patterns]} {
         set allow_patterns [dict get $rule_config allow_patterns]
     }
-    
+
     # Iterate through all entities
     if {![dict exists $parse_result entities]} {
         return $diagnostics
     }
-    
+
     foreach entity [dict get $parse_result entities] {
         if {![dict exists $entity ports]} {
             continue
         }
-        
+
         set entity_name [dict get $entity name]
-        
+
         # Check each port
         foreach port [dict get $entity ports] {
             set port_name [dict get $port name]
             set port_type [dict get $port type]
             set port_line [expr {[dict exists $port line] ? [dict get $port line] : 0}]
-            
+
             # Check if this port is in the allow list
             set is_allowed false
             foreach pattern $allow_patterns {
@@ -3217,41 +3217,41 @@ proc ::aurig::lint::rule::forbid_unconstrained_ports {symbols parse_result filen
                     break
                 }
             }
-            
+
             if {$is_allowed} {
                 continue
             }
-            
+
             # Check if port type is unconstrained
             # Unconstrained vectors: std_logic_vector, signed, unsigned without range
             # Pattern: type_name without parentheses or with empty parentheses
             set is_unconstrained false
-            
+
             # Check for vector types without range constraints
             if {[regexp -nocase {^(std_logic_vector|signed|unsigned|bit_vector)\s*$} $port_type]} {
                 set is_unconstrained true
             }
-            
+
             # Check for array types (contains "array" keyword without constraints)
             if {[regexp -nocase {\barray\b} $port_type] && ![regexp {\(.*downto.*\)|to.*\)} $port_type]} {
                 set is_unconstrained true
             }
-            
+
             if {$is_unconstrained} {
                 set msg "Port '$port_name' in entity '$entity_name' is unconstrained"
                 append msg " - may cause synthesis issues"
-                
+
                 if {[dict exists $rule_config message]} {
                     set msg [dict get $rule_config message]
                     set msg [string map [list \${port} $port_name \${entity} $entity_name] $msg]
                 }
-                
+
                 lappend diagnostics [::aurig::lint::create_diagnostic \
                     $rule_id $severity $msg $filename $port_line 0 "port" $port_name "entity:$entity_name"]
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -3297,13 +3297,13 @@ proc ::aurig::lint::rule::forbid_unconstrained_ports {symbols parse_result filen
 
 proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
-    
+
     # Get severity (default: warning)
     set severity [expr {[dict exists $rule_config severity] ? [dict get $rule_config severity] : "warning"}]
-    
+
     # Check if this file is a testbench (skip if configured)
     set skip_testbenches [expr {[dict exists $rule_config skip_testbenches] ? [dict get $rule_config skip_testbenches] : true}]
-    
+
     set testbench_patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
     set is_testbench false
     set basename [file tail $filename]
@@ -3313,11 +3313,11 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
             break
         }
     }
-    
+
     if {$skip_testbenches && $is_testbench} {
         return $diagnostics
     }
-    
+
     # Get configuration options
     set file_header_required [expr {[dict exists $rule_config file_header_required] ? [dict get $rule_config file_header_required] : true}]
     set header_min_lines [expr {[dict exists $rule_config header_min_lines] ? [dict get $rule_config header_min_lines] : 3}]
@@ -3331,7 +3331,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
     set major_signal_regex [expr {[dict exists $rule_config major_signal_regex] ? [dict get $rule_config major_signal_regex] : {clk|rst|reset|enable|valid|ready|data|addr|ctrl}}]
     set processes_required [expr {[dict exists $rule_config processes_required] ? [dict get $rule_config processes_required] : false}]
     set instantiations_required [expr {[dict exists $rule_config instantiations_required] ? [dict get $rule_config instantiations_required] : false}]
-    
+
     # Read file content for comment checking
     if {[catch {open $filename r} fh]} {
         # Cannot read file, skip checks
@@ -3340,18 +3340,18 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
     set file_content [read $fh]
     close $fh
     set file_lines [split $file_content "\n"]
-    
+
     # Check 1: File header documentation
     if {$file_header_required} {
         set header_lines {}
         set in_header false
         set line_num 0
-        
+
         # Look for comment block in first 30 lines
         foreach line [lrange $file_lines 0 29] {
             incr line_num
             set trimmed [string trim $line]
-            
+
             # Start of comment block
             if {[regexp {^--} $trimmed]} {
                 set in_header true
@@ -3367,7 +3367,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 break
             }
         }
-        
+
         # Check if header is sufficient
         if {[llength $header_lines] < $header_min_lines} {
             set msg "Missing file header documentation block (found [llength $header_lines] lines, need $header_min_lines)"
@@ -3439,13 +3439,13 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
             }
         }
     }
-    
+
     # Check 2: Entity ports and generics
     if {[dict exists $parse_result entities]} {
         foreach entity [dict get $parse_result entities] {
             set entity_name [expr {[dict exists $entity name] ? [dict get $entity name] : ""}]
             set entity_line [expr {[dict exists $entity line] ? [dict get $entity line] : 1}]
-            
+
             # Find the entity end line (line with "end entity" or "end <name>")
             # This is used to detect when the parser returned a fallback line
             set entity_end_line 0
@@ -3457,13 +3457,13 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                     break
                 }
             }
-            
+
             # Check generics
             if {$generics_required && [dict exists $entity generics]} {
                 foreach generic [dict get $entity generics] {
                     set generic_name [dict get $generic name]
                     set generic_line [expr {[dict exists $generic line] ? [dict get $generic line] : 0}]
-                    
+
                     # Detect if parser returned invalid line:
                     # - Line is 0 or out of bounds
                     # - Line equals entity end line or the line after (parser fallback behavior)
@@ -3476,16 +3476,16 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                     } elseif {$generic_line < $entity_line} {
                         set need_lookup true
                     }
-                    
+
                     if {$need_lookup} {
                         set generic_line [::aurig::lint::find_identifier_line \
                             $file_lines $generic_name "generic" $entity_line]
                     }
-                    
+
                     if {$generic_line > 0 && $generic_line <= [llength $file_lines]} {
                         set has_comment [::aurig::lint::check_comment_presence \
                             $file_lines $generic_line $generics_comment_style]
-                        
+
                         if {!$has_comment} {
                             set msg "Generic '$generic_name' in entity '$entity_name' missing documentation comment"
                             lappend diagnostics [::aurig::lint::create_diagnostic \
@@ -3499,13 +3499,13 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                     }
                 }
             }
-            
+
             # Check ports
             if {$ports_required && [dict exists $entity ports]} {
                 foreach port [dict get $entity ports] {
                     set port_name [dict get $port name]
                     set port_line [expr {[dict exists $port line] ? [dict get $port line] : 0}]
-                    
+
                     # Detect if parser returned invalid line:
                     # - Line is 0 or out of bounds
                     # - Line equals entity end line or the line after (parser fallback behavior)
@@ -3518,16 +3518,16 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                     } elseif {$port_line < $entity_line} {
                         set need_lookup true
                     }
-                    
+
                     if {$need_lookup} {
                         set port_line [::aurig::lint::find_identifier_line \
                             $file_lines $port_name "port" $entity_line]
                     }
-                    
+
                     if {$port_line > 0 && $port_line <= [llength $file_lines]} {
                         set has_comment [::aurig::lint::check_comment_presence \
                             $file_lines $port_line $ports_comment_style]
-                        
+
                         if {!$has_comment} {
                             set msg "Port '$port_name' in entity '$entity_name' missing documentation comment"
                             lappend diagnostics [::aurig::lint::create_diagnostic \
@@ -3543,13 +3543,13 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
             }
         }
     }
-    
+
     # Check 3: Signals and constants using symbols list
     foreach symbol $symbols {
         set scope [dict get $symbol scope]
         set name [dict get $symbol name]
         set line [dict get $symbol line]
-        
+
         # Check signals
         if {$signals_required && $scope eq "signal"} {
             # Only check "major" signals (based on regex)
@@ -3557,7 +3557,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 if {$line > 0 && $line <= [llength $file_lines]} {
                     set has_comment [::aurig::lint::check_comment_presence \
                         $file_lines $line "either"]
-                    
+
                     if {!$has_comment} {
                         set msg "Major signal '$name' missing documentation comment"
                         lappend diagnostics [::aurig::lint::create_diagnostic \
@@ -3566,13 +3566,13 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 }
             }
         }
-        
+
         # Check constants
         if {$constants_required && $scope eq "constant"} {
             if {$line > 0 && $line <= [llength $file_lines]} {
                 set has_comment [::aurig::lint::check_comment_presence \
                     $file_lines $line "either"]
-                
+
                 if {!$has_comment} {
                     set msg "Constant '$name' missing documentation comment"
                     lappend diagnostics [::aurig::lint::create_diagnostic \
@@ -3581,17 +3581,17 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
             }
         }
     }
-    
+
     # Check 4: Processes and instantiations using parse_result
     if {[dict exists $parse_result architectures]} {
         foreach arch [dict get $parse_result architectures] {
-            
+
             # Check processes
             if {$processes_required && [dict exists $arch processes]} {
                 foreach proc [dict get $arch processes] {
                     set proc_label [expr {[dict exists $proc label] ? [dict get $proc label] : ""}]
                     set proc_line [expr {[dict exists $proc line] ? [dict get $proc line] : 0}]
-                    
+
                     if {$proc_line > 0 && $proc_line <= [llength $file_lines]} {
                         # Check for comment in 1-2 lines above process
                         set has_comment false
@@ -3605,7 +3605,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                                 }
                             }
                         }
-                        
+
                         if {!$has_comment} {
                             set msg "Process"
                             if {$proc_label ne ""} {
@@ -3618,13 +3618,13 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                     }
                 }
             }
-            
+
             # Check instantiations
             if {$instantiations_required && [dict exists $arch instances]} {
                 foreach instance [dict get $arch instances] {
                     set inst_label [expr {[dict exists $instance label] ? [dict get $instance label] : ""}]
                     set inst_line [expr {[dict exists $instance line] ? [dict get $instance line] : 0}]
-                    
+
                     if {$inst_line > 0 && $inst_line <= [llength $file_lines]} {
                         # Check for comment in 1-2 lines above instantiation
                         set has_comment false
@@ -3638,7 +3638,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                                 }
                             }
                         }
-                        
+
                         if {!$has_comment} {
                             set msg "Instantiation '$inst_label' missing documentation comment"
                             lappend diagnostics [::aurig::lint::create_diagnostic \
@@ -3649,7 +3649,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
             }
         }
     }
-    
+
     return $diagnostics
 }
 
@@ -3659,7 +3659,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 # For BLOCK comments: A comment is considered documentation if it is:
 # - On the line immediately above the declaration, OR
 # - 1-2 lines above if the intervening lines are blank or more comment lines
-# 
+#
 # Exclusions:
 # - Separator lines (e.g., "-------" or "======")
 # - Section headers (short title comments between separator lines)
@@ -3668,11 +3668,11 @@ proc ::aurig::lint::check_comment_presence {file_lines line_num comment_style} {
     if {$line_num < 1 || $line_num > [llength $file_lines]} {
         return false
     }
-    
+
     # Convert to 0-based index
     set line_idx [expr {$line_num - 1}]
     set current_line [lindex $file_lines $line_idx]
-    
+
     # Check inline comment (same line as declaration)
     if {$comment_style eq "inline" || $comment_style eq "either"} {
         # Look for comment after the declaration content
@@ -3687,20 +3687,20 @@ proc ::aurig::lint::check_comment_presence {file_lines line_num comment_style} {
             }
         }
     }
-    
+
     # Check block comment (1-3 lines above)
     if {$comment_style eq "block" || $comment_style eq "either"} {
         set found_doc_comment false
         set last_was_separator false
-        
+
         for {set i 1} {$i <= 3} {incr i} {
             set check_idx [expr {$line_idx - $i}]
             if {$check_idx < 0} {
                 break
             }
-            
+
             set check_line [string trim [lindex $file_lines $check_idx]]
-            
+
             # Check for separator lines (pure dashes, equals, asterisks)
             if {[regexp {^--[-=*#]+$} $check_line] || $check_line eq "--"} {
                 # This is a separator - if we already found a doc comment above separator, reject it
@@ -3711,26 +3711,26 @@ proc ::aurig::lint::check_comment_presence {file_lines line_num comment_style} {
                 set last_was_separator true
                 continue
             }
-            
+
             # Check for comment line
             if {[regexp {^--} $check_line]} {
                 # Skip trivial comments (just "--" or empty)
                 if {[regexp {^--\s*$} $check_line]} {
                     continue
                 }
-                
+
                 # Check if this looks like a section header title
                 # Section headers are typically short (< 40 chars) and between separators
                 set comment_text [string trim [string range $check_line 2 end]]
                 set is_section_header false
-                
+
                 # If we just passed a separator and this is a short title-like comment
                 if {$last_was_separator && [string length $comment_text] < 40} {
                     # Check if there's another separator below (within the window we've already seen)
                     # Since we're going upward, if last_was_separator is true, we just came from a separator
                     set is_section_header true
                 }
-                
+
                 # Also check if the line above this comment is a separator (for title between two separators)
                 if {!$is_section_header && $check_idx > 0} {
                     set above_line [string trim [lindex $file_lines [expr {$check_idx - 1}]]]
@@ -3741,29 +3741,29 @@ proc ::aurig::lint::check_comment_presence {file_lines line_num comment_style} {
                         }
                     }
                 }
-                
+
                 if {!$is_section_header} {
                     # Found a genuine documentation comment
                     set found_doc_comment true
-                    # Don't return yet - continue checking upward to make sure 
+                    # Don't return yet - continue checking upward to make sure
                     # there's no separator above that would make this a section header
                 }
-                
+
                 set last_was_separator false
                 continue
             }
-            
+
             # Blank line - continue looking
             if {$check_line eq ""} {
                 set last_was_separator false
                 continue
             }
-            
+
             # Non-comment, non-blank line - stop searching
             # This could be another declaration, which separates any comment above from this declaration
             break
         }
-        
+
         if {$found_doc_comment} {
             # Final guard: treat the comment as a SHARED section
             # header — and reject it as per-port documentation — only
@@ -3855,11 +3855,11 @@ proc ::aurig::lint::find_identifier_line {file_lines identifier scope {start_lin
     if {$end_line < 0 || $end_line > $total_lines} {
         set end_line $total_lines
     }
-    
+
     # Build pattern based on scope
     # Pattern should match VHDL identifier declarations
     set patterns {}
-    
+
     switch -exact -- $scope {
         "generic" {
             # Match: identifier : type  or  identifier, identifier2 : type
@@ -3887,23 +3887,23 @@ proc ::aurig::lint::find_identifier_line {file_lines identifier scope {start_lin
             lappend patterns "\\m${identifier}\\s*:"
         }
     }
-    
+
     # Search line by line
     for {set i [expr {$start_line - 1}]} {$i < $end_line && $i < $total_lines} {incr i} {
         set line [lindex $file_lines $i]
-        
+
         # Skip comment lines
         if {[regexp {^\s*--} $line]} {
             continue
         }
-        
+
         foreach pattern $patterns {
             if {[regexp -nocase $pattern $line]} {
                 return [expr {$i + 1}]  ;# Convert to 1-based line number
             }
         }
     }
-    
+
     return 0  ;# Not found
 }
 
