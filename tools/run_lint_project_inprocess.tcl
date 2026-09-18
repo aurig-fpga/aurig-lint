@@ -77,13 +77,7 @@ if {[catch {package require aurig::lint} lint_err]} {
 # "Project root not found" error from a parsed-as-literal inline comment.
 #
 # Default behavior here: hard error rc=2 with an actionable install hint when
-# either package is missing. Opt-in `-allow_degraded_yaml_reader` (parsed by
-# the full argv parser below; inline-scanned here so the check fires BEFORE
-# the report_generator source) restores fallback behavior without aborting —
-# the runner still emits a WARNING that names the degraded package and the
-# remaining limitations, so the operator has a per-run signal even when they
-# explicitly opted in. Use for CI matrices with intentionally minimal tclsh
-# environments, etc.
+# either package is missing.
 #
 # `-test_simulate_missing_pkg <name>` is a hidden test-only flag that forces
 # the named package to be treated as missing during this check; used by
@@ -94,14 +88,11 @@ proc ::aurig::lint::__runner_required_pkg_check {pkg simulated_missing} {
     return [expr {![catch {package require $pkg}]}]
 }
 
-set __allow_degraded 0
 set __simulate_missing [list]
 set __help_requested 0
 for {set __i 0} {$__i < [llength $argv]} {incr __i} {
     set __arg [lindex $argv $__i]
-    if {$__arg eq "-allow_degraded_yaml_reader"} {
-        set __allow_degraded 1
-    } elseif {$__arg eq "-test_simulate_missing_pkg"} {
+    if {$__arg eq "-test_simulate_missing_pkg"} {
         # Consume the value AND advance the loop index so it is not
         # re-processed as a separate arg in this pre-scan. Validate that
         # the value is present and does not look like the next flag
@@ -122,8 +113,7 @@ for {set __i 0} {$__i < [llength $argv]} {incr __i} {
     } elseif {$__arg eq "-h" || $__arg eq "-help" || $__arg eq "--help"} {
         # If the user asked for usage, the runner must be able to print
         # it even on a degraded tclsh — otherwise a missing-tcllib
-        # environment never reveals how to opt into the fallback or
-        # what other flags exist.
+        # environment never reveals what flags exist.
         set __help_requested 1
     }
 }
@@ -137,47 +127,26 @@ if {!$__help_requested} {
         # loader (`lint/lint.tcl::load_rules_config`) calls
         # `::json::json2dict` unconditionally, so a missing `json`
         # package would just turn into per-file TOOL_ERROR during the
-        # lint sweep with no graceful fallback. `-allow_degraded_yaml_reader`
-        # therefore degrades the YAML reader only; a missing `json` is
-        # ALWAYS rc=2 regardless of the opt-in flag.
-        set __degradable [expr {$__pkg eq "yaml"}]
-        if {$__allow_degraded && $__degradable} {
-            puts stderr "WARNING: tcllib's `$__pkg` package not available;\
-                degraded fallback enabled by -allow_degraded_yaml_reader.\
-                The in-tree YAML reader supports\
-                only a limited subset of the YAML spec (no anchors/aliases,\
-                flow style, block scalars, or tagged nodes). Inline-`#`\
-                comment stripping IS supported.\
-                The lint policy / metadata loader still requires `json` —\
-                only the YAML reader is degraded by this flag."
-        } else {
-            puts stderr "ERROR: tcllib's `$__pkg` package is required for project linting but was not found."
-            puts stderr ""
-            puts stderr "  Resolution:"
-            puts stderr "    - Install tcllib (e.g. `teacup install tcllib` on ActiveTcl, or your system"
-            puts stderr "      package manager). On Debian/Ubuntu: `apt install tcllib`."
-            puts stderr "    - On Windows with multiple tclsh.exe on PATH, verify the one being invoked"
-            puts stderr "      has tcllib reachable from its auto_path. Probe by piping a one-liner:"
-            puts stderr "          echo puts \[package require $__pkg\] | tclsh"
-            puts stderr "      If this fails on your primary tclsh, point your caller at the ActiveTcl"
-            puts stderr "      (or whichever distribution carries tcllib) explicitly."
-            if {$__degradable} {
-                puts stderr "    - To proceed with the degraded in-tree YAML reader (NOT recommended in"
-                puts stderr "      production — supports only a limited YAML subset; the JSON policy"
-                puts stderr "      loader still requires `json`), pass `-allow_degraded_yaml_reader`."
-            } else {
-                # json is mandatory — explicitly say so to forestall the
-                # "but I passed -allow_degraded_yaml_reader, why is it
-                # still failing?" follow-up question.
-                puts stderr "    - The `json` package is mandatory for project linting; the lint engine's"
-                puts stderr "      metadata/policy loader uses `::json::json2dict` and has no fallback."
-                puts stderr "      `-allow_degraded_yaml_reader` degrades the YAML reader only; it does"
-                puts stderr "      NOT bypass this check."
-            }
-            puts stderr ""
-            puts stderr "  Aborting."
-            exit 2
+        # lint sweep with no graceful fallback.
+        puts stderr "ERROR: tcllib's `$__pkg` package is required for project linting but was not found."
+        puts stderr ""
+        puts stderr "  Resolution:"
+        puts stderr "    - Install tcllib (e.g. `teacup install tcllib` on ActiveTcl, or your system"
+        puts stderr "      package manager). On Debian/Ubuntu: `apt install tcllib`."
+        puts stderr "    - On Windows with multiple tclsh.exe on PATH, verify the one being invoked"
+        puts stderr "      has tcllib reachable from its auto_path. Probe by piping these one-liners:"
+        puts stderr "          echo puts \[info nameofexecutable\] | tclsh"
+        puts stderr "          echo puts \[package require $__pkg\] | tclsh"
+        puts stderr "      If this fails on your primary tclsh, point your caller at the ActiveTcl"
+        puts stderr "      (or whichever distribution carries tcllib) explicitly."
+        if {$__pkg eq "json"} {
+            # json is mandatory — explicitly say so; it has no fallback path.
+            puts stderr "    - The `json` package is mandatory for project linting; the lint engine's"
+            puts stderr "      metadata/policy loader uses `::json::json2dict` and has no fallback."
         }
+        puts stderr ""
+        puts stderr "  Aborting."
+        exit 2
     }
 }
 
@@ -223,7 +192,6 @@ array set opts {
     baseline_explicit 0
     only_new          0
     update_baseline   0
-    allow_degraded_yaml_reader 0
     test_simulate_missing_pkg ""
 }
 
@@ -254,22 +222,6 @@ proc print_usage {} {
     puts "  -fail_on <level>       Exit 1 when aggregate diagnostics meet/exceed level"
     puts "                         (error|warning|info|any|none, default: error)"
     puts "  -verbose               Print detailed progress"
-    puts ""
-    puts "Robustness:"
-    puts "  -allow_degraded_yaml_reader"
-    puts "                         When tcllib's `yaml` package is unavailable, continue"
-    puts "                         with the in-tree minimal YAML reader instead of aborting"
-    puts "                         (rc=2). The in-tree reader supports a limited subset of"
-    puts "                         the YAML spec (no anchors/aliases, flow style, block"
-    puts "                         scalars, or tagged nodes); inline-`#` comment stripping"
-    puts "                         IS supported. NOT recommended"
-    puts "                         in production."
-    puts "                         NOTE: the `json` package is ALWAYS mandatory — the lint"
-    puts "                         engine's metadata/policy loader uses `::json::json2dict`"
-    puts "                         with no fallback, so a missing `json` is rc=2 regardless"
-    puts "                         of this flag."
-    puts "                         Default (no flag): hard error with install hint when"
-    puts "                         either `yaml` or `json` is missing."
     puts ""
     puts "Baseline Workflow:"
     puts "  -baseline <file>       Override baseline file path"
@@ -473,14 +425,6 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
 
     if {$arg eq "-verbose"} {
         set opts(verbose) 1
-        continue
-    }
-
-    if {$arg eq "-allow_degraded_yaml_reader"} {
-        # Already consumed inline by the hard-error
-        # check above; recorded here too so the formal argv pass does not
-        # report this flag as unknown.
-        set opts(allow_degraded_yaml_reader) 1
         continue
     }
 

@@ -164,9 +164,15 @@ test "Missing yaml: stderr mentions the missing package by name" {
     assert_true [string match "*\`yaml\`*" [dict get $r output]]
 }
 
-test "Missing yaml: stderr cites the opt-in escape hatch" {
+test "Missing yaml: stderr probe identifies the interpreter" {
+    # The Resolution bullet must offer a probe that names the interpreter it
+    # actually ran in, alongside the `package require` probe: a wrong tclsh on
+    # PATH is the likeliest cause and the package probe alone cannot reveal it.
+    # Match on `nameofexecutable` rather than the whole line, so rewording the
+    # bullet or the probe's shell quoting does not break this.
     global r
-    assert_true [string match "*-allow_degraded_yaml_reader*" [dict get $r output]]
+    assert_true [string match "*nameofexecutable*" [dict get $r output]] \
+        "Expected the interpreter-identifying probe; output:\n[dict get $r output]"
 }
 
 # =============================================================================
@@ -187,58 +193,11 @@ test "Missing json: stderr mentions the missing package by name" {
     assert_true [string match "*\`json\`*" [dict get $r output]]
 }
 
-# =============================================================================
-# Suite 4: `-allow_degraded_yaml_reader` opt-in restores the fallback path
-# (still emits a WARNING on stderr; rc != 2)
-# =============================================================================
-puts ""
-puts "Suite 4: -allow_degraded_yaml_reader restores fallback"
-puts "------------------------------------------------------"
-
-set r [run_runner -allow_degraded_yaml_reader -test_simulate_missing_pkg yaml]
-test "Degraded opt-in: rc != 2 (fallback engaged)" {
-    global r
-    assert_true [expr {[dict get $r rc] != 2}] \
-        "Expected rc != 2 with opt-in; got [dict get $r rc]; output:\n[dict get $r output]"
-}
-
-test "Degraded opt-in: stderr carries a WARNING" {
-    global r
-    assert_true [string match "*WARNING*" [dict get $r output]]
-}
-
-test "Degraded opt-in: stderr names the degraded package" {
-    global r
-    assert_true [string match "*\`yaml\`*" [dict get $r output]]
-}
-
-test "Degraded opt-in: WARNING preserves word-spacing across line continuations" {
-    # Tcl `\<newline>+whitespace` collapses to a SINGLE space (not zero
-    # space). The WARNING message in the
-    # runner is composed with backslash-newline continuations across
-    # several lines; pin a byte-exact substring that spans one of those
-    # continuations so a future refactor that switches to literal
-    # newlines (which Tcl would NOT collapse to a space) or removes the
-    # leading whitespace cannot silently regress to the misread form.
-    global r
-    set msg [dict get $r output]
-    assert_true [string match "*package not available; degraded fallback*" $msg] \
-        "Expected word-spaced WARNING; got: $msg"
-}
-
-# `json` is mandatory even with the
-# opt-in flag — the lint engine's `load_rules_config` calls
-# `::json::json2dict` unconditionally, so allowing the runner to
-# proceed without `json` would just turn into TOOL_ERROR during the
-# per-file lint sweep. Assert that `-allow_degraded_yaml_reader`
-# does NOT degrade json.
-set r [run_runner -allow_degraded_yaml_reader -test_simulate_missing_pkg json]
-test "Degraded opt-in does NOT bypass missing json (rc=2)" {
-    global r
-    assert_eq [dict get $r rc] 2 \
-        "Expected rc=2 for missing json even with opt-in; got [dict get $r rc]; output:\n[dict get $r output]"
-}
-
+# `json` is mandatory unconditionally — `lint/lint.tcl` does a
+# `package require json` at the top of `::aurig::lint::run`, and the
+# metadata/policy loader calls `::json::json2dict` with no fallback. The
+# hard-error message says so in as many words; pin that wording, since the
+# package-name assertion above would still pass if the explanation were lost.
 test "Missing json hard-error message states json is mandatory" {
     global r
     assert_true [string match "*json*mandatory*" [dict get $r output]]
@@ -248,8 +207,8 @@ test "Missing json hard-error message states json is mandatory" {
 # Suite 5: `-help` short-circuit
 #
 # Even when tcllib is missing, the runner must be able to print its usage —
-# otherwise the operator on a degraded tclsh has no way to discover the
-# `-allow_degraded_yaml_reader` flag. The package check is gated on
+# otherwise the operator on a degraded tclsh has no way to discover what flags
+# exist or how the runner expects to be invoked. The package check is gated on
 # `__help_requested`, which the inline pre-scan sets when any of
 # `-h` / `-help` / `--help` is present in argv.
 # =============================================================================
