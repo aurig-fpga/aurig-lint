@@ -1186,50 +1186,29 @@ puts "Collecting VHDL files from project..."
 
 set vhdl_files [list]
 
-# Use collect_project_files if available
-if {[info commands ::aurig::core::util::collect_project_files] ne ""} {
-    if {[catch {
-        set fileDict [::aurig::core::util::collect_project_files \
-            -from $yaml_path \
-            -format yaml \
-            -follow_globs 1]
-    } err]} {
-        puts stderr "ERROR collecting files via collect_project_files: $err"
-        puts stderr "Falling back to recursive glob..."
-        set fileDict {}
-    }
-
-    # Filter for VHDL files only
-    dict for {idx rec} $fileDict {
-        if {[dict get $rec type] eq "vhdl"} {
-            lappend vhdl_files [dict get $rec fullpath]
-        }
-    }
+# Resolve the source inventory from the manifest. `collect_project_files` is
+# provided by aurig::core, which the engine requires unconditionally, so it is
+# always defined by the time we get here -- no availability probe.
+#
+# A collection failure is a hard stop (rc=2): the manifest is the only
+# statement of what this project consists of, and there is no second opinion
+# to fall back on.
+if {[catch {
+    set fileDict [::aurig::core::util::collect_project_files \
+        -from $yaml_path \
+        -format yaml \
+        -follow_globs 1]
+} err]} {
+    puts stderr "ERROR collecting files via collect_project_files: $err"
+    puts stderr "  Manifest: $yaml_path"
+    puts stderr "  Aborting: the project's source inventory could not be resolved."
+    exit 2
 }
 
-# Fallback: recursive glob if no files found
-if {[llength $vhdl_files] == 0} {
-    puts "  Using recursive glob fallback..."
-    set patterns {*.vhd *.vhdl}
-    foreach pat $patterns {
-        set found [glob -nocomplain -directory $opts(project_root) -type f -tails $pat]
-        foreach f $found {
-            lappend vhdl_files [file join $opts(project_root) $f]
-        }
-        # Recursive search in subdirectories
-        foreach subdir [glob -nocomplain -directory $opts(project_root) -type d *] {
-            set found [glob -nocomplain -directory $subdir -type f $pat]
-            foreach f $found {
-                lappend vhdl_files $f
-            }
-            # One more level deep
-            foreach subdir2 [glob -nocomplain -directory $subdir -type d *] {
-                set found [glob -nocomplain -directory $subdir2 -type f $pat]
-                foreach f $found {
-                    lappend vhdl_files $f
-                }
-            }
-        }
+# Filter for VHDL files only
+dict for {idx rec} $fileDict {
+    if {[dict get $rec type] eq "vhdl"} {
+        lappend vhdl_files [dict get $rec fullpath]
     }
 }
 
