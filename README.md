@@ -24,9 +24,21 @@ the parser/util core is **not** bundled here. `aurig-lint` requires it off
 
 ## Requirements
 
-- **Tcl 8.6** and **tcllib** (the `json` package is needed for JSON/report output)
+- **Tcl 8.6** and **tcllib** (`yaml` + `json`) — `json` serves the rule
+  metadata/policy loader and the JSON/report output; `yaml` serves manifest
+  reading and project source collection. Project linting needs both.
 - A checkout of [`aurig-core`](https://github.com/aurig-fpga/aurig-core) reachable
   on `::auto_path`
+
+Installing tcllib:
+
+- **Debian/Ubuntu** — `sudo apt install tcllib`.
+- **From source** — add the tcllib directory to the interpreter's `::auto_path`.
+- **Windows** — tcllib must be reachable on the `auto_path` of the interpreter
+  you invoke. Where several `tclsh.exe` are on `PATH`, the one actually invoked
+  is what matters: identify it with `puts [info nameofexecutable]`, then confirm
+  the packages resolve in that same interpreter with
+  `puts [package require yaml]` and `puts [package require json]`.
 
 `aurig-lint` resolves `aurig-core` through the native **`TCLLIBPATH`**
 environment variable (a Tcl list of directories prepended to `::auto_path`).
