@@ -259,6 +259,55 @@ test "-help with simulated missing json produces NO 'Failed to load report_gener
         "Expected no report_generator WARNING in help output; got: [dict get $r_local output]"
 }
 
+# =============================================================================
+# Suite 6: the argv pre-scan must be argument-aware
+#
+# The pre-scan that decides whether to run the package check walks raw argv.
+# It used to recognise flags anywhere in argv, including in positions that are
+# a preceding flag's VALUE, so a value that happened to spell a flag name was
+# acted on as if the user had passed that flag. Two variants, opposite effects:
+#
+#   A. a value of `-help` set the help short-circuit, skipping the package
+#      check entirely, so a missing tcllib went undetected and the YAML reads
+#      downstream ran against the degraded in-tree reader.
+#   B. a value of `-test_simulate_missing_pkg` armed the hidden test hook from
+#      an ordinary command line, failing a healthy box with an install hint for
+#      a package it already has.
+#
+# Both are pinned here against the same sandbox the suites above use.
+# =============================================================================
+puts ""
+puts "Suite 6: pre-scan consumes flag values instead of reading them as flags"
+puts "----------------------------------------------------------------------"
+
+# Variant A: `-help` as the value of -exclude must NOT short-circuit the
+# package check. With the hook armed for yaml, this must behave exactly as it
+# does without the -exclude pair: rc=2 and the missing-yaml diagnostic.
+set r [run_runner -exclude -help -test_simulate_missing_pkg yaml]
+test "Value `-help` does not skip the package check (rc=2 + yaml ERROR)" {
+    global r
+    assert_eq [dict get $r rc] 2 \
+        "Expected rc=2; got [dict get $r rc]; output:\n[dict get $r output]"
+    assert_true [string match "*\`yaml\`*package is required*" [dict get $r output]] \
+        "Expected the missing-yaml ERROR; output:\n[dict get $r output]"
+}
+
+# Variant B: `-test_simulate_missing_pkg` as the value of -exclude must NOT arm
+# the hook. tcllib is healthy on this box, so the missing-package ERROR must be
+# absent. The trailing `yaml` is then a stray token the argument-aware parser
+# rejects by name -- that rejection is the proof the token reached the parser
+# as an argument rather than being swallowed as the hook's package name.
+set r [run_runner -exclude -test_simulate_missing_pkg yaml]
+test "Value `-test_simulate_missing_pkg` does not arm the test hook" {
+    global r
+    assert_true [expr {![string match "*package is required for project linting*" \
+            [dict get $r output]]}] \
+        "Hook armed from a flag value: got the missing-package ERROR on a healthy\
+         interpreter; output:\n[dict get $r output]"
+    assert_true [string match "*Unknown argument: yaml*" [dict get $r output]] \
+        "Expected the stray token to reach the parser; output:\n[dict get $r output]"
+}
+
 # Cleanup
 catch {file delete -force $sandbox}
 
