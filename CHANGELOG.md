@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- `tools/run_lint_project_inprocess.tcl`: the `-allow_degraded_yaml_reader`
+  opt-in, which let project linting continue on aurig-core's in-tree minimal
+  YAML reader when tcllib's `yaml` package was unavailable. That reader silently
+  drops input it cannot parse, so the flag could turn a partially-read manifest
+  or a partially-read `lint.excludes` list into a green run over a subset of the
+  project. The flag was never documented outside the runner's own `-help`
+  output. The resolution path for a missing or broken tcllib is unchanged: the
+  runner still exits 2 with the same install and PATH guidance, whose probe now
+  also identifies which interpreter it ran in.
+
 ## [0.1.0] - 2026-06-22
 
 Initial public release of aurig-lint as part of the AURIG open-source FPGA
