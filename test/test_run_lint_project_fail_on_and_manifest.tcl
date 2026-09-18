@@ -152,7 +152,7 @@ file mkdir [file join $sandbox src]
 write_file [file join $sandbox config project.yaml] \
 {schema_version: "1.0"
 project_name: failon_fixture
-project_root: "."
+project_root: ".."
 top: Clean
 
 file_sets:
@@ -319,7 +319,7 @@ file mkdir [file join $warn_only src]
 write_file [file join $warn_only config project.yaml] \
 {schema_version: "1.0"
 project_name: warn_only_fixture
-project_root: "."
+project_root: ".."
 top: Warned
 
 file_sets:
@@ -445,7 +445,7 @@ file mkdir [file join $info_only src]
 write_file [file join $info_only config project.yaml] \
 {schema_version: "1.0"
 project_name: info_only_fixture
-project_root: "."
+project_root: ".."
 top: InfoOnly
 
 file_sets:
@@ -515,6 +515,130 @@ check_eq "info-only + -fail_on error: rc=0" 0 $rc_io_err
 set io_warn [file join $info_only out_warn]
 lassign [run_runner -project_root $info_only -format csv -outdir $io_warn -fail_on warning -stop_on_tool_error 0] rc_io_warn stdout_io_warn
 check_eq "info-only + -fail_on warning: rc=0" 0 $rc_io_warn
+
+# ----------------------------------------------------------------------------
+# Scenario 6: a collection failure is a hard stop, not a fallback
+#
+# `collect_project_files` is the only statement of what the project
+# consists of. When it raises, the runner must abort rc=2 and say which
+# manifest it could not resolve. It used to answer a failure by globbing
+# project_root for *.vhd and linting whatever it found, which reported a
+# green run over an inventory the manifest never declared.
+#
+# The fixture indents `file_sets` with a TAB. Tabs are illegal as YAML
+# indentation, so the reader inside collect_project_files raises -- a
+# realistic operator mistake, and one no conformant YAML reader accepts,
+# so the failure does not depend on a particular tcllib version. The tab
+# is built from \t rather than typed literally so it cannot be silently
+# normalised away by an editor or a whitespace hook.
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 6: collection failure aborts rc=2 ==="
+
+set bad_manifest [file join $sandbox bad_manifest]
+file mkdir [file join $bad_manifest config]
+file mkdir [file join $bad_manifest src]
+
+set tab "\t"
+write_file [file join $bad_manifest config project.yaml] \
+"schema_version: \"1.0\"
+project_name: bad_manifest_fixture
+project_root: \"..\"
+top: Clean
+file_sets:
+${tab}rtl:
+${tab}${tab}- lib: work
+${tab}${tab}  src: src/*.vhd"
+
+# A real source file, so that a fallback scan would have something to
+# find: this is what the removed glob used to lint.
+write_file [file join $bad_manifest src Clean.vhd] \
+{library ieee;
+use ieee.std_logic_1164.all;
+
+entity Clean is
+    port (clk : in std_logic);
+end entity Clean;
+
+architecture rtl of Clean is
+begin
+end architecture rtl;}
+
+set bad_stderr_file [file join $sandbox stderr_bad_manifest.log]
+set bad_outdir [file join $bad_manifest out]
+lassign [run_runner_with_stderr $bad_stderr_file \
+    -project_root $bad_manifest -format csv -outdir $bad_outdir] \
+    rc_bad stdout_bad stderr_bad
+
+check_eq "collection failure: rc=2" 2 $rc_bad
+check_true "collection failure: stderr carries the collector error line" \
+    {[string match "*ERROR collecting files via collect_project_files:*" $stderr_bad]}
+# Match the abort block's own "Manifest:" line, not merely the path
+# somewhere in stderr: the lint.excludes WARNING earlier in the run
+# already quotes the path, so a bare path match would hold even without
+# the abort and would not pin this behaviour.
+check_true "collection failure: stderr names the manifest on the abort line" \
+    {[string match "*Manifest: [file join $bad_manifest config project.yaml]*" $stderr_bad]}
+check_true "collection failure: stderr carries the abort line" \
+    {[string match "*Aborting: the project's source inventory could not be resolved.*" $stderr_bad]}
+
+# ----------------------------------------------------------------------------
+# Scenario 7: a manifest that resolves to nothing lints nothing
+#
+# The manifest declares `rtl/*.vhd`; the only source in the tree is at
+# `src/Undeclared.vhd` -- outside the declared pattern, but one level
+# below project_root and so well inside the reach of the removed glob,
+# which scanned project_root plus two directory levels. The run must
+# report an empty inventory and must not touch the undeclared file.
+# `-verbose` makes the runner print each file it processes by relative
+# path, so the basename assertion below can see a file that was linted.
+#
+# Deliberately NOT asserting on rc: an empty declared inventory exits 0
+# today, and the gate tracked in issue #6 will change that to 2. Pinning
+# rc here would make that change look like a regression.
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 7: manifest resolving to nothing lints nothing ==="
+
+set empty_inv [file join $sandbox empty_inventory]
+file mkdir [file join $empty_inv config]
+file mkdir [file join $empty_inv src]
+
+write_file [file join $empty_inv config project.yaml] \
+{schema_version: "1.0"
+project_name: empty_inventory_fixture
+project_root: ".."
+top: Undeclared
+
+file_sets:
+  rtl:
+    - lib: work
+      vhdl_std: "2008"
+      src:
+        - rtl/*.vhd
+}
+
+write_file [file join $empty_inv src Undeclared.vhd] \
+{library ieee;
+use ieee.std_logic_1164.all;
+
+entity Undeclared is
+    port (clk : in std_logic);
+end entity Undeclared;
+
+architecture rtl of Undeclared is
+begin
+end architecture rtl;}
+
+set empty_outdir [file join $empty_inv out]
+lassign [run_runner -project_root $empty_inv -format csv -outdir $empty_outdir -verbose] \
+    rc_empty stdout_empty
+
+check_true "empty inventory: stdout reports no VHDL files found" \
+    {[string match "*No VHDL files found in project.*" $stdout_empty]}
+check_true "empty inventory: stdout reports nothing checked or processed" \
+    {![string match "*Files checked:*" $stdout_empty]
+     && ![string match "*Processing *file(s)*" $stdout_empty]}
+check_true "empty inventory: the undeclared file is never linted" \
+    {![string match "*Undeclared.vhd*" $stdout_empty]}
 
 # ----------------------------------------------------------------------------
 # Summary

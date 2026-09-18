@@ -174,7 +174,7 @@ file mkdir [file join $sandbox src]
 write_file [file join $sandbox config project.yaml] \
 {schema_version: "1.0"
 project_name: baseline_fixture
-project_root: "."
+project_root: ".."
 top: Clean
 
 file_sets:
@@ -404,7 +404,7 @@ check_eq "Scenario 4a: baseline now has 4 fingerprints (3 bad signals + new viol
 write_file [file join $sandbox config project.yaml] \
 {schema_version: "1.0"
 project_name: baseline_fixture
-project_root: "."
+project_root: ".."
 top: Clean
 
 file_sets:
@@ -519,7 +519,7 @@ file mkdir [file join $fresh_sandbox src]
 write_file [file join $fresh_sandbox config project.yaml] \
 {schema_version: "1.0"
 project_name: fresh_baseline
-project_root: "."
+project_root: ".."
 top: Fresh
 
 file_sets:
@@ -587,7 +587,7 @@ file mkdir [file join $cap_sandbox src]
 write_file [file join $cap_sandbox config project.yaml] \
 {schema_version: "1.0"
 project_name: cap_baseline
-project_root: "."
+project_root: ".."
 top: ManyCaps
 
 file_sets:

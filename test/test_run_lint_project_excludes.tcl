@@ -92,7 +92,7 @@ file mkdir [file join $sandbox out]
 write_file [file join $sandbox config project.yaml] \
 {schema_version: "1.0"
 project_name: lint_excludes_fixture
-project_root: "."
+project_root: ".."
 top: Good
 
 file_sets:

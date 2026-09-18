@@ -10,6 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING)
+
+- `tools/run_lint_project_inprocess.tcl`: the recursive glob fallback is gone.
+  When the manifest resolved to no VHDL sources, the runner used to scan
+  `project_root` and up to two directory levels below it for `*.vhd`/`*.vhdl`
+  and lint whatever it found. That inventory was never declared by the
+  manifest, was silently truncated below the third level, and was reported as
+  an ordinary run — so a manifest whose paths had moved, or that was copied
+  from another project, produced a green result over files nobody had asked to
+  lint. **A project whose manifest does not resolve is no longer linted.**
+- A failure inside `collect_project_files` is now a hard stop with **exit code
+  2**, naming the manifest, instead of being answered with the glob. 2 is this
+  runner's existing code for a configuration or environment fault.
+
+  Not yet fixed here: a manifest that resolves *successfully* to an empty
+  source set still exits **0**, printing `No VHDL files found in project.`
+  This change removes the mechanism that masked that case; the gate that turns
+  it into a failure is tracked in
+  [#6](https://github.com/aurig-fpga/aurig-lint/issues/6) and lands separately.
+
 ### Removed
 
 - `tools/run_lint_project_inprocess.tcl`: the `-allow_degraded_yaml_reader`
