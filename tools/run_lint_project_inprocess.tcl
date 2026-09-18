@@ -88,18 +88,35 @@ proc ::aurig::lint::__runner_required_pkg_check {pkg simulated_missing} {
     return [expr {![catch {package require $pkg}]}]
 }
 
+# The flags that take a value. ONE definition, consulted by BOTH the pre-scan
+# below and the main argument parser further down, so the two cannot drift.
+# A flag missing from this list has its value re-read as a flag by the
+# pre-scan: that is how a value of `-help` used to skip the package check
+# entirely, and a value of `-test_simulate_missing_pkg` used to arm the hidden
+# test hook from an ordinary command line. Adding a value-taking flag to the
+# parser means adding it here; the parser has no arity knowledge of its own.
+set __value_taking_flags {
+    -project_root -manifest -fail_on -policy -format -outdir -limit
+    -include -exclude -stop_on_tool_error -html_preview_count
+    -html_default_collapsed -max_diags_per_rule_per_file -baseline
+    -test_simulate_missing_pkg
+}
+
 set __simulate_missing [list]
 set __help_requested 0
 for {set __i 0} {$__i < [llength $argv]} {incr __i} {
     set __arg [lindex $argv $__i]
-    if {$__arg eq "-test_simulate_missing_pkg"} {
+    if {$__arg in $__value_taking_flags} {
         # Consume the value AND advance the loop index so it is not
-        # re-processed as a separate arg in this pre-scan. Validate that
-        # the value is present and does not look like the next flag
-        # (i.e. does not start with `-`), since a missing value would
+        # re-processed as a separate arg in this pre-scan.
+        incr __i
+        if {$__arg ne "-test_simulate_missing_pkg"} {
+            continue
+        }
+        # Validate that the value is present and does not look like the next
+        # flag (i.e. does not start with `-`), since a missing value would
         # otherwise silently capture the following flag as the simulated
         # package name.
-        incr __i
         if {$__i >= [llength $argv]} {
             puts stderr "ERROR: -test_simulate_missing_pkg requires a package name"
             exit 2
@@ -259,158 +276,35 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         exit 0
     }
 
-    if {$arg eq "-project_root"} {
+    # Value-taking flags all share one shape: consume the next argv element,
+    # or fail naming the flag. The set is `$__value_taking_flags`, defined
+    # once above and shared with the pre-scan so the two cannot disagree about
+    # which tokens are values. Each flag stores into the opts key of the same
+    # name without the leading dash.
+    if {$arg in $__value_taking_flags} {
         incr i
         if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -project_root requires a value"
+            puts stderr "ERROR: $arg requires a value"
             print_usage
             exit 2
         }
-        set opts(project_root) [lindex $argv $i]
-        continue
-    }
-
-    if {$arg eq "-manifest"} {
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -manifest requires a value"
-            print_usage
+        # The list above and the opts defaults are two halves of one
+        # contract: a flag listed there must have a default here, or the
+        # generic write below would quietly invent a key that nothing reads.
+        # Enforce it rather than trusting the comment on the list.
+        set opt_key [string range $arg 1 end]
+        if {![info exists opts($opt_key)]} {
+            puts stderr "INTERNAL ERROR: $arg is listed in __value_taking_flags but has no\
+                entry in the opts defaults; add opts($opt_key) alongside the other defaults."
             exit 2
         }
-        set opts(manifest) [lindex $argv $i]
-        continue
-    }
-
-    if {$arg eq "-fail_on"} {
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -fail_on requires a value"
-            print_usage
-            exit 2
+        set opts($opt_key) [lindex $argv $i]
+        if {$arg eq "-baseline"} {
+            # -baseline also records that the path was given explicitly, so a
+            # bare -baseline (without -only_new/-update_baseline) can warn
+            # rather than silently ignore the file.
+            set opts(baseline_explicit) 1
         }
-        set opts(fail_on) [lindex $argv $i]
-        continue
-    }
-
-    if {$arg eq "-policy"} {
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -policy requires a value"
-            print_usage
-            exit 2
-        }
-        set opts(policy) [lindex $argv $i]
-        continue
-    }
-
-    if {$arg eq "-format"} {
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -format requires a value"
-            print_usage
-            exit 2
-        }
-        set opts(format) [lindex $argv $i]
-        continue
-    }
-
-    if {$arg eq "-outdir"} {
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -outdir requires a value"
-            print_usage
-            exit 2
-        }
-        set opts(outdir) [lindex $argv $i]
-        continue
-    }
-
-    if {$arg eq "-limit"} {
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -limit requires a value"
-            print_usage
-            exit 2
-        }
-        set opts(limit) [lindex $argv $i]
-        continue
-    }
-
-    if {$arg eq "-include"} {
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -include requires a value"
-            print_usage
-            exit 2
-        }
-        set opts(include) [lindex $argv $i]
-        continue
-    }
-
-    if {$arg eq "-exclude"} {
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -exclude requires a value"
-            print_usage
-            exit 2
-        }
-        set opts(exclude) [lindex $argv $i]
-        continue
-    }
-
-    if {$arg eq "-stop_on_tool_error"} {
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -stop_on_tool_error requires a value"
-            print_usage
-            exit 2
-        }
-        set opts(stop_on_tool_error) [lindex $argv $i]
-        continue
-    }
-
-    if {$arg eq "-html_preview_count"} {
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -html_preview_count requires a value"
-            print_usage
-            exit 2
-        }
-        set opts(html_preview_count) [lindex $argv $i]
-        continue
-    }
-
-    if {$arg eq "-html_default_collapsed"} {
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -html_default_collapsed requires a value"
-            print_usage
-            exit 2
-        }
-        set opts(html_default_collapsed) [lindex $argv $i]
-        continue
-    }
-
-    if {$arg eq "-max_diags_per_rule_per_file"} {
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -max_diags_per_rule_per_file requires a value"
-            print_usage
-            exit 2
-        }
-        set opts(max_diags_per_rule_per_file) [lindex $argv $i]
-        continue
-    }
-
-    if {$arg eq "-baseline"} {
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -baseline requires a value"
-            print_usage
-            exit 2
-        }
-        set opts(baseline)          [lindex $argv $i]
-        set opts(baseline_explicit) 1
         continue
     }
 
@@ -426,19 +320,6 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
 
     if {$arg eq "-verbose"} {
         set opts(verbose) 1
-        continue
-    }
-
-    if {$arg eq "-test_simulate_missing_pkg"} {
-        # Hidden test-only flag. Same comment as
-        # above on the inline consumption.
-        incr i
-        if {$i >= [llength $argv]} {
-            puts stderr "ERROR: -test_simulate_missing_pkg requires a value"
-            print_usage
-            exit 2
-        }
-        set opts(test_simulate_missing_pkg) [lindex $argv $i]
         continue
     }
 
