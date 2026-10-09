@@ -39,8 +39,8 @@
 #       <file>.html           - Source viewer for each VHDL file
 #
 # Exit codes:
-#   0 - All files OK (no diagnostics or only INFO-level)
-#   1 - LINT_ISSUES (some files have diagnostics)
+#   0 - clean under the chosen threshold
+#   1 - diagnostics meet/exceed the -fail_on threshold (default: error)
 #   2 - configuration, environment or tool error
 #=============================================================================
 
@@ -265,8 +265,8 @@ proc print_usage {} {
     puts "  -max_diags_per_rule_per_file <N>  Cap diagnostics per rule per file (default: 50)"
     puts ""
     puts "Exit codes:"
-    puts "  0 - All files OK"
-    puts "  1 - Some files have lint issues"
+    puts "  0 - clean under the chosen threshold"
+    puts "  1 - diagnostics meet/exceed the -fail_on threshold (default: error)"
     puts "  2 - configuration, environment or tool error"
 }
 
