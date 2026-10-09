@@ -1128,6 +1128,25 @@ if {$opts(policy) eq ""} {
     puts "Policy file: $opts(policy)"
 }
 
+# Validate the policy once, before any file is linted or any report is
+# written. An invalid policy is a configuration error (rc 2) with one line per
+# problem; without this check each file would end in TOOL_ERROR, and malformed
+# JSON would escape uncaught from the effective-policy export (rc 1).
+if {$opts(policy) ne ""} {
+    if {[catch {
+        ::aurig::lint::load_policy $opts(policy) [::aurig::lint::load_metadata $metadata_path]
+    } policy_err]} {
+        if {[lrange $::errorCode 0 2] eq {AURIG LINT POLICY}} {
+            foreach line [split $policy_err \n] {
+                puts stderr "ERROR: $line"
+            }
+        } else {
+            puts stderr "ERROR: cannot read policy $opts(policy): $policy_err"
+        }
+        exit 2
+    }
+}
+
 # Validate baseline flag combinations and resolve the baseline path.
 # -only_new and -update_baseline are mutually exclusive (the read-only
 # and write-only modes of the baseline workflow). When either is set,

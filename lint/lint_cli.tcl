@@ -207,6 +207,13 @@ proc ::aurig::lint::cli::count_errors {diagnostics} {
     return $count
 }
 
+# The one clean line for a missing tcllib `json` (policy validation and the
+# engine run both need it).
+proc ::aurig::lint::cli::print_missing_tcllib {} {
+    puts stderr "Error: missing required Tcl package 'json' (provided by tcllib);\
+ install tcllib so the lint engine can parse metadata/policy JSON"
+}
+
 #=============================================================================
 # Compute Exit Code based on --fail-on threshold
 #=============================================================================
@@ -468,6 +475,32 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
         }
     }
 
+    #-------------------------------------------------------------------------
+    # Validate the policy once, before any export or lint output. An invalid
+    # policy is a configuration error (rc 2) with one line per problem. The
+    # engine's load_rules_config validates the same file again, which covers
+    # callers of ::aurig::lint::run that bypass this CLI.
+    #-------------------------------------------------------------------------
+    set policy_dict [dict create rules [dict create]]
+    if {$opts(-policy) ne ""} {
+        if {[catch {
+            set policy_dict [::aurig::lint::load_policy $opts(-policy) \
+                [::aurig::lint::load_metadata $opts(-metadata)]]
+        } err]} {
+            if {[lrange $::errorCode 0 2] eq {AURIG LINT POLICY}} {
+                foreach line [split $err \n] {
+                    puts stderr "Error: $line"
+                }
+            } elseif {[lrange $::errorCode 0 2] eq {TCL PACKAGE UNFOUND}
+                    && [string match -nocase "*json*" $err]} {
+                print_missing_tcllib
+            } else {
+                puts stderr "Error: Failed to read policy: $err"
+            }
+            return 2
+        }
+    }
+
     # Load report generator if needed (declares `package require json` itself).
     # Guard the source for the same rc 2 contract as lint_cli_config.tcl above.
     if {$opts(-report_format) ne "" || $opts(-export_rules) ne ""} {
@@ -497,19 +530,7 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
             return 2
         }
 
-        # Load policy (if specified)
-        set policy_dict [dict create rules [dict create]]
-        if {$opts(-policy) ne ""} {
-            if {[catch {
-                set policy_f [open $opts(-policy) r]
-                set policy_json [read $policy_f]
-                close $policy_f
-                set policy_dict [::json::json2dict $policy_json]
-            } err]} {
-                puts stderr "Error: Failed to read policy: $err"
-                return 2
-            }
-        }
+        # The policy was loaded and validated above (policy_dict).
 
         # Export merged configuration. The throwing call is isolated in the
         # catch; the success/failure returns live outside it (a `return` inside
@@ -548,8 +569,7 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
         # real bug is never masked by a blanket suppression.
         if {[lrange $::errorCode 0 2] eq {TCL PACKAGE UNFOUND}
                 && [string match -nocase "*json*" $err]} {
-            puts stderr "Error: missing required Tcl package 'json' (provided by tcllib);\
- install tcllib so the lint engine can parse metadata/policy JSON"
+            print_missing_tcllib
             return 2
         }
         puts stderr "Error: Lint engine failed: $err"

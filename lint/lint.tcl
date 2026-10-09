@@ -152,33 +152,236 @@ proc ::aurig::lint::run {args} {
 # Configuration Loading
 #=============================================================================
 
+# Load rule metadata (defaults). A missing or empty path yields an empty
+# dict, as before: the engine then simply has no built-in rules.
+#
+# Arguments:
+#   metadata_file : Path to metadata JSON (rule defaults)
+#
+# Returns: Metadata dict
+proc ::aurig::lint::load_metadata {metadata_file} {
+    package require json
+
+    if {$metadata_file eq "" || ![file exists $metadata_file]} {
+        return [dict create]
+    }
+    set fp [open $metadata_file r]
+    set json_data [read $fp]
+    close $fp
+    return [::json::json2dict $json_data]
+}
+
+# True when a json2dict value can be read as a dict. json2dict is untyped:
+# a JSON object becomes a dict, but so can a string such as "a b". A scalar
+# that does not form key/value pairs ("false", "x") is rejected here; one
+# that happens to does falls through to the key checks of the caller.
+proc ::aurig::lint::_is_dict {value} {
+    return [expr {![catch {dict size $value}]}]
+}
+
+# Validate a parsed policy against rule metadata.
+#
+# Rules:
+#   - top level: "rules" is required; other keys must be comment, generated
+#     or version;
+#   - a built-in rule (id in metadata) accepts its metadata keys plus the
+#     common keys type, enabled, severity, message; "type" must not change;
+#   - a user-defined rule (id not in metadata) needs a "type" that has a
+#     handler and is used by at least one metadata rule; it accepts the union
+#     of the metadata keys of the rules of that type plus the common keys;
+#     a user-defined "naming" rule needs "scope" and "pattern";
+#   - "severity" must be error, warning or info;
+#   - keys starting with "_" are comments and are ignored at the top level,
+#     inside "rules" and inside a rule entry.
+#
+# Arguments:
+#   policy   : Policy dict (from json2dict)
+#   metadata : Metadata dict (from load_metadata)
+#
+# Returns: List of problem strings, empty when the policy is valid
+proc ::aurig::lint::validate_policy {policy metadata} {
+    set common_keys {type enabled severity message}
+    set problems {}
+
+    if {![_is_dict $policy]} {
+        return [list "top level is not a JSON object"]
+    }
+
+    foreach key [dict keys $policy] {
+        if {[string index $key 0] eq "_" || $key in {rules comment generated version}} {
+            continue
+        }
+        lappend problems "unknown top-level key \"$key\" (allowed: rules, comment, generated, version; keys starting with \"_\" are comments)"
+    }
+    if {![dict exists $policy rules]} {
+        lappend problems "missing top-level \"rules\" key"
+        return $problems
+    }
+    set policy_rules [dict get $policy rules]
+    if {![_is_dict $policy_rules]} {
+        lappend problems "\"rules\" is not a JSON object"
+        return $problems
+    }
+
+    # Allowed keys per built-in id, and per rule type (union over the ids of
+    # that type). A type is usable for a user-defined rule only when it has a
+    # public handler.
+    set builtin_rules [dict create]
+    if {[dict exists $metadata rules]} {
+        set builtin_rules [dict get $metadata rules]
+    }
+    set keys_by_type [dict create]
+    dict for {rule_id rule_meta} $builtin_rules {
+        if {![dict exists $rule_meta type]} {
+            continue
+        }
+        dict lappend keys_by_type [dict get $rule_meta type] {*}[dict keys $rule_meta]
+    }
+    set usable_types {}
+    foreach rule_type [dict keys $keys_by_type] {
+        if {[string index $rule_type 0] ne "_"
+                && [info procs ::aurig::lint::rule::$rule_type] ne ""} {
+            lappend usable_types $rule_type
+        }
+    }
+    set usable_types [lsort $usable_types]
+
+    dict for {rule_id rule_policy} $policy_rules {
+        if {[string index $rule_id 0] eq "_"} {
+            continue
+        }
+        set where "rule \"$rule_id\""
+        if {![_is_dict $rule_policy]} {
+            lappend problems "$where: entry is not a JSON object"
+            continue
+        }
+
+        if {[dict exists $builtin_rules $rule_id]} {
+            set rule_meta [dict get $builtin_rules $rule_id]
+            set allowed [lsort -unique [concat $common_keys [dict keys $rule_meta]]]
+            if {[dict exists $rule_policy type] && [dict exists $rule_meta type]
+                    && [dict get $rule_policy type] ne [dict get $rule_meta type]} {
+                lappend problems "$where: cannot change \"type\" of a built-in rule from \"[dict get $rule_meta type]\" to \"[dict get $rule_policy type]\""
+            }
+        } elseif {![dict exists $rule_policy type]} {
+            lappend problems "$where: unknown rule id (not in metadata and no \"type\" for a user-defined rule)"
+            continue
+        } else {
+            set rule_type [dict get $rule_policy type]
+            if {$rule_type ni $usable_types} {
+                lappend problems "$where: unknown rule type \"$rule_type\" (known types: [join $usable_types {, }])"
+                continue
+            }
+            set allowed [lsort -unique [concat $common_keys [dict get $keys_by_type $rule_type]]]
+            if {$rule_type eq "naming"} {
+                foreach required {scope pattern} {
+                    if {![dict exists $rule_policy $required]} {
+                        lappend problems "$where: user-defined naming rule requires \"$required\""
+                    }
+                }
+            }
+        }
+
+        foreach key [dict keys $rule_policy] {
+            if {[string index $key 0] eq "_" || $key in $allowed} {
+                continue
+            }
+            lappend problems "$where: unsupported option \"$key\" (supported: [join $allowed {, }])"
+        }
+        if {[dict exists $rule_policy severity]
+                && [dict get $rule_policy severity] ni {error warning info}} {
+            lappend problems "$where: invalid severity \"[dict get $rule_policy severity]\" (must be error, warning or info)"
+        }
+    }
+
+    return $problems
+}
+
+# Read, parse and validate a policy file.
+#
+# Throws with errorCode {AURIG LINT POLICY} when the file is missing,
+# unreadable, not valid JSON or fails validate_policy. The message holds one
+# line per problem, each "invalid policy <path>: <problem>", so callers can
+# print them with their own prefix.
+#
+# Arguments:
+#   policy_file : Path to policy JSON
+#   metadata    : Metadata dict (from load_metadata)
+#
+# Returns: Policy dict with the "_" comment keys removed
+proc ::aurig::lint::load_policy {policy_file metadata} {
+    package require json
+
+    set prefix "invalid policy $policy_file"
+    if {![file exists $policy_file]} {
+        return -code error -errorcode {AURIG LINT POLICY} "$prefix: file not found"
+    }
+    if {[catch {
+        set fp [open $policy_file r]
+        set json_data [read $fp]
+        close $fp
+    } err]} {
+        return -code error -errorcode {AURIG LINT POLICY} "$prefix: cannot read file: $err"
+    }
+    if {[catch {::json::json2dict $json_data} policy]} {
+        return -code error -errorcode {AURIG LINT POLICY} "$prefix: malformed JSON: $policy"
+    }
+
+    set problems [validate_policy $policy $metadata]
+    if {[llength $problems] > 0} {
+        set lines {}
+        foreach problem $problems {
+            lappend lines "$prefix: $problem"
+        }
+        return -code error -errorcode {AURIG LINT POLICY} [join $lines \n]
+    }
+
+    # Drop comment keys so the rule handlers and exports never see them.
+    set clean [dict create]
+    dict for {key value} $policy {
+        if {[string index $key 0] eq "_"} {
+            continue
+        }
+        if {$key ne "rules"} {
+            dict set clean $key $value
+            continue
+        }
+        set rules [dict create]
+        dict for {rule_id rule_policy} $value {
+            if {[string index $rule_id 0] eq "_"} {
+                continue
+            }
+            set entry [dict create]
+            dict for {opt opt_value} $rule_policy {
+                if {[string index $opt 0] ne "_"} {
+                    dict set entry $opt $opt_value
+                }
+            }
+            dict set rules $rule_id $entry
+        }
+        dict set clean rules $rules
+    }
+    return $clean
+}
+
 # Load and merge rules configuration from metadata and policy files
 #
 # Arguments:
 #   metadata_file : Path to metadata JSON (rule defaults)
-#   policy_file   : Path to policy JSON (user overrides)
+#   policy_file   : Path to policy JSON (user overrides); validated by
+#                   load_policy, which throws on an invalid policy
 #
 # Returns: Merged rules configuration dict
 proc ::aurig::lint::load_rules_config {metadata_file policy_file} {
     set config [dict create]
 
     # Load metadata (defaults)
-    if {$metadata_file ne "" && [file exists $metadata_file]} {
-        set fp [open $metadata_file r]
-        set json_data [read $fp]
-        close $fp
-
-        set metadata [::json::json2dict $json_data]
-        set config [dict merge $config $metadata]
-    }
+    set metadata [load_metadata $metadata_file]
+    set config [dict merge $config $metadata]
 
     # Load policy (user overrides)
-    if {$policy_file ne "" && [file exists $policy_file]} {
-        set fp [open $policy_file r]
-        set json_data [read $fp]
-        close $fp
-
-        set policy [::json::json2dict $json_data]
+    if {$policy_file ne ""} {
+        set policy [load_policy $policy_file $metadata]
 
         # Merge policy into config (policy overrides metadata)
         if {[dict exists $policy rules]} {

@@ -377,6 +377,42 @@ inference, reset requirements, and documentation/comment checks. A generated
 catalogue is in [`doc/reference/rules_reference.md`](doc/reference/rules_reference.md)
 (regenerate with `doc/tools/generate_rules_reference.tcl`).
 
+### Policy file
+
+A policy (`-policy <file>`, or a discovered `.aurig/lint-policy.json`)
+overrides the defaults rule by rule:
+
+```json
+{
+  "_note": "keys starting with _ are comments",
+  "rules": {
+    "forbid_latch_inference": { "enabled": true, "severity": "error" },
+    "function_naming": { "type": "naming", "scope": "function", "pattern": "^f_" }
+  }
+}
+```
+
+Both the single-file CLI and the project runner check the policy before
+linting and exit 2 if any of these is wrong, with one
+`invalid policy <file>: <problem>` line per problem:
+
+- the file is missing or is not valid JSON;
+- the top-level `"rules"` key is missing; other top-level keys must be
+  `comment`, `generated` or `version`;
+- a rule entry is not a JSON object;
+- a rule id is not in the metadata and has no `"type"`, or its `"type"` is
+  not a rule type the metadata uses (this is how user-defined rules are
+  made; a user-defined `"naming"` rule needs `"scope"` and `"pattern"`);
+- a rule has an option it does not support. A built-in rule supports the
+  keys of its metadata entry plus `type`, `enabled`, `severity` and
+  `message`; a user-defined rule supports the keys of the built-in rules of
+  its type;
+- `"type"` differs from the metadata on a built-in rule;
+- `"severity"` is not `error`, `warning` or `info`.
+
+Keys starting with `_` are comments and are ignored at the top level, inside
+`"rules"` and inside a rule entry.
+
 ## Development & tests
 
 Point `TCLLIBPATH` at an `aurig-core` checkout, then run the full suite (this

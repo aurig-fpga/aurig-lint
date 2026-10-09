@@ -19,6 +19,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (BREAKING)
 
+- Policy files are validated before linting, by the single-file CLI (also
+  with `-export_rules`) and by the project runner. An invalid policy now
+  exits **2** with one `invalid policy <file>: <problem>` line per problem,
+  instead of being dropped in whole or in part without a message (#16). No
+  report or export file is written. Now rejected:
+  - a `-policy` file that does not exist (the CLI used to lint without it;
+    the runner already exited 2);
+  - malformed JSON (the runner used to exit 1 with a Tcl stack trace from the
+    effective-policy export);
+  - a policy without the top-level `"rules"` key, and top-level keys other
+    than `rules`, `comment`, `generated` and `version`;
+  - a rule entry that is not a JSON object;
+  - a rule id that is not in the metadata and has no `"type"`, or whose
+    `"type"` is not a rule type used in the metadata;
+  - an option the rule does not support: a built-in rule supports the keys of
+    its metadata entry plus `type`, `enabled`, `severity`, `message`; a
+    user-defined rule the keys of the built-in rules of its type. For example
+    `bfm_patterns` or `excluded_architectures` on `forbid_latch_inference`,
+    which only `require_reset_in_clocked_process` reads. An exported effective
+    policy that carried such an option is rejected when fed back;
+  - a `"severity"` other than `error`, `warning`, `info`;
+  - a `"type"` on a built-in rule that differs from its metadata;
+  - a user-defined `"naming"` rule without `"scope"` or `"pattern"`.
+
+  Keys starting with `_` (such as `"_note"`) are comments and are ignored at
+  the top level, inside `"rules"` and inside a rule entry. See "Policy file"
+  in the README.
+
 - `tools/run_lint_project_inprocess.tcl`: a manifest that resolves to no VHDL
   files now exits **2** instead of 0. That covers a manifest with no
   `file_sets`, entries with no `src`, patterns that match nothing, and patterns
