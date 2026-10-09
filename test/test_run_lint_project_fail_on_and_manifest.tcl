@@ -580,29 +580,73 @@ check_true "collection failure: stderr names the manifest on the abort line" \
     {[string match "*Manifest: [file join $bad_manifest config project.yaml]*" $stderr_bad]}
 check_true "collection failure: stderr carries the abort line" \
     {[string match "*Aborting: the project's source inventory could not be resolved.*" $stderr_bad]}
+# A manifest that cannot be read is a different fault from one that reads
+# fine and declares nothing: the empty-inventory gate must not speak here.
+check_true "collection failure: the empty-inventory gate does not fire" \
+    {![string match "*resolves to no VHDL source files*" $stderr_bad]}
 
 # ----------------------------------------------------------------------------
-# Scenario 7: a manifest that resolves to nothing lints nothing
+# Empty-inventory gate (issue #6)
+#
+# A manifest that resolves to no VHDL sources is a configuration fault:
+# rc=2, an ERROR on stderr naming the manifest, the root the patterns were
+# matched against, the declared pattern count and the patterns that matched
+# nothing, and no report. -allow_empty accepts it as a WARNING with rc=0,
+# still without a report. Scenarios 7-13 fail against a runner without the
+# gate; 14-17 are controls that hold with or without it; 18 feeds the gate
+# a collection report with fields missing.
+#
+# Each fixture is its own project under the sandbox. `make_project` writes
+# <dir>/config/project.yaml (project_root ".." -> <dir>) plus the named
+# files under <dir>/src/, each holding a minimal clean VHDL entity.
+# ----------------------------------------------------------------------------
+set gate_msg "*resolves to no VHDL source files*"
+
+proc make_project {name yaml files} {
+    set dir [file join $::sandbox $name]
+    file mkdir [file join $dir config]
+    file mkdir [file join $dir src]
+    write_file [file join $dir config project.yaml] $yaml
+    foreach f $files {
+        set entity [file rootname $f]
+        write_file [file join $dir src $f] \
+"library ieee;
+use ieee.std_logic_1164.all;
+
+entity $entity is
+    port (clk : in std_logic);
+end entity $entity;
+
+architecture rtl of $entity is
+begin
+end architecture rtl;"
+    }
+    return $dir
+}
+
+# Run the runner on a fixture with -format csv into <dir>/<outname>;
+# return [list rc stdout stderr outdir].
+proc run_fixture {dir outname args} {
+    set outdir [file join $dir $outname]
+    set stderr_file [file join $dir stderr_$outname.log]
+    lassign [run_runner_with_stderr $stderr_file \
+        -project_root $dir -format csv -outdir $outdir {*}$args] rc out err
+    return [list $rc $out $err $outdir]
+}
+
+# ----------------------------------------------------------------------------
+# Scenario 7: declared pattern matches nothing -> rc=2, nothing linted
 #
 # The manifest declares `rtl/*.vhd`; the only source in the tree is at
 # `src/Undeclared.vhd` -- outside the declared pattern, but one level
 # below project_root and so well inside the reach of the removed glob,
-# which scanned project_root plus two directory levels. The run must
-# report an empty inventory and must not touch the undeclared file.
-# `-verbose` makes the runner print each file it processes by relative
-# path, so the basename assertion below can see a file that was linted.
-#
-# Deliberately NOT asserting on rc: an empty declared inventory exits 0
-# today, and the gate tracked in issue #6 will change that to 2. Pinning
-# rc here would make that change look like a regression.
+# which scanned project_root plus two directory levels. `-verbose` makes
+# the runner print each file it processes by relative path, so the
+# basename assertion can see a file that was linted.
 # ----------------------------------------------------------------------------
-puts "\n=== Scenario 7: manifest resolving to nothing lints nothing ==="
+puts "\n=== Scenario 7: declared pattern matches nothing -> rc=2 ==="
 
-set empty_inv [file join $sandbox empty_inventory]
-file mkdir [file join $empty_inv config]
-file mkdir [file join $empty_inv src]
-
-write_file [file join $empty_inv config project.yaml] \
+set empty_inv [make_project empty_inventory \
 {schema_version: "1.0"
 project_name: empty_inventory_fixture
 project_root: ".."
@@ -614,31 +658,380 @@ file_sets:
       vhdl_std: "2008"
       src:
         - rtl/*.vhd
-}
+} {Undeclared.vhd}]
 
-write_file [file join $empty_inv src Undeclared.vhd] \
-{library ieee;
-use ieee.std_logic_1164.all;
+lassign [run_fixture $empty_inv out -verbose] rc_empty stdout_empty stderr_empty out_empty
 
-entity Undeclared is
-    port (clk : in std_logic);
-end entity Undeclared;
-
-architecture rtl of Undeclared is
-begin
-end architecture rtl;}
-
-set empty_outdir [file join $empty_inv out]
-lassign [run_runner -project_root $empty_inv -format csv -outdir $empty_outdir -verbose] \
-    rc_empty stdout_empty
-
-check_true "empty inventory: stdout reports no VHDL files found" \
-    {[string match "*No VHDL files found in project.*" $stdout_empty]}
-check_true "empty inventory: stdout reports nothing checked or processed" \
+check_eq "unmatched pattern: rc=2" 2 $rc_empty
+check_true "unmatched pattern: stderr carries the gate ERROR" \
+    {[string match "ERROR: *resolves to no VHDL source files.*" $stderr_empty]}
+check_true "unmatched pattern: stderr names the manifest" \
+    {[string match "*Manifest: [file join $empty_inv config project.yaml]*" $stderr_empty]}
+check_true "unmatched pattern: stderr names the project root" \
+    {[string match "*Project root (from the manifest): $empty_inv\n*" $stderr_empty]}
+check_true "unmatched pattern: stderr reports one declared pattern" \
+    {[string match "*Declared source patterns: 1\n*" $stderr_empty]}
+check_true "unmatched pattern: stderr lists the pattern that matched nothing" \
+    {[string match "*Patterns matching no file:\n    - rtl/*.vhd\n*" $stderr_empty]}
+check_true "unmatched pattern: stderr points at -allow_empty" \
+    {[string match "*Pass -allow_empty to accept an empty inventory.*" $stderr_empty]}
+check_true "unmatched pattern: no report directory is created" \
+    {![file exists $out_empty]}
+check_true "unmatched pattern: nothing is checked or processed" \
     {![string match "*Files checked:*" $stdout_empty]
      && ![string match "*Processing *file(s)*" $stdout_empty]}
-check_true "empty inventory: the undeclared file is never linted" \
+check_true "unmatched pattern: the undeclared file is never linted" \
     {![string match "*Undeclared.vhd*" $stdout_empty]}
+
+# ----------------------------------------------------------------------------
+# Scenario 8: project_root "." in config/ -> rc=2 naming the wrong root
+#
+# The mistake from issue #6's reproduction: the manifest lives in config/
+# and says project_root ".", so `src/*.vhd` is matched under config/ while
+# the sources sit beside it. The message must show the root the patterns
+# were matched against and say it is not -project_root.
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 8: project_root resolves into config/ -> rc=2 ==="
+
+set dot_root [make_project root_dot \
+{schema_version: "1.0"
+project_name: root_dot_fixture
+project_root: "."
+top: Clean
+file_sets:
+  rtl:
+    - lib: work
+      src:
+        - src/*.vhd
+} {Clean.vhd}]
+
+lassign [run_fixture $dot_root out] rc_dot stdout_dot stderr_dot out_dot
+check_eq "project_root in config/: rc=2" 2 $rc_dot
+check_true "project_root in config/: stderr names config/ as the pattern root" \
+    {[string match "*Project root (from the manifest): [file join $dot_root config]\n*" $stderr_dot]}
+check_true "project_root in config/: stderr says it is not -project_root" \
+    {[string match "*not against\n    -project_root $dot_root;*" $stderr_dot]}
+check_true "project_root in config/: no report directory is created" \
+    {![file exists $out_dot]}
+
+# ----------------------------------------------------------------------------
+# Scenario 9: no file_sets key -> rc=2
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 9: no file_sets -> rc=2 ==="
+
+set no_fs [make_project no_file_sets \
+{schema_version: "1.0"
+project_name: no_file_sets_fixture
+project_root: ".."
+top: Clean
+} {Clean.vhd}]
+
+lassign [run_fixture $no_fs out] rc_nofs stdout_nofs stderr_nofs out_nofs
+check_eq "no file_sets: rc=2" 2 $rc_nofs
+check_true "no file_sets: stderr reports file_sets absent" \
+    {[string match "*file_sets: absent\n*" $stderr_nofs]}
+check_true "no file_sets: stderr reports zero declared patterns" \
+    {[string match "*Declared source patterns: 0\n*" $stderr_nofs]}
+check_true "no file_sets: no report directory is created" \
+    {![file exists $out_nofs]}
+
+# ----------------------------------------------------------------------------
+# Scenario 10: file_sets entry without src -> rc=2
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 10: file_sets entry without src -> rc=2 ==="
+
+set no_src [make_project entry_no_src \
+{schema_version: "1.0"
+project_name: entry_no_src_fixture
+project_root: ".."
+top: Clean
+file_sets:
+  rtl:
+    - lib: work
+} {Clean.vhd}]
+
+lassign [run_fixture $no_src out] rc_nosrc stdout_nosrc stderr_nosrc out_nosrc
+check_eq "entry without src: rc=2" 2 $rc_nosrc
+check_true "entry without src: stderr reports file_sets present" \
+    {[string match "*file_sets: present\n*" $stderr_nosrc]}
+check_true "entry without src: stderr reports zero declared patterns" \
+    {[string match "*Declared source patterns: 0\n*" $stderr_nosrc]}
+
+# ----------------------------------------------------------------------------
+# Scenario 11: board constraints only -> rc=2
+#
+# The constraint file is collected, so the inventory is not empty in
+# total -- but it holds no VHDL. This is the shape that rules out gating on
+# the report's total_files.
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 11: board constraints only -> rc=2 ==="
+
+set board_only [make_project board_only \
+{schema_version: "1.0"
+project_name: board_only_fixture
+project_root: ".."
+top: top
+board:
+  xdc_files:
+    - src/*.xdc
+} {}]
+write_file [file join $board_only src pins.xdc] "# pins"
+
+lassign [run_fixture $board_only out] rc_board stdout_board stderr_board out_board
+check_eq "board only: rc=2" 2 $rc_board
+check_true "board only: stderr counts the constraint file but no VHDL" \
+    {[string match "*Files collected: 1 (VHDL: 0)*" $stderr_board]}
+
+# ----------------------------------------------------------------------------
+# Scenario 12: declared pattern matches only non-VHDL sources -> rc=2
+#
+# The pattern matches, so the report lists nothing unmatched; the gate
+# still fires because no VHDL record was collected.
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 12: Verilog-only sources -> rc=2 ==="
+
+set verilog_only [make_project verilog_only \
+{schema_version: "1.0"
+project_name: verilog_only_fixture
+project_root: ".."
+top: top
+file_sets:
+  rtl:
+    - lib: work
+      src:
+        - src/*.v
+} {}]
+write_file [file join $verilog_only src top.v] "module top; endmodule"
+
+lassign [run_fixture $verilog_only out] rc_vlog stdout_vlog stderr_vlog out_vlog
+check_eq "Verilog only: rc=2" 2 $rc_vlog
+check_true "Verilog only: stderr reports the matched file and no VHDL" \
+    {[string match "*Declared source patterns: 1\n*" $stderr_vlog]
+     && [string match "*Files collected: 1 (VHDL: 0)*" $stderr_vlog]}
+check_true "Verilog only: no pattern is listed as matching nothing" \
+    {![string match "*Patterns matching no file:*" $stderr_vlog]}
+
+# ----------------------------------------------------------------------------
+# Scenario 13: -allow_empty accepts the empty inventory as a warning
+#
+# Same fixture as Scenario 7. Same diagnostics, at WARNING, rc=0, still no
+# report. On a manifest that does resolve, the flag changes nothing.
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 13: -allow_empty ==="
+
+lassign [run_fixture $empty_inv out_allow -allow_empty] \
+    rc_allow stdout_allow stderr_allow out_allow
+check_eq "-allow_empty on empty inventory: rc=0" 0 $rc_allow
+check_true "-allow_empty on empty inventory: stderr carries the gate as a WARNING" \
+    {[string match "WARNING: *resolves to no VHDL source files.*" $stderr_allow]
+     && ![string match "*ERROR*" $stderr_allow]}
+check_true "-allow_empty on empty inventory: stderr still lists the unmatched pattern" \
+    {[string match "*Patterns matching no file:\n    - rtl/*.vhd\n*" $stderr_allow]}
+check_true "-allow_empty on empty inventory: stderr says it was accepted" \
+    {[string match "*Accepted under -allow_empty: nothing to lint, no report written.*" $stderr_allow]}
+check_true "-allow_empty on empty inventory: no report directory is created" \
+    {![file exists $out_allow]}
+
+lassign [run_runner -project_root $sandbox -format csv \
+    -outdir [file join $sandbox out_allow_resolving]] rc_plain _
+lassign [run_runner -project_root $sandbox -format csv \
+    -outdir [file join $sandbox out_allow_resolving_flag] -allow_empty] rc_flag _
+check_eq "-allow_empty on a resolving manifest: rc unchanged" $rc_plain $rc_flag
+check_true "-allow_empty on a resolving manifest: report written" \
+    {[file exists [file join $sandbox out_allow_resolving_flag lint_report.csv]]}
+
+# ----------------------------------------------------------------------------
+# Scenario 14 (control): an existing output directory is left untouched
+#
+# The gate does not clean up after earlier runs. A report already in the
+# output directory stays exactly as it was.
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 14: existing outdir untouched ==="
+
+set stale_out [file join $empty_inv out_stale]
+file mkdir $stale_out
+write_file [file join $stale_out index.html] "stale-report"
+run_fixture $empty_inv out_stale
+set fp [open [file join $stale_out index.html] r]
+set stale_content [string trimright [read $fp]]
+close $fp
+check_eq "existing outdir: the earlier report is unchanged" "stale-report" $stale_content
+check_eq "existing outdir: nothing is added" {index.html} \
+    [lsort [glob -nocomplain -tails -directory $stale_out *]]
+
+# ----------------------------------------------------------------------------
+# Scenario 15 (control): some patterns unmatched, VHDL still found
+#
+# The gate fires on an empty inventory, not on any unmatched pattern.
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 15: partially unmatched patterns -> gate silent ==="
+
+set partial [make_project partial_unmatched \
+{schema_version: "1.0"
+project_name: partial_unmatched_fixture
+project_root: ".."
+top: Clean
+file_sets:
+  rtl:
+    - lib: work
+      src:
+        - src/*.vhd
+        - moved/*.vhd
+} {Clean.vhd}]
+
+lassign [run_fixture $partial out] rc_partial stdout_partial stderr_partial out_partial
+check_true "partially unmatched: the gate does not fire" \
+    {![string match $gate_msg $stderr_partial]}
+check_true "partially unmatched: the matched file is processed" \
+    {[string match "*Processing 1 file(s)*" $stdout_partial]}
+check_true "partially unmatched: report written" \
+    {[file exists [file join $out_partial lint_report.csv]]}
+
+# ----------------------------------------------------------------------------
+# Scenario 16 (control): every file excluded -> gate silent
+#
+# The manifest declares sources; lint.excludes removes them all. That case
+# is decided separately (issue #6, PR C), so rc is deliberately not pinned.
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 16: all files excluded -> gate silent ==="
+
+set all_excl [make_project all_excluded \
+{schema_version: "1.0"
+project_name: all_excluded_fixture
+project_root: ".."
+top: Clean
+file_sets:
+  rtl:
+    - lib: work
+      src:
+        - src/*.vhd
+lint:
+  excludes:
+    - "\\.vhd$"
+} {Clean.vhd}]
+
+lassign [run_fixture $all_excl out] rc_excl stdout_excl stderr_excl out_excl
+check_true "all excluded: the gate does not fire" \
+    {![string match $gate_msg $stderr_excl]}
+check_true "all excluded: the file is reported as skipped" \
+    {[string match "*skipping 1 via excludes*" $stdout_excl]}
+
+# ----------------------------------------------------------------------------
+# Scenario 17 (control): -include filters a resolving manifest to zero
+#
+# The gate runs before -include; a user filter that selects nothing is not
+# an empty inventory. Also decided separately (PR C); rc not pinned.
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 17: -include matching nothing -> gate silent ==="
+
+lassign [run_fixture $partial out_include -include NoSuchFile] \
+    rc_incl stdout_incl stderr_incl out_incl
+check_true "-include to zero: the gate does not fire" \
+    {![string match $gate_msg $stderr_incl]}
+
+# ----------------------------------------------------------------------------
+# Scenario 18: the gate survives a collection report with fields missing
+#
+# The report fields only explain the failure; when one is missing, the gate
+# must still print its message and return rc=2 (rc=0 under -allow_empty)
+# rather than die on a Tcl error. aurig-core always fills the report, so a
+# wrapper script stands in for it: it loads the engine, wraps
+# collect_project_files to tamper with the -report variable, then sources
+# the runner with the remaining arguments. Modes:
+#   drop    -- report without declared_patterns, unmatched_patterns,
+#              file_sets_present and total_files
+#   unset   -- the -report variable is never set
+#   notdict -- the -report variable holds a list of odd length, not a dict
+# The board-only fixture collects one non-VHDL record, so the fallback file
+# count is visibly the collected records, not a default.
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 18: collection report with fields missing ==="
+
+set stub_runner [file join $sandbox stub_report_runner.tcl]
+write_file $stub_runner \
+{set ::stub_mode [lindex $argv 0]
+set runner [lindex $argv 1]
+set argv [lrange $argv 2 end]
+set argc [llength $argv]
+set ::auto_path [linsert $::auto_path 0 [file dirname [file dirname $runner]]]
+package require aurig::lint
+rename ::aurig::core::util::collect_project_files ::aurig::core::util::__stub_real_collect
+proc ::aurig::core::util::collect_project_files {args} {
+    set i [lsearch -exact $args -report]
+    set name [lindex $args $i+1]
+    set files [::aurig::core::util::__stub_real_collect \
+        {*}[lreplace $args $i $i+1] -report report]
+    upvar 1 $name out
+    switch -- $::stub_mode {
+        drop {
+            set out [dict remove $report declared_patterns unmatched_patterns \
+                file_sets_present total_files]
+        }
+        notdict { set out {three odd elements} }
+        unset {}
+    }
+    return $files
+}
+source $runner}
+
+proc run_stubbed {mode dir outname args} {
+    set outdir [file join $dir $outname]
+    set stderr_file [file join $dir stderr_$outname.log]
+    set runner [file join $::repo_root tools run_lint_project_inprocess.tcl]
+    set rc 0
+    set stdout ""
+    if {[catch {
+        set stdout [exec [info nameofexecutable] $::stub_runner $mode $runner \
+            -project_root $dir -format csv -outdir $outdir {*}$args 2>$stderr_file]
+    } caught opts]} {
+        set stdout $caught
+        set rc 1
+        set ec [dict get $opts -errorcode]
+        if {[lindex $ec 0] eq "CHILDSTATUS"} {
+            set rc [lindex $ec 2]
+        }
+    }
+    set fp [open $stderr_file r]
+    set stderr [read $fp]
+    close $fp
+    return [list $rc $stderr $outdir]
+}
+
+lassign [run_stubbed drop $board_only out_stub_drop] rc_sd stderr_sd out_sd
+check_eq "report fields missing: rc=2" 2 $rc_sd
+check_true "report fields missing: stderr carries the gate ERROR" \
+    {[string match "ERROR: *resolves to no VHDL source files.*" $stderr_sd]}
+check_true "report fields missing: missing fields print as unknown" \
+    {[string match "*file_sets: unknown\n*" $stderr_sd]
+     && [string match "*Declared source patterns: unknown\n*" $stderr_sd]
+     && [string match "*Patterns matching no file: unknown\n*" $stderr_sd]}
+check_true "report fields missing: file count falls back to the collected records" \
+    {[string match "*Files collected: 1 (VHDL: 0)*" $stderr_sd]}
+check_true "report fields missing: stderr points at -allow_empty" \
+    {[string match "*Pass -allow_empty to accept an empty inventory.*" $stderr_sd]}
+check_true "report fields missing: no Tcl error escapes" \
+    {![string match "*while executing*" $stderr_sd]}
+check_true "report fields missing: no report directory is created" \
+    {![file exists $out_sd]}
+
+lassign [run_stubbed drop $board_only out_stub_allow -allow_empty] \
+    rc_sa stderr_sa out_sa
+check_eq "report fields missing, -allow_empty: rc=0" 0 $rc_sa
+check_true "report fields missing, -allow_empty: stderr carries the gate as a WARNING" \
+    {[string match "WARNING: *resolves to no VHDL source files.*" $stderr_sa]
+     && ![string match "*ERROR*" $stderr_sa]}
+check_true "report fields missing, -allow_empty: stderr says it was accepted" \
+    {[string match "*Accepted under -allow_empty: nothing to lint, no report written.*" $stderr_sa]}
+check_true "report fields missing, -allow_empty: no report directory is created" \
+    {![file exists $out_sa]}
+
+foreach mode {unset notdict} {
+    lassign [run_stubbed $mode $board_only out_stub_$mode] rc_sm stderr_sm out_sm
+    check_eq "report $mode: rc=2" 2 $rc_sm
+    check_true "report $mode: stderr carries the gate ERROR with the fallback count" \
+        {[string match "ERROR: *resolves to no VHDL source files.*" $stderr_sm]
+         && [string match "*Files collected: 1 (VHDL: 0)*" $stderr_sm]}
+}
 
 # ----------------------------------------------------------------------------
 # Cleanup

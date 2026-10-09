@@ -10,7 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `tools/run_lint_project_inprocess.tcl`: `-allow_empty` accepts a manifest
+  that resolves to no VHDL files. The runner prints the same diagnostics as a
+  WARNING and exits **0**, without writing a report. Opt-in only; nothing in the
+  manifest implies it.
+
 ### Changed (BREAKING)
+
+- `tools/run_lint_project_inprocess.tcl`: a manifest that resolves to no VHDL
+  files now exits **2** instead of 0. That covers a manifest with no
+  `file_sets`, entries with no `src`, patterns that match nothing, and patterns
+  that match only non-VHDL files (Verilog sources, board constraints). The
+  check runs on the inventory the manifest declares, before `-include`, the
+  excludes and `-limit`. The ERROR on stderr names the manifest, the project
+  root the patterns were matched against, the declared pattern count and the
+  patterns that matched nothing. No report is written, and an existing output
+  directory is left as it was, so a report from an earlier run is not
+  replaced. Pass `-allow_empty` to keep the previous rc=0. Requires an
+  aurig-core whose `collect_project_files` accepts `-report`
+  (aurig-fpga/aurig-core#6). The exit-code text in `-help` and in the script
+  header now reads "2 - configuration, environment or tool error", which
+  is what the runner already did.
 
 - `tools/run_lint_project_inprocess.tcl`: the recursive glob fallback is gone.
   When the manifest resolved to no VHDL sources, the runner used to scan
@@ -23,12 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failure inside `collect_project_files` is now a hard stop with **exit code
   2**, naming the manifest, instead of being answered with the glob. 2 is this
   runner's existing code for a configuration or environment fault.
-
-  Not yet fixed here: a manifest that resolves *successfully* to an empty
-  source set still exits **0**, printing `No VHDL files found in project.`
-  This change removes the mechanism that masked that case; the gate that turns
-  it into a failure is tracked in
-  [#6](https://github.com/aurig-fpga/aurig-lint/issues/6) and lands separately.
 
 ### Removed
 

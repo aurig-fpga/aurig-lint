@@ -24,6 +24,8 @@
 #   -include <regex>       Only lint files matching this regex
 #   -exclude <regex>       Skip files matching this regex
 #   -stop_on_tool_error    Stop on first tool error (default: 1, set to 0 to continue)
+#   -allow_empty           Accept a manifest that resolves to no VHDL files
+#                          (warn and exit 0 instead of exiting 2)
 #   -verbose               Print detailed progress
 #
 # Output Structure (HTML format):
@@ -37,9 +39,9 @@
 #       <file>.html           - Source viewer for each VHDL file
 #
 # Exit codes:
-#   0 - All files OK (no diagnostics or only INFO-level)
-#   1 - LINT_ISSUES (some files have diagnostics)
-#   2 - TOOL_ERROR (linter failed on one or more files)
+#   0 - clean under the chosen threshold
+#   1 - diagnostics meet/exceed the -fail_on threshold (default: error)
+#   2 - configuration, environment or tool error
 #=============================================================================
 
 #-----------------------------------------------------------------------------
@@ -202,6 +204,7 @@ array set opts {
     exclude           ""
     stop_on_tool_error 1
     verbose           0
+    allow_empty       0
     fail_on           "error"
     html_preview_count 10
     html_default_collapsed 1
@@ -239,6 +242,8 @@ proc print_usage {} {
     puts "  -stop_on_tool_error 0|1  Stop on first tool error (default: 1)"
     puts "  -fail_on <level>       Exit 1 when aggregate diagnostics meet/exceed level"
     puts "                         (error|warning|info|any|none, default: error)"
+    puts "  -allow_empty           Accept a manifest that resolves to no VHDL files:"
+    puts "                         warn and exit 0 instead of exiting 2 (no report is written)"
     puts "  -verbose               Print detailed progress"
     puts ""
     puts "Baseline Workflow:"
@@ -260,9 +265,9 @@ proc print_usage {} {
     puts "  -max_diags_per_rule_per_file <N>  Cap diagnostics per rule per file (default: 50)"
     puts ""
     puts "Exit codes:"
-    puts "  0 - All files OK"
-    puts "  1 - Some files have lint issues"
-    puts "  2 - Tool errors occurred"
+    puts "  0 - clean under the chosen threshold"
+    puts "  1 - diagnostics meet/exceed the -fail_on threshold (default: error)"
+    puts "  2 - configuration, environment or tool error"
 }
 
 #-----------------------------------------------------------------------------
@@ -323,6 +328,11 @@ for {set i 0} {$i < [llength $argv]} {incr i} {
         continue
     }
 
+    if {$arg eq "-allow_empty"} {
+        set opts(allow_empty) 1
+        continue
+    }
+
     # Unknown argument
     puts stderr "ERROR: Unknown argument: $arg"
     print_usage
@@ -355,6 +365,26 @@ if {$opts(manifest) eq "" && $opts(project_root) eq ""} {
 # (lint.excludes regex, .aurig/lint-policy.json discovery, outdir
 # default, relative-path computation) all agree on what the
 # project root is.
+#
+# Returns the directory the manifest's `project_root` field resolves to,
+# normalized: relative to the manifest's own directory, which is also the
+# default when the field is absent, empty or ".".
+proc lint_project_manifest_root {yaml_path manifest_dict} {
+    set manifest_dir [file dirname $yaml_path]
+    set root $manifest_dir
+    if {[dict exists $manifest_dict project_root]} {
+        set pr_field [string map {\\ /} [dict get $manifest_dict project_root]]
+        if {$pr_field eq "" || $pr_field eq "."} {
+            set root $manifest_dir
+        } elseif {[string equal [file pathtype $pr_field] "absolute"]} {
+            set root $pr_field
+        } else {
+            set root [file join $manifest_dir $pr_field]
+        }
+    }
+    return [file normalize $root]
+}
+
 set yaml_path ""
 if {$opts(manifest) ne ""} {
     set opts(manifest) [file normalize $opts(manifest)]
@@ -363,23 +393,11 @@ if {$opts(manifest) ne ""} {
         exit 2
     }
     set yaml_path $opts(manifest)
-    set manifest_dir [file dirname $yaml_path]
-    set derived_root $manifest_dir
     if {[catch {set _manifest_yaml [::aurig::core::util::readYaml $yaml_path]} read_err]} {
         puts stderr "ERROR: failed to read manifest $yaml_path: $read_err"
         exit 2
     }
-    if {[dict exists $_manifest_yaml project_root]} {
-        set _pr_field [string map {\\ /} [dict get $_manifest_yaml project_root]]
-        if {$_pr_field eq "" || $_pr_field eq "."} {
-            set derived_root $manifest_dir
-        } elseif {[string equal [file pathtype $_pr_field] "absolute"]} {
-            set derived_root $_pr_field
-        } else {
-            set derived_root [file join $manifest_dir $_pr_field]
-        }
-    }
-    set opts(project_root) [file normalize $derived_root]
+    set opts(project_root) [lint_project_manifest_root $yaml_path $_manifest_yaml]
 } else {
     set opts(project_root) [file normalize $opts(project_root)]
     set yaml_path [file join $opts(project_root) "config" "project.yaml"]
@@ -1197,7 +1215,8 @@ if {[catch {
     set fileDict [::aurig::core::util::collect_project_files \
         -from $yaml_path \
         -format yaml \
-        -follow_globs 1]
+        -follow_globs 1 \
+        -report inventory_report]
 } err]} {
     puts stderr "ERROR collecting files via collect_project_files: $err"
     puts stderr "  Manifest: $yaml_path"
@@ -1210,6 +1229,82 @@ dict for {idx rec} $fileDict {
     if {[dict get $rec type] eq "vhdl"} {
         lappend vhdl_files [dict get $rec fullpath]
     }
+}
+
+# Empty-inventory gate. A manifest that yields no VHDL sources is a
+# configuration fault, not a clean run: exit 2 before any report is written,
+# so a run that linted nothing cannot pass for one that found nothing wrong.
+# It sits here, ahead of -include, the excludes and -limit, because this is
+# the last point where the count still describes what the manifest declared.
+# The condition is the VHDL record count itself, not the report's
+# total_files: board constraints count there, and a board-only or
+# Verilog-only manifest must still be rejected. The report fields only
+# explain the failure. -allow_empty downgrades it to a warning and rc=0.
+#
+# The report is read defensively: the variable may be unset, not a dict, or
+# missing a field, and none of that may turn the gate into a Tcl error that
+# skips the message and the exit code. A missing field prints "unknown";
+# the file count falls back to the collected records themselves.
+#
+# Sets varName to the report's value for key and returns 1, or returns 0
+# when the report is not a dict or has no such key.
+proc lint_project_report_field {report key varName} {
+    upvar 1 $varName value
+    if {[catch {dict exists $report $key} has] || !$has} {
+        return 0
+    }
+    set value [dict get $report $key]
+    return 1
+}
+
+if {[llength $vhdl_files] == 0} {
+    set level [expr {$opts(allow_empty) ? "WARNING" : "ERROR"}]
+    set manifest_root [lint_project_manifest_root $yaml_path $yaml_dict]
+    if {![info exists inventory_report]} {
+        set inventory_report [dict create]
+    }
+    if {![lint_project_report_field $inventory_report declared_patterns declared]} {
+        set declared unknown
+    }
+    set unmatched_known [expr {
+        [lint_project_report_field $inventory_report unmatched_patterns unmatched]
+        && [string is list $unmatched]}]
+    if {![lint_project_report_field $inventory_report file_sets_present file_sets]} {
+        set file_sets unknown
+    }
+    if {![lint_project_report_field $inventory_report total_files total]} {
+        set total [dict size $fileDict]
+    }
+    puts stderr "$level: the project manifest resolves to no VHDL source files."
+    puts stderr "  Manifest: $yaml_path"
+    puts stderr "  Project root (from the manifest): $manifest_root"
+    if {$manifest_root ne $opts(project_root)} {
+        puts stderr "    Source patterns are matched against this directory, not against"
+        puts stderr "    -project_root $opts(project_root); check the manifest's project_root field."
+    }
+    if {![string is boolean -strict $file_sets]} {
+        puts stderr "  file_sets: unknown"
+    } elseif {$file_sets} {
+        puts stderr "  file_sets: present"
+    } else {
+        puts stderr "  file_sets: absent"
+    }
+    puts stderr "  Declared source patterns: $declared"
+    if {!$unmatched_known} {
+        puts stderr "  Patterns matching no file: unknown"
+    } elseif {[llength $unmatched] > 0} {
+        puts stderr "  Patterns matching no file:"
+        foreach pat $unmatched {
+            puts stderr "    - $pat"
+        }
+    }
+    puts stderr "  Files collected: $total (VHDL: 0)"
+    if {$opts(allow_empty)} {
+        puts stderr "  Accepted under -allow_empty: nothing to lint, no report written."
+        exit 0
+    }
+    puts stderr "  Aborting: nothing to lint. Pass -allow_empty to accept an empty inventory."
+    exit 2
 }
 
 # Apply include/exclude filters
@@ -2528,7 +2623,7 @@ puts "========================================"
 # Exit Code
 #
 # Three-state contract preserved:
-#   2 — at least one file failed inside the lint engine (tool error).
+#   2 — configuration, environment or tool error.
 #       Independent of -fail_on. Sentinel maps this to ERROR (hard stop).
 #   1 — diagnostics meet/exceed the -fail_on threshold (default: error).
 #   0 — clean under the chosen threshold.
