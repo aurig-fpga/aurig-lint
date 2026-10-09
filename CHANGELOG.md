@@ -42,6 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runner still exits 2 with the same install and PATH guidance, whose probe now
   also identifies which interpreter it ran in.
 
+### Documentation
+
+- README: a Windows walkthrough from an empty machine to a first lint run
+  (interpreter check, clone layout, `TCLLIBPATH` in PowerShell and cmd.exe,
+  paths with spaces, persistent setting, Git Bash's own `tclsh`); the project
+  runner's manifest requirement and `project_root` resolution; a fail-fast
+  PowerShell test loop. The Provenance paragraph is gone.
+
 ## [0.1.0] - 2026-06-22
 
 Initial public release of aurig-lint as part of the AURIG open-source FPGA
