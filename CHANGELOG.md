@@ -55,6 +55,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   level, inside `"rules"` and inside a rule entry. See "Policy file" in the
   README.
 
+- Policy and metadata files are read as UTF-8 on every platform, and one
+  leading byte order mark (UTF-8 BOM, as written by Notepad and Windows
+  PowerShell 5.1) is ignored. They used to be read in the system encoding, so
+  on Windows (cp1252) each accented letter of a UTF-8 file became two
+  characters, and reading stopped at a Ctrl-Z (0x1A) character, hiding any
+  text after it. A Ctrl-Z is now an ordinary character, so text after the
+  JSON value is reported. This covers the engine, the single-file CLI
+  (including `-export_rules`) and the project runner's effective-policy
+  export. Baseline files are unchanged.
+
 - `tools/run_lint_project_inprocess.tcl`: a manifest that resolves to no VHDL
   files now exits **2** instead of 0. That covers a manifest with no
   `file_sets`, entries with no `src`, patterns that match nothing, and patterns

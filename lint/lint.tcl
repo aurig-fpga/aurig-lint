@@ -152,6 +152,32 @@ proc ::aurig::lint::run {args} {
 # Configuration Loading
 #=============================================================================
 
+# Read a JSON configuration file (policy, metadata) as text.
+#
+# The file is decoded as UTF-8 whatever the system encoding (with cp1252, the
+# usual Windows default, each accented letter became two characters), with no
+# end-of-file character (Tcl's Windows default stops reading at Ctrl-Z, 0x1A,
+# which hid any text after it), and one leading byte order mark U+FEFF is
+# dropped (Notepad and Windows PowerShell 5.1 write one).
+#
+# Arguments:
+#   path : Path to the JSON file
+#
+# Returns: File content as text
+proc ::aurig::lint::read_json_file {path} {
+    set fp [open $path r]
+    try {
+        fconfigure $fp -encoding utf-8 -eofchar {} -translation auto
+        set text [read $fp]
+    } finally {
+        close $fp
+    }
+    if {[string index $text 0] eq "\uFEFF"} {
+        set text [string range $text 1 end]
+    }
+    return $text
+}
+
 # Load rule metadata (defaults). A missing or empty path yields an empty
 # dict, as before: the engine then simply has no built-in rules.
 #
@@ -165,10 +191,7 @@ proc ::aurig::lint::load_metadata {metadata_file} {
     if {$metadata_file eq "" || ![file exists $metadata_file]} {
         return [dict create]
     }
-    set fp [open $metadata_file r]
-    set json_data [read $fp]
-    close $fp
-    return [::json::json2dict $json_data]
+    return [::json::json2dict [read_json_file $metadata_file]]
 }
 
 # Strict, type-preserving JSON parse used to validate policy files.
@@ -462,12 +485,8 @@ proc ::aurig::lint::load_policy {policy_file metadata} {
     if {![file exists $policy_file]} {
         return -code error -errorcode {AURIG LINT POLICY} "$prefix: file not found"
     }
-    if {[catch {
-        set fp [open $policy_file r]
-        set json_data [read $fp]
-        close $fp
-    } err]} {
-        return -code error -errorcode {AURIG LINT POLICY} "$prefix: cannot read file: $err"
+    if {[catch {read_json_file $policy_file} json_data]} {
+        return -code error -errorcode {AURIG LINT POLICY} "$prefix: cannot read file: $json_data"
     }
     if {[catch {_json_typed $json_data} typed]} {
         return -code error -errorcode {AURIG LINT POLICY} "$prefix: malformed JSON: $typed"

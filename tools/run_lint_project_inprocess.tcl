@@ -959,9 +959,7 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
     # Load metadata
     set metadata_dict [dict create]
     if {[file exists $metadata_path]} {
-        set fp [open $metadata_path r]
-        set json_text [read $fp]
-        close $fp
+        set json_text [::aurig::lint::read_json_file $metadata_path]
         # Simple JSON to dict (reuse if json package available)
         if {![catch {package require json}]} {
             set metadata_dict [json::json2dict $json_text]
@@ -971,9 +969,7 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
     # Load policy if provided
     set policy_dict [dict create]
     if {$policy_path ne "" && [file exists $policy_path]} {
-        set fp [open $policy_path r]
-        set json_text [read $fp]
-        close $fp
+        set json_text [::aurig::lint::read_json_file $policy_path]
         if {![catch {package require json}]} {
             set policy_dict [json::json2dict $json_text]
         }

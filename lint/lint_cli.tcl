@@ -521,10 +521,8 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
 
         # Load metadata
         if {[catch {
-            set metadata_f [open $opts(-metadata) r]
-            set metadata_json [read $metadata_f]
-            close $metadata_f
-            set metadata_dict [::json::json2dict $metadata_json]
+            set metadata_dict [::json::json2dict \
+                [::aurig::lint::read_json_file $opts(-metadata)]]
         } err]} {
             puts stderr "Error: Failed to read metadata: $err"
             return 2

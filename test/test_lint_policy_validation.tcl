@@ -45,6 +45,12 @@
 # checks that fail on ccb348f (at least the message check); the rc and "no
 # output" checks pass there where ccb348f already exited 2 for another reason.
 #
+# Checks labelled [encoding] pin how the file is read: as UTF-8 whatever the
+# system encoding, with one leading byte order mark ignored and no
+# end-of-file character. They fail on 8c7348e on Windows, where the system
+# encoding is cp1252 and Tcl stops reading at Ctrl-Z (0x1A); the BOM check
+# fails there on every platform.
+#
 # Fixture: one file whose combinational process infers a latch on `q`, so
 # enabling forbid_latch_inference gives exactly one warning; its name ends in
 # _bfm.vhd for case 4. Runs use --fail-on warning / -fail_on warning so the
@@ -77,6 +83,15 @@ proc check_true {label cond} {
         puts "FAIL: $label"
         incr ::fail_count
     }
+}
+
+# Write text as exact UTF-8 bytes, prefixed by $prefix_bytes (a byte
+# string such as a BOM).
+proc write_utf8_bytes {path content {prefix_bytes ""}} {
+    file mkdir [file dirname $path]
+    set fp [open $path wb]
+    puts -nonewline $fp $prefix_bytes[encoding convertto utf-8 $content]
+    close $fp
 }
 
 proc write_file {path content} {
@@ -374,6 +389,58 @@ check_true "\[control\] CLI, user-defined naming rule with entity_suffix_binding
     {[string match {*Function 'compute' should start with f_*\[function_naming\]*} $o]}
 lassign [run_project $shared_user [file join $out r_shared_user]] rc o
 check_eq "\[control\] runner, user-defined naming rule with entity_suffix_bindings: rc 1" 1 $rc
+
+# ----------------------------------------------------------------------------
+# [encoding] UTF-8, an optional leading BOM, no end-of-file character
+# ----------------------------------------------------------------------------
+# A BOM (Notepad, Windows PowerShell 5.1) is ignored on every entry point.
+set bom_policy [file join $pol bom.json]
+write_utf8_bytes $bom_policy \
+    {{"rules": {"forbid_latch_inference": {"enabled": true}}}} "\xEF\xBB\xBF"
+
+lassign [run_cli $bom_policy] rc o
+check_eq "\[encoding\] CLI, policy with BOM: rc 1" 1 $rc
+check_true "\[encoding\] CLI, policy with BOM: latch warning" {[string match $latch_diag $o]}
+
+set bom_export [file join $out export_bom.json]
+lassign [run_cli $bom_policy -export_rules $bom_export] rc o
+check_eq "\[encoding\] CLI -export_rules, policy with BOM: rc 0" 0 $rc
+check_true "\[encoding\] CLI -export_rules, policy with BOM: file written" {[file exists $bom_export]}
+
+lassign [run_project $bom_policy [file join $out r_bom]] rc o
+check_eq "\[encoding\] runner, policy with BOM: rc 1" 1 $rc
+check_true "\[encoding\] runner, policy with BOM: 1 diagnostic" \
+    {[string match {*Total diagnostics: 1*} $o]}
+
+# Ctrl-Z (0x1A) is an ordinary character, so the text after it is caught.
+set ctrlz_policy [file join $pol ctrl_z.json]
+write_utf8_bytes $ctrlz_policy "{\"rules\": {}}\x1Agarbage"
+set ctrlz_problem "malformed JSON: unexpected text after the JSON value"
+
+lassign [run_cli $ctrlz_policy] rc o
+check_eq "\[encoding\] CLI, Ctrl-Z then garbage: rc 2" 2 $rc
+check_true "\[encoding\] CLI, Ctrl-Z then garbage: trailing text reported" \
+    {[string match "*Error: invalid policy $ctrlz_policy: $ctrlz_problem*" $o]}
+
+set out_ctrlz [file join $out r_ctrl_z]
+lassign [run_project $ctrlz_policy $out_ctrlz] rc o
+check_eq "\[encoding\] runner, Ctrl-Z then garbage: rc 2" 2 $rc
+check_true "\[encoding\] runner, Ctrl-Z then garbage: trailing text reported" \
+    {[string match "*ERROR: invalid policy $ctrlz_policy: $ctrlz_problem*" $o]}
+check_true "\[encoding\] runner, Ctrl-Z then garbage: no report directory" \
+    {![file exists $out_ctrlz]}
+
+# A message with accented letters, stored as UTF-8, reaches the diagnostic
+# unchanged (the test source stays ASCII: \u escapes).
+set accented_policy [file join $pol accented.json]
+write_utf8_bytes $accented_policy [format \
+    {{"rules": {"forbid_latch_inference": {"enabled": true, "message": "%s"}}}} \
+    "Caff\u00e8 \u00e0 l\u00e0: '\${signal}' fa un latch"]
+
+lassign [run_cli $accented_policy] rc o
+check_eq "\[encoding\] CLI, accented message: rc 1" 1 $rc
+check_true "\[encoding\] CLI, accented message: diagnostic text unchanged" \
+    {[string first "Caff\u00e8 \u00e0 l\u00e0: 'q' fa un latch" $o] >= 0}
 
 # ----------------------------------------------------------------------------
 # -export_rules refuses an invalid policy and writes nothing

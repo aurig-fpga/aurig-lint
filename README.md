@@ -392,6 +392,10 @@ overrides the defaults rule by rule:
 }
 ```
 
+Policy and metadata files are read as UTF-8 on every platform; one leading
+byte order mark (UTF-8 BOM, as written by Notepad and Windows PowerShell 5.1)
+is ignored.
+
 Both the single-file CLI (also with `-export_rules`) and the project runner
 check the policy before linting and exit 2 if any of these is wrong. Every
 problem is listed, one `invalid policy <file>: <problem>` line each:
