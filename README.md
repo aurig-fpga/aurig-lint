@@ -392,23 +392,30 @@ overrides the defaults rule by rule:
 }
 ```
 
-Both the single-file CLI and the project runner check the policy before
-linting and exit 2 if any of these is wrong, with one
-`invalid policy <file>: <problem>` line per problem:
+Both the single-file CLI (also with `-export_rules`) and the project runner
+check the policy before linting and exit 2 if any of these is wrong. Every
+problem is listed, one `invalid policy <file>: <problem>` line each:
 
-- the file is missing or is not valid JSON;
+- the file is missing, or is not exactly one JSON value: malformed JSON, or
+  any text after the value other than whitespace;
+- the top level, `"rules"` or a rule entry is not a JSON object (an array or
+  a string is rejected);
 - the top-level `"rules"` key is missing; other top-level keys must be
   `comment`, `generated` or `version`;
-- a rule entry is not a JSON object;
 - a rule id is not in the metadata and has no `"type"`, or its `"type"` is
   not a rule type the metadata uses (this is how user-defined rules are
   made; a user-defined `"naming"` rule needs `"scope"` and `"pattern"`);
-- a rule has an option it does not support. A built-in rule supports the
-  keys of its metadata entry plus `type`, `enabled`, `severity` and
-  `message`; a user-defined rule supports the keys of the built-in rules of
-  its type;
+- a rule has an option it does not support. Every rule of a type supports
+  the same options: the keys of all the metadata rules of that type, plus
+  `type`, `enabled`, `severity` and `message`. Every naming rule therefore
+  accepts `entity_suffix_bindings` and `binding_message`, which only
+  `architecture_naming` declares, while `forbid_latch_inference` does not
+  accept `bfm_patterns`;
 - `"type"` differs from the metadata on a built-in rule;
-- `"severity"` is not `error`, `warning` or `info`.
+- `"severity"` is not one of the strings `error`, `warning`, `info`.
+
+Option values are not type-checked otherwise: a list option written as a
+string, as in the exported effective policy, still loads.
 
 Keys starting with `_` are comments and are ignored at the top level, inside
 `"rules"` and inside a rule entry.

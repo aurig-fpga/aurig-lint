@@ -14,12 +14,18 @@
 #   3. unknown rule id without a "type"; unknown "type" for a new id
 #   4. option the rule does not support (bfm_patterns on
 #      forbid_latch_inference)
-#   5. malformed JSON
-#   6. a rule entry that is not a JSON object
+#   5. malformed JSON, including text after the JSON value
+#   6. a top level, "rules" or rule entry that is not a JSON object (checked
+#      on the JSON type: [] and "a b" are not objects)
 #   7. invalid "severity" value
 #   8. "type" changed on a built-in rule
 #   9. user-defined naming rule without "scope" / "pattern"
 #  10. unknown top-level key
+#
+# Independent problems on the same entry are all listed (an unknown id or
+# type plus an invalid severity gives two lines). The options a rule supports
+# are those of every metadata rule of its type, so signal_naming accepts
+# entity_suffix_bindings (declared on architecture_naming).
 #
 # The single-file CLI also refuses -export_rules with an invalid policy and
 # writes no export file. The project runner writes no report directory.
@@ -29,8 +35,15 @@
 # runner-exported effective_policy.json fed back as the policy. For every
 # other case and entry point the message check fails on the code before the
 # fix; the rc check does too, except where the old code already crashed with
-# rc 2 and a stack trace (CLI cases 3 unknown type, 5, 6; runner case 3
-# unknown type). Runner case 1 already exited 2 and is a pin.
+# rc 2 and a stack trace (CLI cases 3 unknown type, 5 syntax error, 6 false;
+# runner case 3 unknown type). Runner case 1 already exited 2 and is a pin.
+#
+# Checks labelled [review] cover four defects of the first version of this
+# fix (ccb348f), which validated json2dict output: it took [] and "a b" for
+# objects, ignored trailing text, stopped at the first problem of an entry,
+# and allowed only the keys of the rule's own metadata entry. Each group has
+# checks that fail on ccb348f (at least the message check); the rc and "no
+# output" checks pass there where ccb348f already exited 2 for another reason.
 #
 # Fixture: one file whose combinational process infers a latch on `q`, so
 # enabling forbid_latch_inference gives exactly one warning; its name ends in
@@ -189,7 +202,23 @@ set invalid [dict create \
                          {*rule "function_naming": user-defined naming rule requires "pattern"*}] \
     10_top_key     [list {{"rules": {"forbid_latch_inference": {"enabled": true}}, "overides": []}} \
                          {*unknown top-level key "overides"*}]]
-dict for {name spec} $invalid {
+
+# [review] invalid policies the first version accepted or reported differently.
+set review_invalid [dict create \
+    6_entry_array  [list {{"rules": {"signal_naming": []}}} \
+                         {*rule "signal_naming": entry is not a JSON object (found array)*}] \
+    6_entry_string [list {{"rules": {"signal_naming": "enabled false"}}} \
+                         {*rule "signal_naming": entry is not a JSON object (found string)*}] \
+    6_rules_array  [list {{"rules": []}} \
+                         {*"rules" is not a JSON object (found array)*}] \
+    6_top_array    [list {[]} \
+                         {*top level is not a JSON object (found array)*}] \
+    5_trailing     [list {{"rules": {}} garbage} \
+                         {*malformed JSON: unexpected text after the JSON value*}] \
+    5_two_values   [list {{"rules": {}}{}} \
+                         {*malformed JSON: unexpected text after the JSON value*}]]
+
+dict for {name spec} [dict merge $invalid $review_invalid] {
     write_file [file join $pol $name.json] [lindex $spec 0]
 }
 
@@ -263,22 +292,24 @@ check_true "case 1 runner: message names the file" {[string match "*$missing*" $
 # ----------------------------------------------------------------------------
 # Cases 2-10, both entry points
 # ----------------------------------------------------------------------------
-dict for {name spec} $invalid {
-    set path [file join $pol $name.json]
-    set problem [lindex $spec 1]
+foreach {tag cases} [list "" $invalid "\[review\] " $review_invalid] {
+    dict for {name spec} $cases {
+        set path [file join $pol $name.json]
+        set problem [lindex $spec 1]
 
-    lassign [run_cli $path] rc o
-    check_eq "case $name CLI: rc 2" 2 $rc
-    check_true "case $name CLI: \"Error: invalid policy <path>: <problem>\"" \
-        {[string match "*Error: invalid policy $path: $problem" $o]}
-    check_true "case $name CLI: no lint output" {![string match {*Summary:*} $o]}
+        lassign [run_cli $path] rc o
+        check_eq "${tag}case $name CLI: rc 2" 2 $rc
+        check_true "${tag}case $name CLI: \"Error: invalid policy <path>: <problem>\"" \
+            {[string match "*Error: invalid policy $path: $problem" $o]}
+        check_true "${tag}case $name CLI: no lint output" {![string match {*Summary:*} $o]}
 
-    set outdir [file join $out r_$name]
-    lassign [run_project $path $outdir] rc o
-    check_eq "case $name runner: rc 2" 2 $rc
-    check_true "case $name runner: \"ERROR: invalid policy <path>: <problem>\"" \
-        {[string match "*ERROR: invalid policy $path: $problem" $o]}
-    check_true "case $name runner: no report directory" {![file exists $outdir]}
+        set outdir [file join $out r_$name]
+        lassign [run_project $path $outdir] rc o
+        check_eq "${tag}case $name runner: rc 2" 2 $rc
+        check_true "${tag}case $name runner: \"ERROR: invalid policy <path>: <problem>\"" \
+            {[string match "*ERROR: invalid policy $path: $problem" $o]}
+        check_true "${tag}case $name runner: no report directory" {![file exists $outdir]}
+    }
 }
 
 # All problems are listed, one line each.
@@ -290,17 +321,72 @@ check_eq "multiple problems CLI: rc 2" 2 $rc
 check_eq "multiple problems CLI: one line per problem" 3 \
     [llength [regexp -all -inline -line {^Error: invalid policy .*$} $o]]
 
+# [review] An unknown id or type does not hide the other problems of the
+# entry: each policy gives exactly two lines, on both entry points.
+set independent [dict create \
+    unknown_type_and_severity [list \
+        {{"rules": {"my_rule": {"type": "nope", "severity": "fatal"}}}} \
+        {*rule "my_rule": unknown rule type "nope"*} \
+        {*rule "my_rule": invalid severity "fatal"*}] \
+    unknown_id_and_severity [list \
+        {{"rules": {"entity_namming": {"pattern": "^x_", "severity": "fatal"}}}} \
+        {*rule "entity_namming": unknown rule id*} \
+        {*rule "entity_namming": invalid severity "fatal"*}]]
+dict for {name spec} $independent {
+    set path [file join $pol $name.json]
+    write_file $path [lindex $spec 0]
+    foreach {entry prefix} [list CLI Error runner ERROR] {
+        if {$entry eq "CLI"} {
+            lassign [run_cli $path] rc o
+        } else {
+            lassign [run_project $path [file join $out r_$name]] rc o
+        }
+        set lines [regexp -all -inline -line "^$prefix: invalid policy .*\$" $o]
+        check_eq "\[review\] $name $entry: rc 2" 2 $rc
+        check_eq "\[review\] $name $entry: two problem lines" 2 [llength $lines]
+        check_true "\[review\] $name $entry: both problems named" \
+            {[string match [lindex $spec 1] $o] && [string match [lindex $spec 2] $o]}
+    }
+}
+
+# [review] Supported options are shared by every rule of a type: the naming
+# handler reads entity_suffix_bindings / binding_message whenever scope is
+# "architecture", so signal_naming and a user-defined naming rule accept them
+# (case 4 above still rejects bfm_patterns on forbid_latch_inference). The
+# user-defined rule already loaded on ccb348f and is a control.
+set shared_builtin [file join $pol shared_builtin.json]
+write_file $shared_builtin \
+    {{"rules": {"signal_naming": {"entity_suffix_bindings": {}, "binding_message": "Architecture '${name}' not allowed"}}}}
+set shared_user [file join $pol shared_user.json]
+write_file $shared_user \
+    {{"rules": {"function_naming": {"type": "naming", "scope": "function", "pattern": "^f_", "entity_suffix_bindings": {}, "message": "Function '${name}' should start with f_"}}}}
+
+lassign [run_cli $shared_builtin] rc o
+check_eq "\[review\] CLI, signal_naming with entity_suffix_bindings: rc 0" 0 $rc
+check_true "\[review\] CLI, signal_naming with entity_suffix_bindings: accepted" \
+    {![string match {*invalid policy*} $o]}
+lassign [run_project $shared_builtin [file join $out r_shared_builtin]] rc o
+check_eq "\[review\] runner, signal_naming with entity_suffix_bindings: rc 0" 0 $rc
+
+lassign [run_cli $shared_user] rc o
+check_eq "\[control\] CLI, user-defined naming rule with entity_suffix_bindings: rc 1" 1 $rc
+check_true "\[control\] CLI, user-defined naming rule with entity_suffix_bindings: its diagnostic" \
+    {[string match {*Function 'compute' should start with f_*\[function_naming\]*} $o]}
+lassign [run_project $shared_user [file join $out r_shared_user]] rc o
+check_eq "\[control\] runner, user-defined naming rule with entity_suffix_bindings: rc 1" 1 $rc
+
 # ----------------------------------------------------------------------------
 # -export_rules refuses an invalid policy and writes nothing
 # ----------------------------------------------------------------------------
-foreach name {2_no_rules 4_option} {
+foreach name {2_no_rules 4_option 6_entry_array 5_trailing} {
+    set tag [expr {[dict exists $review_invalid $name] ? "\[review\] " : ""}]
     set path [file join $pol $name.json]
     set export_file [file join $out export_$name.json]
     lassign [run_cli $path -export_rules $export_file] rc o
-    check_eq "case $name CLI -export_rules: rc 2" 2 $rc
-    check_true "case $name CLI -export_rules: invalid policy reported" \
+    check_eq "${tag}case $name CLI -export_rules: rc 2" 2 $rc
+    check_true "${tag}case $name CLI -export_rules: invalid policy reported" \
         {[string match "*Error: invalid policy $path: *" $o]}
-    check_true "case $name CLI -export_rules: no export file" {![file exists $export_file]}
+    check_true "${tag}case $name CLI -export_rules: no export file" {![file exists $export_file]}
 }
 
 # ----------------------------------------------------------------------------

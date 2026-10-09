@@ -21,31 +21,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Policy files are validated before linting, by the single-file CLI (also
   with `-export_rules`) and by the project runner. An invalid policy now
-  exits **2** with one `invalid policy <file>: <problem>` line per problem,
-  instead of being dropped in whole or in part without a message (#16). No
-  report or export file is written. Now rejected:
+  exits **2**, instead of being dropped in whole or in part without a
+  message (#16). Every problem is listed, one `invalid policy <file>:
+  <problem>` line each, including several problems of the same rule entry.
+  No report or export file is written. Now rejected:
   - a `-policy` file that does not exist (the CLI used to lint without it;
     the runner already exited 2);
-  - malformed JSON (the runner used to exit 1 with a Tcl stack trace from the
-    effective-policy export);
+  - input that is not exactly one JSON value: malformed JSON, or text after
+    the value other than whitespace (`{"rules": {}} garbage` used to load).
+    The runner used to exit 1 with a Tcl stack trace from the
+    effective-policy export on malformed JSON;
+  - a top level, `"rules"` or rule entry that is not a JSON object. The JSON
+    type is checked: `"signal_naming": []` or `"signal_naming": "a b"` used
+    to load;
   - a policy without the top-level `"rules"` key, and top-level keys other
     than `rules`, `comment`, `generated` and `version`;
-  - a rule entry that is not a JSON object;
   - a rule id that is not in the metadata and has no `"type"`, or whose
     `"type"` is not a rule type used in the metadata;
-  - an option the rule does not support: a built-in rule supports the keys of
-    its metadata entry plus `type`, `enabled`, `severity`, `message`; a
-    user-defined rule the keys of the built-in rules of its type. For example
+  - an option the rule does not support. Every rule of a type supports the
+    keys of all the metadata rules of that type plus `type`, `enabled`,
+    `severity`, `message`; so every naming rule accepts
+    `entity_suffix_bindings` and `binding_message`. Rejected for example:
     `bfm_patterns` or `excluded_architectures` on `forbid_latch_inference`,
     which only `require_reset_in_clocked_process` reads. An exported effective
     policy that carried such an option is rejected when fed back;
-  - a `"severity"` other than `error`, `warning`, `info`;
+  - a `"severity"` other than the strings `error`, `warning`, `info`;
   - a `"type"` on a built-in rule that differs from its metadata;
   - a user-defined `"naming"` rule without `"scope"` or `"pattern"`.
 
-  Keys starting with `_` (such as `"_note"`) are comments and are ignored at
-  the top level, inside `"rules"` and inside a rule entry. See "Policy file"
-  in the README.
+  Option values are not type-checked otherwise, so an exported effective
+  policy with list options written as strings still loads. Keys starting
+  with `_` (such as `"_note"`) are comments and are ignored at the top
+  level, inside `"rules"` and inside a rule entry. See "Policy file" in the
+  README.
 
 - `tools/run_lint_project_inprocess.tcl`: a manifest that resolves to no VHDL
   files now exits **2** instead of 0. That covers a manifest with no
