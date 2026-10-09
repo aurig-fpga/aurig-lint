@@ -993,8 +993,10 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
     }
 
     # Export JSON
+    # Written as UTF-8 (no BOM), the encoding policy files are read in.
     set json_file [file join $outdir "effective_policy.json"]
     set f [open $json_file w]
+    fconfigure $f -encoding utf-8
     puts $f "\{"
     puts $f "  \"comment\": \"Effective lint policy (metadata + user policy merged)\","
     puts $f "  \"generated\": \"[clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}]\","

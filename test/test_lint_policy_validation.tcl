@@ -49,7 +49,11 @@
 # system encoding, with one leading byte order mark ignored and no
 # end-of-file character. They fail on 8c7348e on Windows, where the system
 # encoding is cp1252 and Tcl stops reading at Ctrl-Z (0x1A); the BOM check
-# fails there on every platform.
+# fails there on every platform. The exporters' round trip fails on d60c2f2
+# on Windows, where they still wrote cp1252: the message carries a euro sign,
+# cp1252 byte 0x80, which comes back from a UTF-8 read as U+0080. (A stray
+# cp1252 0xE8 is decoded by Tcl 8.6 as U+00E8, so e-grave alone round-tripped
+# by accident; the byte check catches it.)
 #
 # Fixture: one file whose combinational process infers a latch on `q`, so
 # enabling forbid_latch_inference gives exactly one warning; its name ends in
@@ -435,12 +439,61 @@ check_true "\[encoding\] runner, Ctrl-Z then garbage: no report directory" \
 set accented_policy [file join $pol accented.json]
 write_utf8_bytes $accented_policy [format \
     {{"rules": {"forbid_latch_inference": {"enabled": true, "message": "%s"}}}} \
-    "Caff\u00e8 \u00e0 l\u00e0: '\${signal}' fa un latch"]
+    "Caff\u00e8 \u20ac2 \u00e0 l\u00e0: '\${signal}' fa un latch"]
 
 lassign [run_cli $accented_policy] rc o
 check_eq "\[encoding\] CLI, accented message: rc 1" 1 $rc
 check_true "\[encoding\] CLI, accented message: diagnostic text unchanged" \
-    {[string first "Caff\u00e8 \u00e0 l\u00e0: 'q' fa un latch" $o] >= 0}
+    {[string first "Caff\u00e8 \u20ac2 \u00e0 l\u00e0: 'q' fa un latch" $o] >= 0}
+
+# [encoding] Both exporters write UTF-8 (no BOM), so an exported policy with
+# non-ASCII text (e-grave, euro sign) round-trips: fed back to the CLI and the
+# runner, the diagnostic text is unchanged. The runner's diagnostic is read from its text
+# report, which it writes in the system encoding this test also reads in.
+proc file_bytes {path} {
+    set fp [open $path rb]
+    set bytes [read $fp]
+    close $fp
+    return $bytes
+}
+set accented_diag "Caff\u00e8 \u20ac2 \u00e0 l\u00e0: 'q' fa un latch"
+set accented_utf8 [encoding convertto utf-8 "Caff\u00e8 \u20ac2"]
+
+set accented_cli_export [file join $out export_accented.json]
+lassign [run_cli $accented_policy -export_rules $accented_cli_export] rc o
+check_eq "\[encoding\] CLI -export_rules, accented message: rc 0" 0 $rc
+lassign [run_project $accented_policy [file join $out r_accented]] rc o
+check_eq "\[encoding\] runner, accented message: rc 1" 1 $rc
+set accented_runner_export [file join $out r_accented effective_policy.json]
+
+set n 0
+foreach {label exported} [list "-export_rules" $accented_cli_export \
+                               "runner export" $accented_runner_export] {
+    incr n
+    set bytes [file_bytes $exported]
+    check_true "\[encoding\] $label: UTF-8 bytes (e-grave = C3 A8, euro = E2 82 AC)" \
+        {[string first $accented_utf8 $bytes] >= 0}
+    check_true "\[encoding\] $label: no BOM" \
+        {[string range $bytes 0 2] ne "\xEF\xBB\xBF"}
+
+    lassign [run_cli $exported] rc o
+    check_eq "\[encoding\] $label fed back to CLI: rc 1" 1 $rc
+    check_true "\[encoding\] $label fed back to CLI: diagnostic text unchanged" \
+        {[string first $accented_diag $o] >= 0}
+
+    set outdir [file join $out r_fed_accented_$n]
+    lassign [run_tool $runner -project_root $proj -policy $exported \
+        -outdir $outdir -fail_on warning -format text] rc o
+    check_eq "\[encoding\] $label fed back to runner: rc 1" 1 $rc
+    set report ""
+    catch {
+        set fp [open [file join $outdir lint_report.txt] r]
+        set report [read $fp]
+        close $fp
+    }
+    check_true "\[encoding\] $label fed back to runner: diagnostic text unchanged" \
+        {[string first $accented_diag $report] >= 0}
+}
 
 # ----------------------------------------------------------------------------
 # -export_rules refuses an invalid policy and writes nothing
