@@ -111,13 +111,16 @@ C:/ActiveTcl/bin/tclsh.exe
 ```
 
 The second line must start with `8.6`. Without tcllib, the `yaml` line fails
-with `can't find package yaml`. `tclsh check_tcl.tcl` then exits 1; a `tclsh`
-reading from a pipe exits 0 regardless, so in cmd.exe read the output, not the
-exit code.
+with `can't find package yaml`. `tclsh check_tcl.tcl` then exits 1. A `tclsh`
+reading commands from a pipe does not: an error in a command read from stdin,
+such as a failed `package require`, does not produce a non-zero exit code. In
+cmd.exe, read the output, not the exit code.
 
-Do not pipe into `tclsh` from Windows PowerShell 5.1: it prefixes the input
-with a byte-order mark, and `tclsh` answers `invalid command name` for the
-first line — with exit code 0.
+In Windows PowerShell 5.1, do not pipe into `tclsh`; use the file form above.
+Whether the pipe works depends on the session's output encoding: in a fresh
+session, where `$OutputEncoding` is ASCII, it does, but when `$OutputEncoding`
+(or `[Console]::InputEncoding`) is UTF-8, PowerShell prefixes the input with a
+byte-order mark and `tclsh` answers `invalid command name` for the first line.
 
 **Git Bash** puts Git for Windows' own `tclsh` first on `PATH`, ahead of the
 Windows `PATH`. That Tcl has no tcllib:
@@ -185,7 +188,9 @@ set TCLLIBPATH=C:/aurig/aurig-core
 ```
 
 Use forward slashes in cmd.exe too. With backslashes
-(`set TCLLIBPATH=C:\aurig\aurig-core`) Tcl drops them, and the CLI exits 2
+(`set TCLLIBPATH=C:\aurig\aurig-core`) Tcl reads each backslash as the start
+of an escape sequence — the `\a` in `\aurig` becomes a control character — so
+the directory no longer matches the one on disk, and the CLI exits 2
 with `Error: cannot load lint engine package 'aurig::lint': can't find package
 aurig::core`. The other paths on the command line — the script, `-input`,
 `-manifest`, `-project_root` — accept backslashes.
@@ -211,9 +216,11 @@ For every new window (current user), from PowerShell:
 [Environment]::SetEnvironmentVariable('TCLLIBPATH', 'C:/aurig/aurig-core', 'User')
 ```
 
-The setting reaches PowerShell and cmd.exe windows opened afterwards. Windows
-that are already open, and programs started from them, keep their old
-environment. To remove it:
+The setting reaches processes started after the change by a parent that has
+the updated environment, such as a new PowerShell or cmd.exe window opened from
+the Start menu or Explorer. Terminals and IDEs that are already open, and
+everything started from them, keep the old value until they are restarted. To
+remove it:
 
 ```powershell
 [Environment]::SetEnvironmentVariable('TCLLIBPATH', $null, 'User')
@@ -303,6 +310,7 @@ A minimal `config/project.yaml`:
 ```yaml
 schema_version: "1.0"
 project_name: demo
+top: demo_top
 project_root: ".."
 
 file_sets:
@@ -317,7 +325,8 @@ file_sets:
 directory**, and the `src` globs relative to that root. In
 `config/project.yaml`, `".."` is therefore the project folder; a manifest at
 `C:/path/to/manifests/demo.yaml` with `project_root: "../demo"` lints
-`C:/path/to/demo/src/*.vhd`. The manifest schema is aurig-core's
+`C:/path/to/demo/src/*.vhd`. `top` names the top-level entity, not a file;
+the schema requires it. The manifest schema is aurig-core's
 [`schema/manifest-v1.json`](https://github.com/aurig-fpga/aurig-core/blob/main/schema/manifest-v1.json).
 
 Exit codes: `0` no diagnostics at or above the `-fail_on` threshold (default
