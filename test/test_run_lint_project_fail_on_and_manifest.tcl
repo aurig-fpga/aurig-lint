@@ -593,7 +593,8 @@ check_true "collection failure: the empty-inventory gate does not fire" \
 # matched against, the declared pattern count and the patterns that matched
 # nothing, and no report. -allow_empty accepts it as a WARNING with rc=0,
 # still without a report. Scenarios 7-13 fail against a runner without the
-# gate; 14-17 are controls that hold with or without it.
+# gate; 14-17 are controls that hold with or without it; 18 feeds the gate
+# a collection report with fields missing.
 #
 # Each fixture is its own project under the sandbox. `make_project` writes
 # <dir>/config/project.yaml (project_root ".." -> <dir>) plus the named
@@ -927,6 +928,110 @@ lassign [run_fixture $partial out_include -include NoSuchFile] \
     rc_incl stdout_incl stderr_incl out_incl
 check_true "-include to zero: the gate does not fire" \
     {![string match $gate_msg $stderr_incl]}
+
+# ----------------------------------------------------------------------------
+# Scenario 18: the gate survives a collection report with fields missing
+#
+# The report fields only explain the failure; when one is missing, the gate
+# must still print its message and return rc=2 (rc=0 under -allow_empty)
+# rather than die on a Tcl error. aurig-core always fills the report, so a
+# wrapper script stands in for it: it loads the engine, wraps
+# collect_project_files to tamper with the -report variable, then sources
+# the runner with the remaining arguments. Modes:
+#   drop    -- report without declared_patterns, unmatched_patterns,
+#              file_sets_present and total_files
+#   unset   -- the -report variable is never set
+#   notdict -- the -report variable holds a list of odd length, not a dict
+# The board-only fixture collects one non-VHDL record, so the fallback file
+# count is visibly the collected records, not a default.
+# ----------------------------------------------------------------------------
+puts "\n=== Scenario 18: collection report with fields missing ==="
+
+set stub_runner [file join $sandbox stub_report_runner.tcl]
+write_file $stub_runner \
+{set ::stub_mode [lindex $argv 0]
+set runner [lindex $argv 1]
+set argv [lrange $argv 2 end]
+set argc [llength $argv]
+set ::auto_path [linsert $::auto_path 0 [file dirname [file dirname $runner]]]
+package require aurig::lint
+rename ::aurig::core::util::collect_project_files ::aurig::core::util::__stub_real_collect
+proc ::aurig::core::util::collect_project_files {args} {
+    set i [lsearch -exact $args -report]
+    set name [lindex $args $i+1]
+    set files [::aurig::core::util::__stub_real_collect \
+        {*}[lreplace $args $i $i+1] -report report]
+    upvar 1 $name out
+    switch -- $::stub_mode {
+        drop {
+            set out [dict remove $report declared_patterns unmatched_patterns \
+                file_sets_present total_files]
+        }
+        notdict { set out {three odd elements} }
+        unset {}
+    }
+    return $files
+}
+source $runner}
+
+proc run_stubbed {mode dir outname args} {
+    set outdir [file join $dir $outname]
+    set stderr_file [file join $dir stderr_$outname.log]
+    set runner [file join $::repo_root tools run_lint_project_inprocess.tcl]
+    set rc 0
+    set stdout ""
+    if {[catch {
+        set stdout [exec [info nameofexecutable] $::stub_runner $mode $runner \
+            -project_root $dir -format csv -outdir $outdir {*}$args 2>$stderr_file]
+    } caught opts]} {
+        set stdout $caught
+        set rc 1
+        set ec [dict get $opts -errorcode]
+        if {[lindex $ec 0] eq "CHILDSTATUS"} {
+            set rc [lindex $ec 2]
+        }
+    }
+    set fp [open $stderr_file r]
+    set stderr [read $fp]
+    close $fp
+    return [list $rc $stderr $outdir]
+}
+
+lassign [run_stubbed drop $board_only out_stub_drop] rc_sd stderr_sd out_sd
+check_eq "report fields missing: rc=2" 2 $rc_sd
+check_true "report fields missing: stderr carries the gate ERROR" \
+    {[string match "ERROR: *resolves to no VHDL source files.*" $stderr_sd]}
+check_true "report fields missing: missing fields print as unknown" \
+    {[string match "*file_sets: unknown\n*" $stderr_sd]
+     && [string match "*Declared source patterns: unknown\n*" $stderr_sd]
+     && [string match "*Patterns matching no file: unknown\n*" $stderr_sd]}
+check_true "report fields missing: file count falls back to the collected records" \
+    {[string match "*Files collected: 1 (VHDL: 0)*" $stderr_sd]}
+check_true "report fields missing: stderr points at -allow_empty" \
+    {[string match "*Pass -allow_empty to accept an empty inventory.*" $stderr_sd]}
+check_true "report fields missing: no Tcl error escapes" \
+    {![string match "*while executing*" $stderr_sd]}
+check_true "report fields missing: no report directory is created" \
+    {![file exists $out_sd]}
+
+lassign [run_stubbed drop $board_only out_stub_allow -allow_empty] \
+    rc_sa stderr_sa out_sa
+check_eq "report fields missing, -allow_empty: rc=0" 0 $rc_sa
+check_true "report fields missing, -allow_empty: stderr carries the gate as a WARNING" \
+    {[string match "WARNING: *resolves to no VHDL source files.*" $stderr_sa]
+     && ![string match "*ERROR*" $stderr_sa]}
+check_true "report fields missing, -allow_empty: stderr says it was accepted" \
+    {[string match "*Accepted under -allow_empty: nothing to lint, no report written.*" $stderr_sa]}
+check_true "report fields missing, -allow_empty: no report directory is created" \
+    {![file exists $out_sa]}
+
+foreach mode {unset notdict} {
+    lassign [run_stubbed $mode $board_only out_stub_$mode] rc_sm stderr_sm out_sm
+    check_eq "report $mode: rc=2" 2 $rc_sm
+    check_true "report $mode: stderr carries the gate ERROR with the fallback count" \
+        {[string match "ERROR: *resolves to no VHDL source files.*" $stderr_sm]
+         && [string match "*Files collected: 1 (VHDL: 0)*" $stderr_sm]}
+}
 
 # ----------------------------------------------------------------------------
 # Cleanup

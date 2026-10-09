@@ -1240,11 +1240,41 @@ dict for {idx rec} $fileDict {
 # total_files: board constraints count there, and a board-only or
 # Verilog-only manifest must still be rejected. The report fields only
 # explain the failure. -allow_empty downgrades it to a warning and rc=0.
+#
+# The report is read defensively: the variable may be unset, not a dict, or
+# missing a field, and none of that may turn the gate into a Tcl error that
+# skips the message and the exit code. A missing field prints "unknown";
+# the file count falls back to the collected records themselves.
+#
+# Sets varName to the report's value for key and returns 1, or returns 0
+# when the report is not a dict or has no such key.
+proc lint_project_report_field {report key varName} {
+    upvar 1 $varName value
+    if {[catch {dict exists $report $key} has] || !$has} {
+        return 0
+    }
+    set value [dict get $report $key]
+    return 1
+}
+
 if {[llength $vhdl_files] == 0} {
     set level [expr {$opts(allow_empty) ? "WARNING" : "ERROR"}]
     set manifest_root [lint_project_manifest_root $yaml_path $yaml_dict]
-    set declared [dict get $inventory_report declared_patterns]
-    set unmatched [dict get $inventory_report unmatched_patterns]
+    if {![info exists inventory_report]} {
+        set inventory_report [dict create]
+    }
+    if {![lint_project_report_field $inventory_report declared_patterns declared]} {
+        set declared unknown
+    }
+    set unmatched_known [expr {
+        [lint_project_report_field $inventory_report unmatched_patterns unmatched]
+        && [string is list $unmatched]}]
+    if {![lint_project_report_field $inventory_report file_sets_present file_sets]} {
+        set file_sets unknown
+    }
+    if {![lint_project_report_field $inventory_report total_files total]} {
+        set total [dict size $fileDict]
+    }
     puts stderr "$level: the project manifest resolves to no VHDL source files."
     puts stderr "  Manifest: $yaml_path"
     puts stderr "  Project root (from the manifest): $manifest_root"
@@ -1252,19 +1282,23 @@ if {[llength $vhdl_files] == 0} {
         puts stderr "    Source patterns are matched against this directory, not against"
         puts stderr "    -project_root $opts(project_root); check the manifest's project_root field."
     }
-    if {[dict get $inventory_report file_sets_present]} {
+    if {![string is boolean -strict $file_sets]} {
+        puts stderr "  file_sets: unknown"
+    } elseif {$file_sets} {
         puts stderr "  file_sets: present"
     } else {
         puts stderr "  file_sets: absent"
     }
     puts stderr "  Declared source patterns: $declared"
-    if {[llength $unmatched] > 0} {
+    if {!$unmatched_known} {
+        puts stderr "  Patterns matching no file: unknown"
+    } elseif {[llength $unmatched] > 0} {
         puts stderr "  Patterns matching no file:"
         foreach pat $unmatched {
             puts stderr "    - $pat"
         }
     }
-    puts stderr "  Files collected: [dict get $inventory_report total_files] (VHDL: 0)"
+    puts stderr "  Files collected: $total (VHDL: 0)"
     if {$opts(allow_empty)} {
         puts stderr "  Accepted under -allow_empty: nothing to lint, no report written."
         exit 0
