@@ -2589,7 +2589,7 @@ puts "========================================"
 # Exit Code
 #
 # Three-state contract preserved:
-#   2 — at least one file failed inside the lint engine (tool error).
+#   2 — configuration, environment or tool error.
 #       Independent of -fail_on. Sentinel maps this to ERROR (hard stop).
 #   1 — diagnostics meet/exceed the -fail_on threshold (default: error).
 #   0 — clean under the chosen threshold.
