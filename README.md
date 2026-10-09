@@ -42,7 +42,7 @@ environment variable (a Tcl list of directories prepended to `::auto_path`):
 export TCLLIBPATH=/path/to/aurig-core
 ```
 
-On Windows, see [step 4](#4-point-tcllibpath-at-aurig-core) below.
+On Windows, see [step 5](#5-point-tcllibpath-at-aurig-core) below.
 
 The two CLIs (`lint/lint_cli.tcl` and `tools/run_lint_project_inprocess.tcl`)
 put their own checkout on `::auto_path`, so `TCLLIBPATH` only needs
@@ -144,7 +144,22 @@ export TCLLIBPATH=C:/aurig/aurig-core
 /c/ActiveTcl/bin/tclsh.exe C:/aurig/aurig-lint/lint/lint_cli.tcl -input C:/aurig/aurig-lint/test/lint/fixtures/naming_violations.vhd
 ```
 
-### 3. Clone both repositories side by side
+### 3. Get Git
+
+Windows does not include `git`, which step 4 uses. No Git client is endorsed;
+any that puts `git` on `PATH` works, for example
+[Git for Windows](https://gitforwindows.org/). After installing, open a new
+PowerShell or cmd.exe window so that it picks up the updated `PATH`, and check:
+
+```bat
+git --version
+```
+
+```text
+git version 2.49.0.windows.1
+```
+
+### 4. Clone both repositories side by side
 
 ```powershell
 # PowerShell
@@ -170,7 +185,7 @@ C:\aurig\
 
 This is the sibling layout CI uses.
 
-### 4. Point TCLLIBPATH at aurig-core
+### 5. Point TCLLIBPATH at aurig-core
 
 `TCLLIBPATH` is a Tcl list of directories. Write each directory with
 **forward slashes**, and wrap a directory that contains a space in **braces**.
@@ -226,7 +241,7 @@ remove it:
 [Environment]::SetEnvironmentVariable('TCLLIBPATH', $null, 'User')
 ```
 
-### 5. First run
+### 6. First run
 
 Lint a fixture shipped with aurig-lint. The script path is absolute, so this
 works from any folder, in PowerShell and cmd.exe alike:
@@ -261,7 +276,7 @@ tclsh lint/lint_cli.tcl -input path/to/design.vhd
 Run this from the aurig-lint checkout root: `lint/lint_cli.tcl` is relative to
 the current folder. From anywhere else `tclsh` exits 1 with `couldn't read file
 "lint/lint_cli.tcl": no such file or directory` before the CLI starts; give the
-script's absolute path instead, as in [step 5](#5-first-run).
+script's absolute path instead, as in [step 6](#6-first-run).
 
 Common options:
 
