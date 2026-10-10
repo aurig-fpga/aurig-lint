@@ -60,6 +60,11 @@
 # give exactly one line per problem, each naming the file. Before, each of
 # these problems spanned two lines and the second had no path.
 #
+# The engine entry point, ::aurig::lint::run, checks the policy itself (in
+# load_rules_config) and throws before the input is parsed. The CLI and the
+# runner check the policy before they call the engine, so only the "engine"
+# checks cover that; they fail if load_rules_config stops validating.
+#
 # Fixture: one file whose combinational process infers a latch on `q`, so
 # enabling forbid_latch_inference gives exactly one warning; its name ends in
 # _bfm.vhd for case 4. Runs use --fail-on warning / -fail_on warning so the
@@ -524,6 +529,50 @@ foreach {label exported} [list "-export_rules" $accented_cli_export \
     }
     check_true "\[encoding\] $label fed back to runner: diagnostic text unchanged" \
         {[string first $accented_diag $report] >= 0}
+}
+
+# ----------------------------------------------------------------------------
+# Engine entry point: ::aurig::lint::run throws the policy error before the
+# input is analysed. A trace on the parser entry point counts the parses.
+# ----------------------------------------------------------------------------
+set ::auto_path [linsert $::auto_path 0 $repo_root]
+package require aurig::lint
+set metadata [file join $repo_root lint metadata.json]
+set ::vhdlscan_calls 0
+trace add execution ::aurig::core::analyze::vhdlscan enter \
+    [list apply {args {incr ::vhdlscan_calls}}]
+
+# Run the engine on the fixture; return [list failed result errorcode parses].
+proc engine_run {policy} {
+    set ::vhdlscan_calls 0
+    set failed [catch {
+        ::aurig::lint::run -input $::vhd -metadata $::metadata -policy $policy
+    } result opts]
+    set code ""
+    if {$failed} {
+        set code [dict get $opts -errorcode]
+    }
+    return [list $failed $result $code $::vhdlscan_calls]
+}
+
+lassign [engine_run [file join $pol enable.json]] failed result code parses
+check_eq "\[control\] engine, valid policy: no error" 0 $failed
+check_eq "\[control\] engine, valid policy: input parsed once" 1 $parses
+check_true "\[control\] engine, valid policy: the latch diagnostic" \
+    {[llength $result] == 1
+     && [dict get [lindex $result 0] rule_id] eq "forbid_latch_inference"}
+
+foreach {name path problem} [list \
+        1_missing  $missing                        {file not found} \
+        4_option   [file join $pol 4_option.json]   [lindex [dict get $invalid 4_option] 1] \
+        7_severity [file join $pol 7_severity.json] [lindex [dict get $invalid 7_severity] 1] \
+        5_trailing [file join $pol 5_trailing.json] [lindex [dict get $review_invalid 5_trailing] 1]] {
+    lassign [engine_run $path] failed result code parses
+    check_eq "engine, case $name: throws" 1 $failed
+    check_eq "engine, case $name: errorCode AURIG LINT POLICY" {AURIG LINT POLICY} $code
+    check_true "engine, case $name: \"invalid policy <path>: <problem>\"" \
+        {[string match "invalid policy $path: $problem" $result]}
+    check_eq "engine, case $name: input not parsed, no diagnostics" 0 $parses
 }
 
 # ----------------------------------------------------------------------------
