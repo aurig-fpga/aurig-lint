@@ -414,9 +414,9 @@ character in them cannot split a problem across lines:
 - a rule id is not in the metadata and has no `"type"`, or its `"type"` is
   not a rule type the metadata uses (this is how user-defined rules are
   made; a user-defined `"naming"` rule needs `"scope"` and `"pattern"`);
-- a rule has an option it does not support. Every rule of a type supports
-  the same options: the keys of all the metadata rules of that type, plus
-  `type`, `enabled`, `severity` and `message`. Every naming rule therefore
+- a rule has an option that is not among the options supported by the rule's
+  type: the keys of all the metadata rules of that type, plus `type`,
+  `enabled`, `severity` and `message`. Every naming rule therefore
   accepts `entity_suffix_bindings` and `binding_message`, which only
   `architecture_naming` declares, while `forbid_latch_inference` does not
   accept `bfm_patterns`;

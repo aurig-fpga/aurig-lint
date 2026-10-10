@@ -41,8 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     than `rules`, `comment`, `generated` and `version`;
   - a rule id that is not in the metadata and has no `"type"`, or whose
     `"type"` is not a rule type used in the metadata;
-  - an option the rule does not support. Every rule of a type supports the
-    keys of all the metadata rules of that type plus `type`, `enabled`,
+  - an option that is not among the options supported by the rule's type:
+    the keys of all the metadata rules of that type plus `type`, `enabled`,
     `severity`, `message`; so every naming rule accepts
     `entity_suffix_bindings` and `binding_message`. Rejected for example:
     `bfm_patterns` or `excluded_architectures` on `forbid_latch_inference`,
