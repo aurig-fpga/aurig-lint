@@ -55,6 +55,11 @@
 # cp1252 0xE8 is decoded by Tcl 8.6 as U+00E8, so e-grave alone round-tripped
 # by accident; the byte check catches it.)
 #
+# Names and values from the policy (rule ids, options, types, severities) are
+# written with JSON escapes, so a rule id "bad\nid" and a severity "fa\ttal"
+# give exactly one line per problem, each naming the file. Before, each of
+# these problems spanned two lines and the second had no path.
+#
 # Fixture: one file whose combinational process infers a latch on `q`, so
 # enabling forbid_latch_inference gives exactly one warning; its name ends in
 # _bfm.vhd for case 4. Runs use --fail-on warning / -fail_on warning so the
@@ -393,6 +398,32 @@ check_true "\[control\] CLI, user-defined naming rule with entity_suffix_binding
     {[string match {*Function 'compute' should start with f_*\[function_naming\]*} $o]}
 lassign [run_project $shared_user [file join $out r_shared_user]] rc o
 check_eq "\[control\] runner, user-defined naming rule with entity_suffix_bindings: rc 1" 1 $rc
+
+# Control characters in names and values from the policy are escaped: one
+# line per problem, each with the path, on both entry points.
+set control_chars [file join $pol control_chars.json]
+write_file $control_chars {{"rules": {"bad\nid": {"severity": "fa\ttal"}}}}
+foreach {entry prefix} [list CLI Error runner ERROR] {
+    if {$entry eq "CLI"} {
+        lassign [run_cli $control_chars] rc o
+    } else {
+        lassign [run_project $control_chars [file join $out r_control_chars]] rc o
+    }
+    set error_lines [regexp -all -inline -line "^$prefix: .*\$" $o]
+    set with_path 0
+    foreach line $error_lines {
+        if {[string match "$prefix: invalid policy $control_chars: *" $line]} {
+            incr with_path
+        }
+    }
+    check_eq "control characters $entry: rc 2" 2 $rc
+    check_eq "control characters $entry: two $prefix lines, one per problem" 2 [llength $error_lines]
+    check_eq "control characters $entry: every $prefix line names the file" \
+        [llength $error_lines] $with_path
+    check_true "control characters $entry: rule id and severity escaped" \
+        {[string first {rule "bad\nid": unknown rule id} $o] >= 0
+         && [string first {invalid severity "fa\ttal"} $o] >= 0}
+}
 
 # ----------------------------------------------------------------------------
 # [encoding] UTF-8, an optional leading BOM, no end-of-file character

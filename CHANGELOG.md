@@ -24,7 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exits **2**, instead of being dropped in whole or in part without a
   message (#16). Every problem is listed, one `invalid policy <file>:
   <problem>` line each, including several problems of the same rule entry.
-  No report or export file is written. Now rejected:
+  Rule ids, options, types and severities are quoted with JSON escapes, so
+  a control character in them cannot split a problem across lines. No
+  report or export file is written. Now rejected:
   - a `-policy` file that does not exist (the CLI used to lint without it;
     the runner already exited 2);
   - input that is not exactly one JSON value: malformed JSON, or text after

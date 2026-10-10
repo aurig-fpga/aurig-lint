@@ -401,7 +401,9 @@ effective policy (`-export_rules <file>.json`, the runner's
 
 Both the single-file CLI (also with `-export_rules`) and the project runner
 check the policy before linting and exit 2 if any of these is wrong. Every
-problem is listed, one `invalid policy <file>: <problem>` line each:
+problem is listed, one `invalid policy <file>: <problem>` line each; rule ids,
+options, types and severities are quoted with JSON escapes, so a control
+character in them cannot split a problem across lines:
 
 - the file is missing, or is not exactly one JSON value: malformed JSON, or
   any text after the value other than whitespace;

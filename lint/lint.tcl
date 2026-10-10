@@ -312,7 +312,7 @@ proc ::aurig::lint::_json_value {text posVar} {
         set pos [expr {[lindex $match 1] + 1}]
         return [list number [string range $text {*}$match]]
     }
-    _json_fail $text $pos "unexpected character '$c'"
+    _json_fail $text $pos "unexpected character '[_policy_quote $c]'"
 }
 
 # Scan a JSON string starting at the opening quote; return its decoded text.
@@ -327,6 +327,37 @@ proc ::aurig::lint::_json_string {text posVar} {
     # The escapes left after the match (\" \\ \/ \b \f \n \r \t \uXXXX) mean
     # the same in Tcl; [ and $ stay literal.
     return [subst -nocommands -novariables [string range $text {*}$inner]]
+}
+
+# Escape the control characters U+0000-U+001F (as \n, \r, \t, \b, \f or
+# \uXXXX), so the text holds no line break.
+proc ::aurig::lint::_escape_controls {text} {
+    set text [string map {\n \\n \r \\r \t \\t \b \\b \f \\f} $text]
+    foreach c [lsort -unique [regexp -all -inline {[\u0000-\u001f]} $text]] {
+        set text [string map [list $c [format \\u%04x [scan $c %c]]] $text]
+    }
+    return $text
+}
+
+# Write a name or value taken from the policy (rule id, option, type,
+# severity) for a diagnostic, as the body of a JSON string: backslash, double
+# quote and control characters are escaped, so a rule id "bad\nid" reads as it
+# is written in the policy and its problem stays on one line.
+proc ::aurig::lint::_policy_quote {text} {
+    return [_escape_controls [string map {\\ \\\\ \" \\\"} $text]]
+}
+
+# Format one policy problem as "invalid policy <path>: <problem>", with any
+# control character in the path or the problem escaped, so each problem is
+# exactly one line that names the file.
+#
+# Arguments:
+#   policy_file : Path to policy JSON
+#   problem     : Problem text
+#
+# Returns: Diagnostic line, without a trailing newline
+proc ::aurig::lint::policy_problem_line {policy_file problem} {
+    return "invalid policy [_escape_controls $policy_file]: [_escape_controls $problem]"
 }
 
 # Validate a policy against rule metadata.
@@ -347,7 +378,8 @@ proc ::aurig::lint::_json_string {text posVar} {
 #   - "severity" must be the string error, warning or info;
 #   - keys starting with "_" are comments and are ignored at the top level,
 #     inside "rules" and inside a rule entry.
-# Independent problems on the same entry are all reported.
+# Independent problems on the same entry are all reported. Names and values
+# from the policy are written with _policy_quote, so no problem spans lines.
 #
 # Arguments:
 #   policy   : Typed tree of the policy (from _json_typed)
@@ -367,7 +399,7 @@ proc ::aurig::lint::validate_policy {policy metadata} {
         if {[string index $key 0] eq "_" || $key in {rules comment generated version}} {
             continue
         }
-        lappend problems "unknown top-level key \"$key\" (allowed: rules, comment, generated, version; keys starting with \"_\" are comments)"
+        lappend problems "unknown top-level key \"[_policy_quote $key]\" (allowed: rules, comment, generated, version; keys starting with \"_\" are comments)"
     }
     if {![dict exists $top rules]} {
         lappend problems "missing top-level \"rules\" key"
@@ -405,7 +437,7 @@ proc ::aurig::lint::validate_policy {policy metadata} {
         if {[string index $rule_id 0] eq "_"} {
             continue
         }
-        set where "rule \"$rule_id\""
+        set where "rule \"[_policy_quote $rule_id]\""
         lassign $typed_entry kind entry
         if {$kind ne "object"} {
             lappend problems "$where: entry is not a JSON object (found $kind)"
@@ -425,7 +457,7 @@ proc ::aurig::lint::validate_policy {policy metadata} {
             if {[dict exists $rule_meta type]} {
                 set rule_type [dict get $rule_meta type]
                 if {[dict exists $entry type] && $given_type ne $rule_type} {
-                    lappend problems "$where: cannot change \"type\" of a built-in rule from \"$rule_type\" to \"$given_type\""
+                    lappend problems "$where: cannot change \"type\" of a built-in rule from \"[_policy_quote $rule_type]\" to \"[_policy_quote $given_type]\""
                 }
                 set allowed [dict get $keys_by_type $rule_type]
             } else {
@@ -434,7 +466,7 @@ proc ::aurig::lint::validate_policy {policy metadata} {
         } elseif {![dict exists $entry type]} {
             lappend problems "$where: unknown rule id (not in metadata and no \"type\" for a user-defined rule)"
         } elseif {$given_type ni $usable_types} {
-            lappend problems "$where: unknown rule type \"$given_type\" (known types: [join $usable_types {, }])"
+            lappend problems "$where: unknown rule type \"[_policy_quote $given_type]\" (known types: [join $usable_types {, }])"
         } else {
             set allowed [dict get $keys_by_type $given_type]
             if {$given_type eq "naming"} {
@@ -452,13 +484,13 @@ proc ::aurig::lint::validate_policy {policy metadata} {
                 if {[string index $key 0] eq "_" || $key in $allowed} {
                     continue
                 }
-                lappend problems "$where: unsupported option \"$key\" (supported: [join $allowed {, }])"
+                lappend problems "$where: unsupported option \"[_policy_quote $key]\" (supported: [join $allowed {, }])"
             }
         }
         if {[dict exists $entry severity]} {
             lassign [dict get $entry severity] kind severity
             if {$kind ne "string" || $severity ni {error warning info}} {
-                lappend problems "$where: invalid severity \"$severity\" (must be the string error, warning or info)"
+                lappend problems "$where: invalid severity \"[_policy_quote $severity]\" (must be the string error, warning or info)"
             }
         }
     }
@@ -470,8 +502,8 @@ proc ::aurig::lint::validate_policy {policy metadata} {
 #
 # Throws with errorCode {AURIG LINT POLICY} when the file is missing,
 # unreadable, not exactly one JSON value or fails validate_policy. The message
-# holds one line per problem, each "invalid policy <path>: <problem>", so
-# callers can print them with their own prefix.
+# holds one line per problem, each "invalid policy <path>: <problem>" from
+# policy_problem_line, so callers can print them with their own prefix.
 #
 # Arguments:
 #   policy_file : Path to policy JSON
@@ -481,29 +513,32 @@ proc ::aurig::lint::validate_policy {policy metadata} {
 proc ::aurig::lint::load_policy {policy_file metadata} {
     package require json
 
-    set prefix "invalid policy $policy_file"
     if {![file exists $policy_file]} {
-        return -code error -errorcode {AURIG LINT POLICY} "$prefix: file not found"
+        return -code error -errorcode {AURIG LINT POLICY} \
+            [policy_problem_line $policy_file "file not found"]
     }
     if {[catch {read_json_file $policy_file} json_data]} {
-        return -code error -errorcode {AURIG LINT POLICY} "$prefix: cannot read file: $json_data"
+        return -code error -errorcode {AURIG LINT POLICY} \
+            [policy_problem_line $policy_file "cannot read file: $json_data"]
     }
     if {[catch {_json_typed $json_data} typed]} {
-        return -code error -errorcode {AURIG LINT POLICY} "$prefix: malformed JSON: $typed"
+        return -code error -errorcode {AURIG LINT POLICY} \
+            [policy_problem_line $policy_file "malformed JSON: $typed"]
     }
 
     set problems [validate_policy $typed $metadata]
     if {[llength $problems] > 0} {
         set lines {}
         foreach problem $problems {
-            lappend lines "$prefix: $problem"
+            lappend lines [policy_problem_line $policy_file $problem]
         }
         return -code error -errorcode {AURIG LINT POLICY} [join $lines \n]
     }
 
     # The engine works on json2dict values, like the metadata.
     if {[catch {::json::json2dict $json_data} policy]} {
-        return -code error -errorcode {AURIG LINT POLICY} "$prefix: malformed JSON: $policy"
+        return -code error -errorcode {AURIG LINT POLICY} \
+            [policy_problem_line $policy_file "malformed JSON: $policy"]
     }
 
     # Drop comment keys so the rule handlers and exports never see them.
