@@ -399,8 +399,10 @@ proc ::aurig::lint::report::export_rules {metadata_dict policy_dict output_file}
     set ext [file extension $output_file]
 
     if {$ext eq ".json"} {
-        # JSON format - manually construct to avoid json::write package issues
+        # JSON format - manually construct to avoid json::write package issues.
+        # Written as UTF-8 (no BOM), the encoding policy files are read in.
         set f [open $output_file w]
+        fconfigure $f -encoding utf-8
         puts $f "\{"
         puts $f "  \"rules\": \{"
 

@@ -377,6 +377,58 @@ inference, reset requirements, and documentation/comment checks. A generated
 catalogue is in [`doc/reference/rules_reference.md`](doc/reference/rules_reference.md)
 (regenerate with `doc/tools/generate_rules_reference.tcl`).
 
+### Policy file
+
+A policy (`-policy <file>`, or a discovered `.aurig/lint-policy.json`)
+overrides the defaults rule by rule:
+
+```json
+{
+  "_note": "keys starting with _ are comments",
+  "rules": {
+    "forbid_latch_inference": { "enabled": true, "severity": "error" },
+    "function_naming": { "type": "naming", "scope": "function", "pattern": "^f_" }
+  }
+}
+```
+
+The production readers (the engine, the single-file CLI, the project runner
+and `doc/tools/generate_rules_reference.tcl`) read policy and metadata files
+as UTF-8 on every platform; one leading byte order mark (UTF-8 BOM, as written
+by Notepad and Windows PowerShell 5.1) is ignored. The JSON exports of the
+effective policy (`-export_rules <file>.json`, the runner's
+`effective_policy.json`) are written as UTF-8 without a BOM.
+
+Both the single-file CLI (also with `-export_rules`) and the project runner
+check the policy before linting and exit 2 if any of these is wrong. Every
+problem is listed, one `invalid policy <file>: <problem>` line each; rule ids,
+options, types and severities are quoted with JSON escapes, so a control
+character in them cannot split a problem across lines:
+
+- the file is missing, or is not exactly one JSON value: malformed JSON, or
+  any text after the value other than whitespace;
+- the top level, `"rules"` or a rule entry is not a JSON object (an array or
+  a string is rejected);
+- the top-level `"rules"` key is missing; other top-level keys must be
+  `comment`, `generated` or `version`;
+- a rule id is not in the metadata and has no `"type"`, or its `"type"` is
+  not a rule type the metadata uses (this is how user-defined rules are
+  made; a user-defined `"naming"` rule needs `"scope"` and `"pattern"`);
+- a rule has an option that is not among the options supported by the rule's
+  type: the keys of all the metadata rules of that type, plus `type`,
+  `enabled`, `severity` and `message`. Every naming rule therefore
+  accepts `entity_suffix_bindings` and `binding_message`, which only
+  `architecture_naming` declares, while `forbid_latch_inference` does not
+  accept `bfm_patterns`;
+- `"type"` differs from the metadata on a built-in rule;
+- `"severity"` is not one of the strings `error`, `warning`, `info`.
+
+Option values are not type-checked otherwise: a list option written as a
+string, as in the exported effective policy, still loads.
+
+Keys starting with `_` are comments and are ignored at the top level, inside
+`"rules"` and inside a rule entry.
+
 ## Development & tests
 
 Point `TCLLIBPATH` at an `aurig-core` checkout, then run the full suite (this

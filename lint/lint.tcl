@@ -152,33 +152,441 @@ proc ::aurig::lint::run {args} {
 # Configuration Loading
 #=============================================================================
 
+# Read a JSON configuration file (policy, metadata) as text.
+#
+# The file is decoded as UTF-8 whatever the system encoding (with cp1252, the
+# usual Windows default, each accented letter became two characters), with no
+# end-of-file character (Tcl's Windows default stops reading at Ctrl-Z, 0x1A,
+# which hid any text after it), and one leading byte order mark U+FEFF is
+# dropped (Notepad and Windows PowerShell 5.1 write one).
+#
+# Arguments:
+#   path : Path to the JSON file
+#
+# Returns: File content as text
+proc ::aurig::lint::read_json_file {path} {
+    set fp [open $path r]
+    try {
+        fconfigure $fp -encoding utf-8 -eofchar {} -translation auto
+        set text [read $fp]
+    } finally {
+        close $fp
+    }
+    if {[string index $text 0] eq "\uFEFF"} {
+        set text [string range $text 1 end]
+    }
+    return $text
+}
+
+# Load rule metadata (defaults). A missing or empty path yields an empty
+# dict, as before: the engine then simply has no built-in rules.
+#
+# Arguments:
+#   metadata_file : Path to metadata JSON (rule defaults)
+#
+# Returns: Metadata dict
+proc ::aurig::lint::load_metadata {metadata_file} {
+    package require json
+
+    if {$metadata_file eq "" || ![file exists $metadata_file]} {
+        return [dict create]
+    }
+    return [::json::json2dict [read_json_file $metadata_file]]
+}
+
+# Strict, type-preserving JSON parse used to validate policy files.
+#
+# tcllib's json2dict is untyped (a JSON array, an empty object and an empty
+# string all come back as "") and lenient (it ignores text after the first
+# value). huddle::json keeps types but also accepts trailing text, and
+# json::validate accepts two concatenated objects, so neither can tell a
+# policy that is exactly one JSON object from one that is not. This scanner
+# follows the RFC 8259 grammar, requires the whole input to be one JSON value
+# with only whitespace around it, and returns a typed tree:
+#   {object {key value ...}}  {array {value ...}}  {string s}
+#   {number n}  {boolean true|false}  {null {}}
+# Duplicate object keys keep the last value, as json2dict does. Errors are
+# thrown as "<reason> at line L, column C".
+#
+# Arguments:
+#   text : JSON text
+#
+# Returns: Typed tree of the JSON value
+proc ::aurig::lint::_json_typed {text} {
+    set pos 0
+    set value [_json_value $text pos]
+    _json_skip_ws $text pos
+    if {$pos < [string length $text]} {
+        _json_fail $text $pos "unexpected text after the JSON value"
+    }
+    return $value
+}
+
+proc ::aurig::lint::_json_fail {text pos reason} {
+    set before [string range $text 0 [expr {$pos - 1}]]
+    set line [expr {[regexp -all {\n} $before] + 1}]
+    set column [expr {$pos - [string last \n $before]}]
+    error "$reason at line $line, column $column"
+}
+
+proc ::aurig::lint::_json_skip_ws {text posVar} {
+    upvar 1 $posVar pos
+    if {[regexp -start $pos -indices {\A[ \t\n\r]+} $text match]} {
+        set pos [expr {[lindex $match 1] + 1}]
+    }
+}
+
+proc ::aurig::lint::_json_value {text posVar} {
+    upvar 1 $posVar pos
+    _json_skip_ws $text pos
+    set c [string index $text $pos]
+    switch -- $c {
+        "" {
+            _json_fail $text $pos "unexpected end of input"
+        }
+        "\{" {
+            incr pos
+            set members [dict create]
+            _json_skip_ws $text pos
+            if {[string index $text $pos] eq "\}"} {
+                incr pos
+                return [list object $members]
+            }
+            while {1} {
+                _json_skip_ws $text pos
+                if {[string index $text $pos] ne "\""} {
+                    _json_fail $text $pos "expected a string key"
+                }
+                set key [_json_string $text pos]
+                _json_skip_ws $text pos
+                if {[string index $text $pos] ne ":"} {
+                    _json_fail $text $pos "expected ':'"
+                }
+                incr pos
+                dict set members $key [_json_value $text pos]
+                _json_skip_ws $text pos
+                set c [string index $text $pos]
+                incr pos
+                if {$c eq "\}"} {
+                    return [list object $members]
+                }
+                if {$c ne ","} {
+                    _json_fail $text [expr {$pos - 1}] "expected ',' or '\}'"
+                }
+            }
+        }
+        "\[" {
+            incr pos
+            set items {}
+            _json_skip_ws $text pos
+            if {[string index $text $pos] eq "\]"} {
+                incr pos
+                return [list array $items]
+            }
+            while {1} {
+                lappend items [_json_value $text pos]
+                _json_skip_ws $text pos
+                set c [string index $text $pos]
+                incr pos
+                if {$c eq "\]"} {
+                    return [list array $items]
+                }
+                if {$c ne ","} {
+                    _json_fail $text [expr {$pos - 1}] "expected ',' or '\]'"
+                }
+            }
+        }
+        "\"" {
+            return [list string [_json_string $text pos]]
+        }
+    }
+    if {[regexp -start $pos -indices {\A(?:true|false|null)} $text match]} {
+        set word [string range $text {*}$match]
+        set pos [expr {[lindex $match 1] + 1}]
+        if {$word eq "null"} {
+            return [list null {}]
+        }
+        return [list boolean $word]
+    }
+    if {[regexp -start $pos -indices {\A-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?} $text match]} {
+        set pos [expr {[lindex $match 1] + 1}]
+        return [list number [string range $text {*}$match]]
+    }
+    _json_fail $text $pos "unexpected character '[_policy_quote $c]'"
+}
+
+# Scan a JSON string starting at the opening quote; return its decoded text.
+proc ::aurig::lint::_json_string {text posVar} {
+    upvar 1 $posVar pos
+    if {![regexp -start $pos -indices \
+            {\A"((?:[^"\\\u0000-\u001f]|\\["\\/bfnrt]|\\u[0-9a-fA-F]{4})*)"} \
+            $text match inner]} {
+        _json_fail $text $pos "invalid string"
+    }
+    set pos [expr {[lindex $match 1] + 1}]
+    # The escapes left after the match (\" \\ \/ \b \f \n \r \t \uXXXX) mean
+    # the same in Tcl; [ and $ stay literal.
+    return [subst -nocommands -novariables [string range $text {*}$inner]]
+}
+
+# Escape the control characters U+0000-U+001F (as \n, \r, \t, \b, \f or
+# \uXXXX), so the text holds no line break.
+proc ::aurig::lint::_escape_controls {text} {
+    set text [string map {\n \\n \r \\r \t \\t \b \\b \f \\f} $text]
+    foreach c [lsort -unique [regexp -all -inline {[\u0000-\u001f]} $text]] {
+        set text [string map [list $c [format \\u%04x [scan $c %c]]] $text]
+    }
+    return $text
+}
+
+# Write a name or value taken from the policy (rule id, option, type,
+# severity) for a diagnostic, as the body of a JSON string: backslash, double
+# quote and control characters are escaped, so a rule id "bad\nid" reads as it
+# is written in the policy and its problem stays on one line.
+proc ::aurig::lint::_policy_quote {text} {
+    return [_escape_controls [string map {\\ \\\\ \" \\\"} $text]]
+}
+
+# Format one policy problem as "invalid policy <path>: <problem>", with any
+# control character in the path or the problem escaped, so each problem is
+# exactly one line that names the file.
+#
+# Arguments:
+#   policy_file : Path to policy JSON
+#   problem     : Problem text
+#
+# Returns: Diagnostic line, without a trailing newline
+proc ::aurig::lint::policy_problem_line {policy_file problem} {
+    return "invalid policy [_escape_controls $policy_file]: [_escape_controls $problem]"
+}
+
+# Validate a policy against rule metadata.
+#
+# Rules:
+#   - the top level and "rules" must be JSON objects, and so must every rule
+#     entry; "rules" is required; other top-level keys must be comment,
+#     generated or version;
+#   - a rule id that is not in metadata is a user-defined rule and needs a
+#     "type" that has a handler and is used by at least one metadata rule;
+#     a user-defined "naming" rule needs "scope" and "pattern";
+#   - a built-in rule keeps its metadata "type";
+#   - the options a rule supports are the same for every rule of a type: the
+#     union of the metadata keys of all rules of that type, plus type,
+#     enabled, severity, message (e.g. entity_suffix_bindings is declared only
+#     on architecture_naming but read by every naming rule with scope
+#     "architecture");
+#   - "severity" must be the string error, warning or info;
+#   - keys starting with "_" are comments and are ignored at the top level,
+#     inside "rules" and inside a rule entry.
+# Independent problems on the same entry are all reported. Names and values
+# from the policy are written with _policy_quote, so no problem spans lines.
+#
+# Arguments:
+#   policy   : Typed tree of the policy (from _json_typed)
+#   metadata : Metadata dict (from load_metadata)
+#
+# Returns: List of problem strings, empty when the policy is valid
+proc ::aurig::lint::validate_policy {policy metadata} {
+    set common_keys {type enabled severity message}
+    set problems {}
+
+    lassign $policy kind top
+    if {$kind ne "object"} {
+        return [list "top level is not a JSON object (found $kind)"]
+    }
+
+    foreach key [dict keys $top] {
+        if {[string index $key 0] eq "_" || $key in {rules comment generated version}} {
+            continue
+        }
+        lappend problems "unknown top-level key \"[_policy_quote $key]\" (allowed: rules, comment, generated, version; keys starting with \"_\" are comments)"
+    }
+    if {![dict exists $top rules]} {
+        lappend problems "missing top-level \"rules\" key"
+        return $problems
+    }
+    lassign [dict get $top rules] kind policy_rules
+    if {$kind ne "object"} {
+        lappend problems "\"rules\" is not a JSON object (found $kind)"
+        return $problems
+    }
+
+    # Supported options per rule type (union over the metadata rules of that
+    # type). A type is usable for a user-defined rule only when it has a
+    # public handler.
+    set builtin_rules [dict create]
+    if {[dict exists $metadata rules]} {
+        set builtin_rules [dict get $metadata rules]
+    }
+    set keys_by_type [dict create]
+    dict for {rule_id rule_meta} $builtin_rules {
+        if {[dict exists $rule_meta type]} {
+            dict lappend keys_by_type [dict get $rule_meta type] {*}[dict keys $rule_meta]
+        }
+    }
+    set usable_types {}
+    foreach rule_type [dict keys $keys_by_type] {
+        if {[string index $rule_type 0] ne "_"
+                && [info procs ::aurig::lint::rule::$rule_type] ne ""} {
+            lappend usable_types $rule_type
+        }
+    }
+    set usable_types [lsort $usable_types]
+
+    dict for {rule_id typed_entry} $policy_rules {
+        if {[string index $rule_id 0] eq "_"} {
+            continue
+        }
+        set where "rule \"[_policy_quote $rule_id]\""
+        lassign $typed_entry kind entry
+        if {$kind ne "object"} {
+            lappend problems "$where: entry is not a JSON object (found $kind)"
+            continue
+        }
+
+        # The supported options follow from the rule type. When the type
+        # cannot be determined only the option check is skipped; every other
+        # check on the entry still runs.
+        set allowed ""
+        set given_type ""
+        if {[dict exists $entry type]} {
+            set given_type [lindex [dict get $entry type] 1]
+        }
+        if {[dict exists $builtin_rules $rule_id]} {
+            set rule_meta [dict get $builtin_rules $rule_id]
+            if {[dict exists $rule_meta type]} {
+                set rule_type [dict get $rule_meta type]
+                if {[dict exists $entry type] && $given_type ne $rule_type} {
+                    lappend problems "$where: cannot change \"type\" of a built-in rule from \"[_policy_quote $rule_type]\" to \"[_policy_quote $given_type]\""
+                }
+                set allowed [dict get $keys_by_type $rule_type]
+            } else {
+                set allowed [dict keys $rule_meta]
+            }
+        } elseif {![dict exists $entry type]} {
+            lappend problems "$where: unknown rule id (not in metadata and no \"type\" for a user-defined rule)"
+        } elseif {$given_type ni $usable_types} {
+            lappend problems "$where: unknown rule type \"[_policy_quote $given_type]\" (known types: [join $usable_types {, }])"
+        } else {
+            set allowed [dict get $keys_by_type $given_type]
+            if {$given_type eq "naming"} {
+                foreach required {scope pattern} {
+                    if {![dict exists $entry $required]} {
+                        lappend problems "$where: user-defined naming rule requires \"$required\""
+                    }
+                }
+            }
+        }
+
+        if {$allowed ne ""} {
+            set allowed [lsort -unique [concat $common_keys $allowed]]
+            foreach key [dict keys $entry] {
+                if {[string index $key 0] eq "_" || $key in $allowed} {
+                    continue
+                }
+                lappend problems "$where: unsupported option \"[_policy_quote $key]\" (supported: [join $allowed {, }])"
+            }
+        }
+        if {[dict exists $entry severity]} {
+            lassign [dict get $entry severity] kind severity
+            if {$kind ne "string" || $severity ni {error warning info}} {
+                lappend problems "$where: invalid severity \"[_policy_quote $severity]\" (must be the string error, warning or info)"
+            }
+        }
+    }
+
+    return $problems
+}
+
+# Read, parse and validate a policy file.
+#
+# Throws with errorCode {AURIG LINT POLICY} when the file is missing,
+# unreadable, not exactly one JSON value or fails validate_policy. The message
+# holds one line per problem, each "invalid policy <path>: <problem>" from
+# policy_problem_line, so callers can print them with their own prefix.
+#
+# Arguments:
+#   policy_file : Path to policy JSON
+#   metadata    : Metadata dict (from load_metadata)
+#
+# Returns: Policy dict (json2dict form) with the "_" comment keys removed
+proc ::aurig::lint::load_policy {policy_file metadata} {
+    package require json
+
+    if {![file exists $policy_file]} {
+        return -code error -errorcode {AURIG LINT POLICY} \
+            [policy_problem_line $policy_file "file not found"]
+    }
+    if {[catch {read_json_file $policy_file} json_data]} {
+        return -code error -errorcode {AURIG LINT POLICY} \
+            [policy_problem_line $policy_file "cannot read file: $json_data"]
+    }
+    if {[catch {_json_typed $json_data} typed]} {
+        return -code error -errorcode {AURIG LINT POLICY} \
+            [policy_problem_line $policy_file "malformed JSON: $typed"]
+    }
+
+    set problems [validate_policy $typed $metadata]
+    if {[llength $problems] > 0} {
+        set lines {}
+        foreach problem $problems {
+            lappend lines [policy_problem_line $policy_file $problem]
+        }
+        return -code error -errorcode {AURIG LINT POLICY} [join $lines \n]
+    }
+
+    # The engine works on json2dict values, like the metadata.
+    if {[catch {::json::json2dict $json_data} policy]} {
+        return -code error -errorcode {AURIG LINT POLICY} \
+            [policy_problem_line $policy_file "malformed JSON: $policy"]
+    }
+
+    # Drop comment keys so the rule handlers and exports never see them.
+    set clean [dict create]
+    dict for {key value} $policy {
+        if {[string index $key 0] eq "_"} {
+            continue
+        }
+        if {$key ne "rules"} {
+            dict set clean $key $value
+            continue
+        }
+        set rules [dict create]
+        dict for {rule_id rule_policy} $value {
+            if {[string index $rule_id 0] eq "_"} {
+                continue
+            }
+            set entry [dict create]
+            dict for {opt opt_value} $rule_policy {
+                if {[string index $opt 0] ne "_"} {
+                    dict set entry $opt $opt_value
+                }
+            }
+            dict set rules $rule_id $entry
+        }
+        dict set clean rules $rules
+    }
+    return $clean
+}
+
 # Load and merge rules configuration from metadata and policy files
 #
 # Arguments:
 #   metadata_file : Path to metadata JSON (rule defaults)
-#   policy_file   : Path to policy JSON (user overrides)
+#   policy_file   : Path to policy JSON (user overrides); validated by
+#                   load_policy, which throws on an invalid policy
 #
 # Returns: Merged rules configuration dict
 proc ::aurig::lint::load_rules_config {metadata_file policy_file} {
     set config [dict create]
 
     # Load metadata (defaults)
-    if {$metadata_file ne "" && [file exists $metadata_file]} {
-        set fp [open $metadata_file r]
-        set json_data [read $fp]
-        close $fp
-
-        set metadata [::json::json2dict $json_data]
-        set config [dict merge $config $metadata]
-    }
+    set metadata [load_metadata $metadata_file]
+    set config [dict merge $config $metadata]
 
     # Load policy (user overrides)
-    if {$policy_file ne "" && [file exists $policy_file]} {
-        set fp [open $policy_file r]
-        set json_data [read $fp]
-        close $fp
-
-        set policy [::json::json2dict $json_data]
+    if {$policy_file ne ""} {
+        set policy [load_policy $policy_file $metadata]
 
         # Merge policy into config (policy overrides metadata)
         if {[dict exists $policy rules]} {

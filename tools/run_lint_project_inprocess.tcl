@@ -438,9 +438,11 @@ if {$opts(fail_on) ni {error warning info any none}} {
     exit 2
 }
 
-# Validate policy file
+# Validate policy file. A missing file gets the engine's standard
+# "invalid policy <path>: file not found" line; the rest of the policy is
+# checked once the metadata path is known, below.
 if {$opts(policy) ne "" && ![file exists $opts(policy)]} {
-    puts stderr "ERROR: Policy file does not exist: $opts(policy)"
+    puts stderr "ERROR: [::aurig::lint::policy_problem_line $opts(policy) {file not found}]"
     exit 2
 }
 
@@ -959,9 +961,7 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
     # Load metadata
     set metadata_dict [dict create]
     if {[file exists $metadata_path]} {
-        set fp [open $metadata_path r]
-        set json_text [read $fp]
-        close $fp
+        set json_text [::aurig::lint::read_json_file $metadata_path]
         # Simple JSON to dict (reuse if json package available)
         if {![catch {package require json}]} {
             set metadata_dict [json::json2dict $json_text]
@@ -971,9 +971,7 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
     # Load policy if provided
     set policy_dict [dict create]
     if {$policy_path ne "" && [file exists $policy_path]} {
-        set fp [open $policy_path r]
-        set json_text [read $fp]
-        close $fp
+        set json_text [::aurig::lint::read_json_file $policy_path]
         if {![catch {package require json}]} {
             set policy_dict [json::json2dict $json_text]
         }
@@ -997,8 +995,10 @@ proc lint_project_export_policy {metadata_path policy_path outdir} {
     }
 
     # Export JSON
+    # Written as UTF-8 (no BOM), the encoding policy files are read in.
     set json_file [file join $outdir "effective_policy.json"]
     set f [open $json_file w]
+    fconfigure $f -encoding utf-8
     puts $f "\{"
     puts $f "  \"comment\": \"Effective lint policy (metadata + user policy merged)\","
     puts $f "  \"generated\": \"[clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}]\","
@@ -1126,6 +1126,25 @@ if {$opts(policy) eq ""} {
     }
 } else {
     puts "Policy file: $opts(policy)"
+}
+
+# Validate the policy once, before any file is linted or any report is
+# written. An invalid policy is a configuration error (rc 2) with one line per
+# problem; without this check each file would end in TOOL_ERROR, and malformed
+# JSON would escape uncaught from the effective-policy export (rc 1).
+if {$opts(policy) ne ""} {
+    if {[catch {
+        ::aurig::lint::load_policy $opts(policy) [::aurig::lint::load_metadata $metadata_path]
+    } policy_err]} {
+        if {[lrange $::errorCode 0 2] eq {AURIG LINT POLICY}} {
+            foreach line [split $policy_err \n] {
+                puts stderr "ERROR: $line"
+            }
+        } else {
+            puts stderr "ERROR: cannot read policy $opts(policy): $policy_err"
+        }
+        exit 2
+    }
 }
 
 # Validate baseline flag combinations and resolve the baseline path.
