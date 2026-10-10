@@ -392,11 +392,12 @@ overrides the defaults rule by rule:
 }
 ```
 
-Policy and metadata files are read as UTF-8 on every platform; one leading
-byte order mark (UTF-8 BOM, as written by Notepad and Windows PowerShell 5.1)
-is ignored. The JSON exports of the effective policy (`-export_rules
-<file>.json`, the runner's `effective_policy.json`) are written as UTF-8
-without a BOM.
+The production readers (the engine, the single-file CLI, the project runner
+and `doc/tools/generate_rules_reference.tcl`) read policy and metadata files
+as UTF-8 on every platform; one leading byte order mark (UTF-8 BOM, as written
+by Notepad and Windows PowerShell 5.1) is ignored. The JSON exports of the
+effective policy (`-export_rules <file>.json`, the runner's
+`effective_policy.json`) are written as UTF-8 without a BOM.
 
 Both the single-file CLI (also with `-export_rules`) and the project runner
 check the policy before linting and exit 2 if any of these is wrong. Every
