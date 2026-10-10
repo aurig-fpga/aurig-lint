@@ -62,11 +62,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   characters, and reading stopped at a Ctrl-Z (0x1A) character, hiding any
   text after it. A Ctrl-Z is now an ordinary character, so text after the
   JSON value is reported. This covers the engine, the single-file CLI
-  (including `-export_rules`) and the project runner's effective-policy
-  export. The JSON exports (`-export_rules <file>.json` and the runner's
-  `effective_policy.json`) are written as UTF-8 without a BOM, so an exported
-  policy with non-ASCII text reads back unchanged. Baseline files are
-  unchanged.
+  (including `-export_rules`), the project runner's effective-policy export
+  and `doc/tools/generate_rules_reference.tcl`. The JSON exports
+  (`-export_rules <file>.json` and the runner's `effective_policy.json`) are
+  written as UTF-8 without a BOM, so an exported policy with non-ASCII text
+  reads back unchanged. Baseline files are unchanged.
 
 - `tools/run_lint_project_inprocess.tcl`: a manifest that resolves to no VHDL
   files now exits **2** instead of 0. That covers a manifest with no

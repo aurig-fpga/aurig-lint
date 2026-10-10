@@ -61,9 +61,19 @@ if {![file exists $metadata_file]} {
     exit 1
 }
 
+# Read as the engine's ::aurig::lint::read_json_file does (inlined: this tool
+# does not load the engine): UTF-8 whatever the system encoding, no
+# end-of-file character, one leading byte order mark U+FEFF dropped.
 set fh [open $metadata_file r]
-set metadata_json [read $fh]
-close $fh
+try {
+    fconfigure $fh -encoding utf-8 -eofchar {} -translation auto
+    set metadata_json [read $fh]
+} finally {
+    close $fh
+}
+if {[string index $metadata_json 0] eq "\uFEFF"} {
+    set metadata_json [string range $metadata_json 1 end]
+}
 
 set metadata [::json::json2dict $metadata_json]
 
