@@ -438,9 +438,11 @@ if {$opts(fail_on) ni {error warning info any none}} {
     exit 2
 }
 
-# Validate policy file
+# Validate policy file. A missing file gets the engine's standard
+# "invalid policy <path>: file not found" line; the rest of the policy is
+# checked once the metadata path is known, below.
 if {$opts(policy) ne "" && ![file exists $opts(policy)]} {
-    puts stderr "ERROR: Policy file does not exist: $opts(policy)"
+    puts stderr "ERROR: [::aurig::lint::policy_problem_line $opts(policy) {file not found}]"
     exit 2
 }
 

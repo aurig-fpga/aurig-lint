@@ -28,7 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a control character in them cannot split a problem across lines. No
   report or export file is written. Now rejected:
   - a `-policy` file that does not exist (the CLI used to lint without it;
-    the runner already exited 2);
+    the runner already exited 2, and now prints the same `invalid policy
+    <file>: file not found` line);
   - input that is not exactly one JSON value: malformed JSON, or text after
     the value other than whitespace (`{"rules": {}} garbage` used to load).
     The runner used to exit 1 with a Tcl stack trace from the

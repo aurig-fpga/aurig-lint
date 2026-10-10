@@ -36,7 +36,8 @@
 # other case and entry point the message check fails on the code before the
 # fix; the rc check does too, except where the old code already crashed with
 # rc 2 and a stack trace (CLI cases 3 unknown type, 5 syntax error, 6 false;
-# runner case 3 unknown type). Runner case 1 already exited 2 and is a pin.
+# runner case 3 unknown type). Runner case 1 already exited 2, with "Policy
+# file does not exist" instead of the standard message; its rc check is a pin.
 #
 # Checks labelled [review] cover four defects of the first version of this
 # fix (ccb348f), which validated json2dict output: it took [] and "a b" for
@@ -316,7 +317,9 @@ check_true "case 1 CLI: message names the file" \
 set out_missing [file join $out r_missing]
 lassign [run_project $missing $out_missing] rc o
 check_eq "case 1 runner: rc 2 (already 2 before the fix)" 2 $rc
-check_true "case 1 runner: message names the file" {[string match "*$missing*" $o]}
+check_true "case 1 runner: \"ERROR: invalid policy <path>: file not found\"" \
+    {[string match "*ERROR: invalid policy $missing: file not found*" $o]}
+check_true "case 1 runner: no report directory" {![file exists $out_missing]}
 
 # ----------------------------------------------------------------------------
 # Cases 2-10, both entry points
