@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matching ignores case and follows Tcl `string match` (`*` also matches
   `/`, no `**`). Same result in the single-file CLI and the project runner.
   Invalid overrides (not a list of objects, `"files"` not a non-empty list of
-  strings, `"rules"` not an object, an unknown rule id, `"type"` in an
+  strings, a pattern with a backslash, `"rules"` not an object, an unknown rule id, `"type"` in an
   override, an unsupported option or severity) exit **2** with one `invalid
   policy <file>: <problem>` line each, as in #16. The effective-policy exports
   do not include `"overrides"` yet (#17). See "Per-file overrides" in the

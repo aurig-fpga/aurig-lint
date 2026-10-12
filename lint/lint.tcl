@@ -553,7 +553,9 @@ proc ::aurig::lint::_policy_entry_problems {where entry allowed} {
 # Rules:
 #   - "overrides" is a JSON array of objects; an entry has exactly the keys
 #     "files" and "rules" (plus "_" comment keys);
-#   - "files" is a non-empty array of non-empty strings (glob patterns);
+#   - "files" is a non-empty array of non-empty strings (glob patterns)
+#     without a backslash: "src\tb\*.vhd" would be matched as a file name
+#     and never match, so the path separator must be "/";
 #   - "rules" is an object of rule entries, each an object; a rule id must be
 #     a built-in rule or a rule of the top-level "rules"; "type" is not
 #     allowed (an override cannot turn a rule into another kind of rule);
@@ -606,6 +608,8 @@ proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule} {
                         lappend problems "$where: \"files\"\[$pattern_index\] is not a string (found $kind)"
                     } elseif {$pattern eq ""} {
                         lappend problems "$where: \"files\"\[$pattern_index\] is an empty string"
+                    } elseif {[string first \\ $pattern] >= 0} {
+                        lappend problems "$where files\[$pattern_index\] \"[_policy_quote $pattern]\": use \"/\" as the path separator"
                     }
                 }
             }

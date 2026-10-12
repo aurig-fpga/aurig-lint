@@ -32,7 +32,9 @@
 # A run that exits 2 counts as "rc 2", never as "no latch diagnostic", so
 # every check of a valid policy fails before the fix. The validation cases
 # and "-project_root not a directory" already exited 2 before: their rc
-# checks are pins, their message checks fail before the fix. Checks labelled
+# checks are pins, their message checks fail before the fix. The exception
+# is the backslash pattern ("src\\tb\\*.vhd"), which the first version of
+# overrides accepted and never matched (rc 1). Checks labelled
 # [control] hold before and after: a policy without "overrides" reports the
 # latch in every file, a disable pragma suppresses it, the policy is
 # discovered.
@@ -518,6 +520,9 @@ set invalid [dict create \
     not_array [list \
         {{"files": ["tb_*.vhd"], "rules": {"forbid_latch_inference": {"enabled": false}}}} \
         [list {"overrides" is not a JSON array (found object)}]] \
+    backslash [list \
+        {[{"files": ["src/bfm/*", "src\\tb\\*.vhd"], "rules": {"forbid_latch_inference": {"enabled": false}}}]} \
+        [list {overrides[0] files[1] "src\\tb\\*.vhd": use "/" as the path separator}]] \
     several [list \
         {[{"files": ["tb_*.vhd"], "rules": {}},
           {"files": ["*_tb.vhd", 3], "rules": {"forbid_latch_inference": {"severity": "fatal", "type": "naming"}, "nope": {}}, "file": []},
@@ -561,6 +566,21 @@ dict for {name spec} $invalid {
     check_eq "runner, invalid $name: one line per problem, with the path" \
         $expected_runner [problem_lines $o "ERROR: "]
 }
+
+# A backslash pattern used to load and never match: tb_x.vhd under src/tb
+# kept its latch diagnostic (rc 1). The same pattern with "/" matches.
+set p_backslash [policy invalid_backslash \
+    [lindex [dict get $invalid backslash] 0]]
+lassign [cli $p_backslash $tb_pre -project_root $proj] rc latch
+check_eq "CLI -project_root, \"src\\\\tb\\\\*.vhd\", tb_x.vhd: rc 2" 2 $rc
+set p_slash [policy slash {[
+  {"files": ["src/bfm/*", "src/tb/*.vhd"], "rules": {"forbid_latch_inference": {"enabled": false}}}
+]}]
+lassign [cli $p_slash $tb_pre -project_root $proj] rc latch
+check_eq "\[control\] CLI -project_root, \"src/tb/*.vhd\", tb_x.vhd: no latch diagnostic" {} $latch
+lassign [project $p_slash r_slash] rc latch
+check_eq "\[control\] runner, \"src/tb/*.vhd\": latch only in src/rtl" \
+    {src/rtl/latchy.vhd warning} $latch
 
 # An override may name a user-defined rule of the top-level "rules".
 set p_user [file join $pol user.json]

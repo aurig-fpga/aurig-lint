@@ -463,7 +463,9 @@ Matching:
 
 - a pattern without `/` matches the file name (`tb_*.vhd`);
 - a pattern with `/` matches the file's path relative to the project root,
-  written with `/` and without a leading `./` (`src/legacy/*`);
+  written with `/` and without a leading `./` (`src/legacy/*`), also on
+  Windows; a pattern with a backslash (`"src\\legacy\\*"` in JSON) is
+  rejected, since it would never match;
 - matching ignores case, so `tb_*.vhd` matches `TB_TOP.VHD`;
 - patterns follow Tcl `string match`: `*` matches any characters **including
   `/`** (`src/*` matches every file below `src/`), `?` one character,
@@ -489,7 +491,9 @@ The policy is rejected (exit 2, one `invalid policy <file>: <problem>` line
 per problem, entries named by position from 0, e.g. `overrides[1] rule
 "signal_naming": ...`) when `"overrides"` is not a list of objects; an entry
 has keys other than `"files"` and `"rules"`; `"files"` is missing, not a
-list, empty, or holds something other than a non-empty string; `"rules"` is
+list, empty, or holds something other than a non-empty string; a pattern
+contains a backslash (`overrides[0] files[1] "src\\tb\\*.vhd": use "/" as
+the path separator`); `"rules"` is
 missing or not an object; a rule is neither in the metadata nor in the
 top-level `"rules"`; a rule sets `"type"`; or a rule has an unsupported
 option or an invalid `"severity"` (checked as for the top-level entry).
