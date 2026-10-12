@@ -1490,7 +1490,8 @@ foreach vhdl_file $vhdl_files {
 
     # Call lint engine DIRECTLY (in-process, no exec)
     if {[catch {
-        set lint_args [list -input $normalized_path -metadata $metadata_path -mode lint]
+        set lint_args [list -input $normalized_path -metadata $metadata_path -mode lint \
+            -project_root $opts(project_root)]
         if {$opts(policy) ne ""} {
             lappend lint_args -policy $opts(policy)
         }

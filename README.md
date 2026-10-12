@@ -285,6 +285,7 @@ Common options:
 | `-input <file>` | VHDL source file to lint (required) |
 | `-metadata <file>` | Rule metadata JSON (default: `lint/metadata.json`) |
 | `-policy <file>` | User policy overrides (JSON) |
+| `-project_root <dir>` | Root for the policy's `overrides` patterns that contain `/` (default: the folder holding the discovered `.aurig/`, else the current directory) |
 | `-mode lint\|doc` | Strict lint vs. tolerant doc mode (default: `lint`) |
 | `-format text\|json` | Console output format (default: `text`) |
 | `-report_format text\|md\|html` | Report format |
@@ -410,7 +411,7 @@ character in them cannot split a problem across lines:
 - the top level, `"rules"` or a rule entry is not a JSON object (an array or
   a string is rejected);
 - the top-level `"rules"` key is missing; other top-level keys must be
-  `comment`, `generated` or `version`;
+  `overrides`, `comment`, `generated` or `version`;
 - a rule id is not in the metadata and has no `"type"`, or its `"type"` is
   not a rule type the metadata uses (this is how user-defined rules are
   made; a user-defined `"naming"` rule needs `"scope"` and `"pattern"`);
@@ -421,13 +422,81 @@ character in them cannot split a problem across lines:
   `architecture_naming` declares, while `forbid_latch_inference` does not
   accept `bfm_patterns`;
 - `"type"` differs from the metadata on a built-in rule;
-- `"severity"` is not one of the strings `error`, `warning`, `info`.
+- `"severity"` is not one of the strings `error`, `warning`, `info`;
+- `"overrides"` is wrong (see [Per-file overrides](#per-file-overrides)).
 
 Option values are not type-checked otherwise: a list option written as a
 string, as in the exported effective policy, still loads.
 
 Keys starting with `_` are comments and are ignored at the top level, inside
-`"rules"` and inside a rule entry.
+`"rules"`, inside a rule entry and inside an override entry.
+
+#### Per-file overrides
+
+`"overrides"` changes rules for some files only, typically testbenches and
+bus functional models (BFMs) found by file name:
+
+```json
+{
+  "rules": {
+    "forbid_latch_inference": { "enabled": true }
+  },
+  "overrides": [
+    { "_note": "testbenches and BFMs may infer latches",
+      "files": ["tb_*.vhd", "*_tb.vhd", "*_bfm.vhd"],
+      "rules": { "forbid_latch_inference": { "enabled": false } } },
+    { "files": ["src/legacy/*"],
+      "rules": { "signal_naming": { "severity": "info" } } }
+  ]
+}
+```
+
+Each entry has `"files"`, a non-empty list of glob patterns, and `"rules"`,
+written like the top-level `"rules"`. For each linted file, every entry with a
+matching pattern is merged on top of the rule configuration, in the order of
+the list, rule by rule: the metadata defaults, then the top-level `"rules"`,
+then each matching entry. An entry changes only the options it sets, and a
+later entry wins over an earlier one; above, a file named `tb_top.vhd` under
+`src/legacy/` gets both changes.
+
+Matching:
+
+- a pattern without `/` matches the file name (`tb_*.vhd`);
+- a pattern with `/` matches the file's path relative to the project root,
+  written with `/` and without a leading `./` (`src/legacy/*`);
+- matching ignores case, so `tb_*.vhd` matches `TB_TOP.VHD`;
+- patterns follow Tcl `string match`: `*` matches any characters **including
+  `/`** (`src/*` matches every file below `src/`), `?` one character,
+  `[abc]` one of a set; there is no `**`;
+- a file outside the project root is matched by its file name only.
+
+For the project runner the project root is `-project_root`, or with
+`-manifest` the manifest's `project_root`. The single-file
+CLI takes `-project_root <dir>`; without it, the root is the folder that
+holds the `.aurig/` folder where the policy was discovered, or the current
+directory when `-policy` is given. Engine callers pass `-project_root` to
+`::aurig::lint::run`; without it only file-name patterns match.
+
+The project runner and the single-file CLI give the same result for a file.
+`-- aurig-lint: disable` pragmas still remove diagnostics afterwards, and the
+runner's cap of diagnostics per rule per file counts what is left after the
+overrides. Rule options that take file patterns of their own
+(`testbench_patterns`, `bfm_patterns`, `excluded_architectures` on
+`require_reset_in_clocked_process` and `forbid_wait_statements`) work as
+before and combine with the overrides.
+
+The policy is rejected (exit 2, one `invalid policy <file>: <problem>` line
+per problem, entries named by position from 0, e.g. `overrides[1] rule
+"signal_naming": ...`) when `"overrides"` is not a list of objects; an entry
+has keys other than `"files"` and `"rules"`; `"files"` is missing, not a
+list, empty, or holds something other than a non-empty string; `"rules"` is
+missing or not an object; a rule is neither in the metadata nor in the
+top-level `"rules"`; a rule sets `"type"`; or a rule has an unsupported
+option or an invalid `"severity"` (checked as for the top-level entry).
+
+The effective-policy exports (`-export_rules`, the runner's
+`effective_policy.json` and `.md`) do not include `"overrides"` yet: they show
+the top-level configuration only (#17).
 
 ## Development & tests
 

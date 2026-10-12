@@ -15,6 +15,7 @@
 #
 # Public API:
 #   ::aurig::lint::run -input <file> -metadata <json> -policy <json> -mode lint|doc
+#                      [-project_root <dir>]
 #
 # Returns: List of diagnostic dicts with fields:
 #   - rule_id: Unique identifier for the rule that triggered
@@ -75,6 +76,9 @@ namespace eval ::aurig::lint::rule {}
 #   -metadata <file>  : JSON file with rule metadata/defaults
 #   -policy <file>    : JSON file with user policy overrides
 #   -mode <mode>      : lint (strict) or doc (tolerant)
+#   -project_root <dir> : Root for the policy's "overrides" patterns that
+#                       contain "/" (default: none, so only file-name
+#                       patterns match)
 #
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::run {args} {
@@ -95,6 +99,7 @@ proc ::aurig::lint::run {args} {
         -metadata ""
         -policy ""
         -mode "lint"
+        -project_root ""
     }
 
     for {set i 0} {$i < [llength $args]} {incr i} {
@@ -116,8 +121,11 @@ proc ::aurig::lint::run {args} {
         error "Invalid mode: $mode (must be 'lint' or 'doc')"
     }
 
-    # Load and merge rules configuration
-    set rules_config [load_rules_config $opts(-metadata) $opts(-policy)]
+    # Load and merge rules configuration, then the policy's overrides that
+    # match this file
+    set rules_config [apply_overrides \
+        [load_rules_config $opts(-metadata) $opts(-policy)] \
+        $opts(-input) $opts(-project_root)]
 
     # Parse the input file using existing parser
     if {[catch {
@@ -364,8 +372,8 @@ proc ::aurig::lint::policy_problem_line {policy_file problem} {
 #
 # Rules:
 #   - the top level and "rules" must be JSON objects, and so must every rule
-#     entry; "rules" is required; other top-level keys must be comment,
-#     generated or version;
+#     entry; "rules" is required; other top-level keys must be overrides,
+#     comment, generated or version;
 #   - a rule id that is not in metadata is a user-defined rule and needs a
 #     "type" that has a handler and is used by at least one metadata rule;
 #     a user-defined "naming" rule needs "scope" and "pattern";
@@ -376,8 +384,9 @@ proc ::aurig::lint::policy_problem_line {policy_file problem} {
 #     on architecture_naming but read by every naming rule with scope
 #     "architecture");
 #   - "severity" must be the string error, warning or info;
+#   - "overrides" is checked by _validate_policy_overrides;
 #   - keys starting with "_" are comments and are ignored at the top level,
-#     inside "rules" and inside a rule entry.
+#     inside "rules", inside a rule entry and inside an override entry.
 # Independent problems on the same entry are all reported. Names and values
 # from the policy are written with _policy_quote, so no problem spans lines.
 #
@@ -396,19 +405,20 @@ proc ::aurig::lint::validate_policy {policy metadata} {
     }
 
     foreach key [dict keys $top] {
-        if {[string index $key 0] eq "_" || $key in {rules comment generated version}} {
+        if {[string index $key 0] eq "_" || $key in {rules overrides comment generated version}} {
             continue
         }
-        lappend problems "unknown top-level key \"[_policy_quote $key]\" (allowed: rules, comment, generated, version; keys starting with \"_\" are comments)"
+        lappend problems "unknown top-level key \"[_policy_quote $key]\" (allowed: rules, overrides, comment, generated, version; keys starting with \"_\" are comments)"
     }
+    set policy_rules [dict create]
     if {![dict exists $top rules]} {
         lappend problems "missing top-level \"rules\" key"
-        return $problems
-    }
-    lassign [dict get $top rules] kind policy_rules
-    if {$kind ne "object"} {
-        lappend problems "\"rules\" is not a JSON object (found $kind)"
-        return $problems
+    } else {
+        lassign [dict get $top rules] kind policy_rules
+        if {$kind ne "object"} {
+            lappend problems "\"rules\" is not a JSON object (found $kind)"
+            set policy_rules [dict create]
+        }
     }
 
     # Supported options per rule type (union over the metadata rules of that
@@ -433,9 +443,25 @@ proc ::aurig::lint::validate_policy {policy metadata} {
     }
     set usable_types [lsort $usable_types]
 
+    # Supported options of every rule an override may name (the built-in
+    # rules and the policy's user-defined rules), sorted, or "" when the
+    # rule's type cannot be determined.
+    set allowed_by_rule [dict create]
+    dict for {rule_id rule_meta} $builtin_rules {
+        if {[dict exists $rule_meta type]} {
+            set allowed [dict get $keys_by_type [dict get $rule_meta type]]
+        } else {
+            set allowed [dict keys $rule_meta]
+        }
+        dict set allowed_by_rule $rule_id [lsort -unique [concat $common_keys $allowed]]
+    }
+
     dict for {rule_id typed_entry} $policy_rules {
         if {[string index $rule_id 0] eq "_"} {
             continue
+        }
+        if {![dict exists $builtin_rules $rule_id]} {
+            dict set allowed_by_rule $rule_id ""
         }
         set where "rule \"[_policy_quote $rule_id]\""
         lassign $typed_entry kind entry
@@ -459,16 +485,15 @@ proc ::aurig::lint::validate_policy {policy metadata} {
                 if {[dict exists $entry type] && $given_type ne $rule_type} {
                     lappend problems "$where: cannot change \"type\" of a built-in rule from \"[_policy_quote $rule_type]\" to \"[_policy_quote $given_type]\""
                 }
-                set allowed [dict get $keys_by_type $rule_type]
-            } else {
-                set allowed [dict keys $rule_meta]
             }
+            set allowed [dict get $allowed_by_rule $rule_id]
         } elseif {![dict exists $entry type]} {
             lappend problems "$where: unknown rule id (not in metadata and no \"type\" for a user-defined rule)"
         } elseif {$given_type ni $usable_types} {
             lappend problems "$where: unknown rule type \"[_policy_quote $given_type]\" (known types: [join $usable_types {, }])"
         } else {
-            set allowed [dict get $keys_by_type $given_type]
+            set allowed [lsort -unique [concat $common_keys [dict get $keys_by_type $given_type]]]
+            dict set allowed_by_rule $rule_id $allowed
             if {$given_type eq "naming"} {
                 foreach required {scope pattern} {
                     if {![dict exists $entry $required]} {
@@ -478,23 +503,140 @@ proc ::aurig::lint::validate_policy {policy metadata} {
             }
         }
 
-        if {$allowed ne ""} {
-            set allowed [lsort -unique [concat $common_keys $allowed]]
-            foreach key [dict keys $entry] {
-                if {[string index $key 0] eq "_" || $key in $allowed} {
-                    continue
-                }
-                lappend problems "$where: unsupported option \"[_policy_quote $key]\" (supported: [join $allowed {, }])"
-            }
-        }
-        if {[dict exists $entry severity]} {
-            lassign [dict get $entry severity] kind severity
-            if {$kind ne "string" || $severity ni {error warning info}} {
-                lappend problems "$where: invalid severity \"[_policy_quote $severity]\" (must be the string error, warning or info)"
-            }
-        }
+        lappend problems {*}[_policy_entry_problems $where $entry $allowed]
     }
 
+    if {[dict exists $top overrides]} {
+        lappend problems {*}[_validate_policy_overrides \
+            [dict get $top overrides] $allowed_by_rule]
+    }
+
+    return $problems
+}
+
+# Option and severity problems of one rule entry (top level or override).
+#
+# Arguments:
+#   where   : Prefix naming the entry, e.g. rule "x" or overrides[0] rule "x"
+#   entry   : Typed members of the entry (an object's member dict)
+#   allowed : Sorted list of supported options, or "" to skip that check
+#
+# Returns: List of problem strings
+proc ::aurig::lint::_policy_entry_problems {where entry allowed} {
+    set problems {}
+    if {$allowed ne ""} {
+        foreach key [dict keys $entry] {
+            if {[string index $key 0] eq "_" || $key in $allowed} {
+                continue
+            }
+            lappend problems "$where: unsupported option \"[_policy_quote $key]\" (supported: [join $allowed {, }])"
+        }
+    }
+    if {[dict exists $entry severity]} {
+        lassign [dict get $entry severity] kind severity
+        if {$kind ne "string" || $severity ni {error warning info}} {
+            lappend problems "$where: invalid severity \"[_policy_quote $severity]\" (must be the string error, warning or info)"
+        }
+    }
+    return $problems
+}
+
+# Validate the policy's "overrides" value.
+#
+# Rules:
+#   - "overrides" is a JSON array of objects; an entry has exactly the keys
+#     "files" and "rules" (plus "_" comment keys);
+#   - "files" is a non-empty array of non-empty strings (glob patterns);
+#   - "rules" is an object of rule entries, each an object; a rule id must be
+#     a built-in rule or a rule of the top-level "rules"; "type" is not
+#     allowed (an override cannot turn a rule into another kind of rule);
+#     options and severity are checked as for the top-level entry.
+# Entries are named by their 0-based position: overrides[0], overrides[1]...
+#
+# Arguments:
+#   typed           : Typed tree of the "overrides" value
+#   allowed_by_rule : Rule id -> supported options ("" when unknown), for
+#                     every rule an override may name
+#
+# Returns: List of problem strings
+proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule} {
+    lassign $typed kind items
+    if {$kind ne "array"} {
+        return [list "\"overrides\" is not a JSON array (found $kind)"]
+    }
+
+    set problems {}
+    set index -1
+    foreach typed_override $items {
+        incr index
+        set where "overrides\[$index\]"
+        lassign $typed_override kind override
+        if {$kind ne "object"} {
+            lappend problems "$where: entry is not a JSON object (found $kind)"
+            continue
+        }
+        foreach key [dict keys $override] {
+            if {[string index $key 0] eq "_" || $key in {files rules}} {
+                continue
+            }
+            lappend problems "$where: unknown key \"[_policy_quote $key]\" (allowed: files, rules; keys starting with \"_\" are comments)"
+        }
+
+        if {![dict exists $override files]} {
+            lappend problems "$where: missing \"files\""
+        } else {
+            lassign [dict get $override files] kind patterns
+            if {$kind ne "array"} {
+                lappend problems "$where: \"files\" is not a JSON array (found $kind)"
+            } elseif {[llength $patterns] == 0} {
+                lappend problems "$where: \"files\" is empty (give at least one glob pattern)"
+            } else {
+                set pattern_index -1
+                foreach typed_pattern $patterns {
+                    incr pattern_index
+                    lassign $typed_pattern kind pattern
+                    if {$kind ne "string"} {
+                        lappend problems "$where: \"files\"\[$pattern_index\] is not a string (found $kind)"
+                    } elseif {$pattern eq ""} {
+                        lappend problems "$where: \"files\"\[$pattern_index\] is an empty string"
+                    }
+                }
+            }
+        }
+
+        if {![dict exists $override rules]} {
+            lappend problems "$where: missing \"rules\""
+            continue
+        }
+        lassign [dict get $override rules] kind override_rules
+        if {$kind ne "object"} {
+            lappend problems "$where: \"rules\" is not a JSON object (found $kind)"
+            continue
+        }
+        dict for {rule_id typed_entry} $override_rules {
+            if {[string index $rule_id 0] eq "_"} {
+                continue
+            }
+            set rule_where "$where rule \"[_policy_quote $rule_id]\""
+            lassign $typed_entry kind entry
+            if {$kind ne "object"} {
+                lappend problems "$rule_where: entry is not a JSON object (found $kind)"
+                continue
+            }
+            set allowed ""
+            if {[dict exists $allowed_by_rule $rule_id]} {
+                set allowed [dict get $allowed_by_rule $rule_id]
+                set allowed [lsearch -all -inline -not -exact $allowed type]
+            } else {
+                lappend problems "$rule_where: unknown rule id (not in metadata or in the top-level \"rules\")"
+            }
+            if {[dict exists $entry type]} {
+                lappend problems "$rule_where: \"type\" is not allowed in an override (a rule's type comes from metadata or the top-level \"rules\")"
+                dict unset entry type
+            }
+            lappend problems {*}[_policy_entry_problems $rule_where $entry $allowed]
+        }
+    }
     return $problems
 }
 
@@ -547,24 +689,42 @@ proc ::aurig::lint::load_policy {policy_file metadata} {
         if {[string index $key 0] eq "_"} {
             continue
         }
-        if {$key ne "rules"} {
-            dict set clean $key $value
+        switch -- $key {
+            rules {
+                dict set clean rules [_drop_comment_keys $value]
+            }
+            overrides {
+                set overrides {}
+                foreach override $value {
+                    lappend overrides [dict create \
+                        files [dict get $override files] \
+                        rules [_drop_comment_keys [dict get $override rules]]]
+                }
+                dict set clean overrides $overrides
+            }
+            default {
+                dict set clean $key $value
+            }
+        }
+    }
+    return $clean
+}
+
+# Drop the "_" comment keys from a "rules" object (json2dict form): the
+# comment rule ids and the comment options inside each rule entry.
+proc ::aurig::lint::_drop_comment_keys {rules} {
+    set clean [dict create]
+    dict for {rule_id rule_policy} $rules {
+        if {[string index $rule_id 0] eq "_"} {
             continue
         }
-        set rules [dict create]
-        dict for {rule_id rule_policy} $value {
-            if {[string index $rule_id 0] eq "_"} {
-                continue
+        set entry [dict create]
+        dict for {opt opt_value} $rule_policy {
+            if {[string index $opt 0] ne "_"} {
+                dict set entry $opt $opt_value
             }
-            set entry [dict create]
-            dict for {opt opt_value} $rule_policy {
-                if {[string index $opt 0] ne "_"} {
-                    dict set entry $opt $opt_value
-                }
-            }
-            dict set rules $rule_id $entry
         }
-        dict set clean rules $rules
+        dict set clean $rule_id $entry
     }
     return $clean
 }
@@ -613,8 +773,110 @@ proc ::aurig::lint::load_rules_config {metadata_file policy_file} {
 
             dict set config rules $config_rules
         }
+
+        # Per-file overrides are kept as they are; apply_overrides merges
+        # the entries that match each linted file.
+        if {[dict exists $policy overrides]} {
+            dict set config overrides [dict get $policy overrides]
+        }
     }
 
+    return $config
+}
+
+#=============================================================================
+# Per-file Overrides
+#=============================================================================
+
+# Path of a file relative to a root directory, with forward slashes, or ""
+# when the file is not under the root (or no root is given). The comparison
+# ignores case on Windows, where paths do.
+#
+# Arguments:
+#   filename : File path
+#   root     : Root directory, or ""
+#
+# Returns: Relative path, or ""
+proc ::aurig::lint::relative_to_root {filename root} {
+    if {$root eq "" || [catch {
+        set full [file normalize $filename]
+        set root [string trimright [file normalize $root] "/\\"]
+    }]} {
+        return ""
+    }
+    set length [string length $root]
+    if {$::tcl_platform(platform) eq "windows"} {
+        set under [string equal -nocase -length $length $root $full]
+    } else {
+        set under [string equal -length $length $root $full]
+    }
+    if {!$under || [string index $full $length] ni {/ \\}} {
+        return ""
+    }
+    return [string map {\\ /} [string trimleft [string range $full $length end] "/\\"]]
+}
+
+# Whether one of an override's "files" patterns matches a file.
+#
+# A pattern without "/" is matched against the file's name, a pattern with
+# "/" against its path relative to the project root, with forward slashes; a
+# file outside the project root (or linted without one) is matched by name
+# only. Matching uses Tcl [string match] and ignores case: "*" and "?" also
+# match "/", "[...]" is a character set, there is no "**".
+#
+# Arguments:
+#   patterns     : List of glob patterns
+#   filename     : Linted file path
+#   project_root : Project root directory, or ""
+#
+# Returns: 1 if a pattern matches, else 0
+proc ::aurig::lint::override_matches {patterns filename project_root} {
+    set name [file tail $filename]
+    set relative [relative_to_root $filename $project_root]
+    foreach pattern $patterns {
+        if {[string first / $pattern] < 0} {
+            set target $name
+        } elseif {$relative ne ""} {
+            set target $relative
+        } else {
+            continue
+        }
+        if {[string match -nocase $pattern $target]} {
+            return 1
+        }
+    }
+    return 0
+}
+
+# Effective rules configuration for one file: every "overrides" entry whose
+# "files" patterns match the file is merged on top of the rules, in policy
+# order, one rule at a time (a later entry wins for the options it sets).
+# The "overrides" key itself is removed.
+#
+# Arguments:
+#   config       : Rules configuration (from load_rules_config)
+#   filename     : Linted file path
+#   project_root : Project root directory, or ""
+#
+# Returns: Rules configuration for this file
+proc ::aurig::lint::apply_overrides {config filename project_root} {
+    if {![dict exists $config overrides]} {
+        return $config
+    }
+    set overrides [dict get $config overrides]
+    dict unset config overrides
+    foreach override $overrides {
+        if {![override_matches [dict get $override files] $filename $project_root]} {
+            continue
+        }
+        dict for {rule_id rule_override} [dict get $override rules] {
+            set rule_config [dict create]
+            if {[dict exists $config rules $rule_id]} {
+                set rule_config [dict get $config rules $rule_id]
+            }
+            dict set config rules $rule_id [dict merge $rule_config $rule_override]
+        }
+    }
     return $config
 }
 

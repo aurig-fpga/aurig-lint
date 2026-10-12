@@ -16,6 +16,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that resolves to no VHDL files. The runner prints the same diagnostics as a
   WARNING and exits **0**, without writing a report. Opt-in only; nothing in the
   manifest implies it.
+- Per-file rule overrides in the policy (#38). A top-level `"overrides"` list
+  of `{"files": [globs], "rules": {...}}` entries changes rules for matching
+  files only, e.g. `{"enabled": false}` for `forbid_latch_inference` on
+  `tb_*.vhd`, `*_tb.vhd` and `*_bfm.vhd`. For each file the matching entries
+  are merged in order, rule by rule, on top of the metadata and the
+  top-level `"rules"`; a later entry wins. A pattern without `/` matches the
+  file name, a pattern with `/` the path relative to the project root;
+  matching ignores case and follows Tcl `string match` (`*` also matches
+  `/`, no `**`). Same result in the single-file CLI and the project runner.
+  Invalid overrides (not a list of objects, `"files"` not a non-empty list of
+  strings, `"rules"` not an object, an unknown rule id, `"type"` in an
+  override, an unsupported option or severity) exit **2** with one `invalid
+  policy <file>: <problem>` line each, as in #16. The effective-policy exports
+  do not include `"overrides"` yet (#17). See "Per-file overrides" in the
+  README.
+- `lint/lint_cli.tcl`: `-project_root <dir>`, the root for the `"overrides"`
+  patterns that contain `/`. Default: the folder holding the `.aurig/` folder
+  where the policy was discovered, else the current directory.
+  `::aurig::lint::run` takes `-project_root` too; without it only file-name
+  patterns match.
 
 ### Changed (BREAKING)
 

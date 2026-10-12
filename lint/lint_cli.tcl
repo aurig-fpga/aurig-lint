@@ -8,7 +8,8 @@
 # Purpose: Command-line interface for the aurig-lint engine
 #
 # Usage:
-#   tclsh lint_cli.tcl -input <file> [-metadata <json>] [-policy <json>] [-mode lint|doc] [-format text|json]
+#   tclsh lint_cli.tcl -input <file> [-metadata <json>] [-policy <json>] [-project_root <dir>]
+#                      [-mode lint|doc] [-format text|json]
 #
 # Exit codes:
 #   0 - No errors found
@@ -57,6 +58,9 @@ proc ::aurig::lint::cli::print_usage {} {
     puts "Optional:"
     puts "  -metadata <file>       JSON file with rule metadata (default: lint/metadata.json)"
     puts "  -policy <file>         JSON file with user policy overrides"
+    puts "  -project_root <dir>    Root for the policy's 'overrides' patterns that contain /"
+    puts "                         (default: the folder holding the discovered .aurig/,"
+    puts "                         else the current directory)"
     puts "  -mode <mode>           lint (strict) or doc (tolerant) (default: lint)"
     puts "  -format <format>       Output format: text, json (default: text)"
     puts ""
@@ -288,6 +292,7 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
         -input ""
         -metadata ""
         -policy ""
+        -project_root ""
         -mode "lint"
         -format "text"
         -report_format ""
@@ -400,6 +405,7 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
     }
 
     # Auto-discover configuration files if not explicitly provided
+    set discovered_policy ""
     if {$opts(-policy) eq ""} {
         set discovered_policy [find_config_upward "lint-policy.json"]
         if {$discovered_policy ne ""} {
@@ -446,6 +452,20 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
     # Set default metadata file if not specified
     if {$opts(-metadata) eq ""} {
         set opts(-metadata) [file join $script_anchor metadata.json]
+    }
+
+    # Project root for the policy's "overrides" patterns that contain "/":
+    # the folder holding the .aurig/ directory the policy was discovered in,
+    # else the current directory.
+    if {$opts(-project_root) eq ""} {
+        if {$discovered_policy ne ""} {
+            set opts(-project_root) [file dirname [file dirname $discovered_policy]]
+        } else {
+            set opts(-project_root) [pwd]
+        }
+    } elseif {![file isdirectory $opts(-project_root)]} {
+        puts stderr "Error: -project_root is not a directory: $opts(-project_root)"
+        return 2
     }
 
     # Validate mode
@@ -555,6 +575,7 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
             -input $opts(-input) \
             -metadata $opts(-metadata) \
             -policy $opts(-policy) \
+            -project_root $opts(-project_root) \
             -mode $opts(-mode)]
     } err]} {
         # Special-case ONLY the missing tcllib `json` dependency. The engine does
