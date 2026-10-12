@@ -16,6 +16,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that resolves to no VHDL files. The runner prints the same diagnostics as a
   WARNING and exits **0**, without writing a report. Opt-in only; nothing in the
   manifest implies it.
+- Per-file rule overrides in the policy (#38). A top-level `"overrides"` list
+  of `{"files": [globs], "rules": {...}}` entries changes rules for matching
+  files only, e.g. `{"enabled": false}` for `forbid_latch_inference` on
+  `tb_*.vhd`, `*_tb.vhd` and `*_bfm.vhd`. For each file the matching entries
+  are merged in order, rule by rule, on top of the metadata and the
+  top-level `"rules"`; a later entry wins. A pattern without `/` matches the
+  file name, a pattern with `/` the path relative to the project root;
+  matching ignores case and follows Tcl `string match` (`*` also matches
+  `/`, no `**`). Same result in the single-file CLI and the project runner.
+  Invalid overrides (not a list of objects, `"files"` not a non-empty list of
+  strings, a pattern with a backslash, `"rules"` not an object, an unknown rule id, `"type"` in an
+  override, an unsupported option or severity) exit **2** with one `invalid
+  policy <file>: <problem>` line each, as in #16. The effective-policy exports
+  do not include `"overrides"` yet (#17). See "Per-file overrides" in the
+  README.
+- `lint/lint_cli.tcl`: `-project_root <dir>`, the root for the `"overrides"`
+  patterns that contain `/`. Default: the folder holding the `.aurig/` folder
+  where the policy was discovered, else the current directory.
+  `::aurig::lint::run` takes `-project_root` too; without it only file-name
+  patterns match.
 
 ### Changed (BREAKING)
 
@@ -99,6 +119,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failure inside `collect_project_files` is now a hard stop with **exit code
   2**, naming the manifest, instead of being answered with the glob. 2 is this
   runner's existing code for a configuration or environment fault.
+
+### Changed
+
+- `tools/run_lint_project_inprocess.tcl` reads and validates the policy and
+  the metadata once per invocation and reuses them for every file and for the
+  effective-policy export; a 3-file project used to read each of them 5
+  times. The exported `effective_policy.json` and `.md` no longer copy `_`
+  comment keys from rule entries, as `-export_rules` already did.
+  `::aurig::lint::run` takes `-rules_config <dict>` (from `load_rules_config`
+  or the new `merge_rules_config`) in place of `-metadata` and `-policy`.
 
 ### Removed
 
