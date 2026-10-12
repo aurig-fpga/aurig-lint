@@ -120,6 +120,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2**, naming the manifest, instead of being answered with the glob. 2 is this
   runner's existing code for a configuration or environment fault.
 
+### Changed
+
+- `tools/run_lint_project_inprocess.tcl` reads and validates the policy and
+  the metadata once per invocation and reuses them for every file and for the
+  effective-policy export; a 3-file project used to read each of them 5
+  times. The exported `effective_policy.json` and `.md` no longer copy `_`
+  comment keys from rule entries, as `-export_rules` already did.
+  `::aurig::lint::run` takes `-rules_config <dict>` (from `load_rules_config`
+  or the new `merge_rules_config`) in place of `-metadata` and `-policy`.
+
 ### Removed
 
 - `tools/run_lint_project_inprocess.tcl`: the `-allow_degraded_yaml_reader`

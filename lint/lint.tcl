@@ -79,6 +79,10 @@ namespace eval ::aurig::lint::rule {}
 #   -project_root <dir> : Root for the policy's "overrides" patterns that
 #                       contain "/" (default: none, so only file-name
 #                       patterns match)
+#   -rules_config <dict> : Rules configuration already loaded with
+#                       load_rules_config or merge_rules_config; replaces
+#                       -metadata and -policy, so a caller that lints many
+#                       files reads and validates them once
 #
 # Returns: List of diagnostic dicts
 proc ::aurig::lint::run {args} {
@@ -121,11 +125,14 @@ proc ::aurig::lint::run {args} {
         error "Invalid mode: $mode (must be 'lint' or 'doc')"
     }
 
-    # Load and merge rules configuration, then the policy's overrides that
-    # match this file
-    set rules_config [apply_overrides \
-        [load_rules_config $opts(-metadata) $opts(-policy)] \
-        $opts(-input) $opts(-project_root)]
+    # Load and merge rules configuration (unless the caller passed it), then
+    # the policy's overrides that match this file
+    if {[info exists opts(-rules_config)]} {
+        set config $opts(-rules_config)
+    } else {
+        set config [load_rules_config $opts(-metadata) $opts(-policy)]
+    }
+    set rules_config [apply_overrides $config $opts(-input) $opts(-project_root)]
 
     # Parse the input file using existing parser
     if {[catch {
@@ -738,16 +745,26 @@ proc ::aurig::lint::_drop_comment_keys {rules} {
 #
 # Returns: Merged rules configuration dict
 proc ::aurig::lint::load_rules_config {metadata_file policy_file} {
-    set config [dict create]
-
-    # Load metadata (defaults)
     set metadata [load_metadata $metadata_file]
-    set config [dict merge $config $metadata]
-
-    # Load policy (user overrides)
+    set policy ""
     if {$policy_file ne ""} {
         set policy [load_policy $policy_file $metadata]
+    }
+    return [merge_rules_config $metadata $policy]
+}
 
+# Merge loaded metadata and policy into a rules configuration. Callers that
+# lint many files load both once and pass the result to run -rules_config.
+#
+# Arguments:
+#   metadata : Metadata dict (from load_metadata)
+#   policy   : Policy dict (from load_policy), or "" for none
+#
+# Returns: Merged rules configuration dict
+proc ::aurig::lint::merge_rules_config {metadata policy} {
+    set config [dict merge [dict create] $metadata]
+
+    if {$policy ne ""} {
         # Merge policy into config (policy overrides metadata)
         if {[dict exists $policy rules]} {
             set policy_rules [dict get $policy rules]

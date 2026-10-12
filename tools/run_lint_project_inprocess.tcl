@@ -957,26 +957,10 @@ proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
 #-----------------------------------------------------------------------------
 # Export Effective Policy Configuration
 #-----------------------------------------------------------------------------
-proc lint_project_export_policy {metadata_path policy_path outdir} {
-    # Load metadata
-    set metadata_dict [dict create]
-    if {[file exists $metadata_path]} {
-        set json_text [::aurig::lint::read_json_file $metadata_path]
-        # Simple JSON to dict (reuse if json package available)
-        if {![catch {package require json}]} {
-            set metadata_dict [json::json2dict $json_text]
-        }
-    }
-
-    # Load policy if provided
-    set policy_dict [dict create]
-    if {$policy_path ne "" && [file exists $policy_path]} {
-        set json_text [::aurig::lint::read_json_file $policy_path]
-        if {![catch {package require json}]} {
-            set policy_dict [json::json2dict $json_text]
-        }
-    }
-
+# metadata_dict and policy_dict are the metadata and policy the files were
+# linted with (load_metadata, load_policy, or "" for no policy), so neither
+# file is read again.
+proc lint_project_export_policy {metadata_dict policy_dict outdir} {
     # Merge: start with metadata, overlay policy
     set effective [dict create rules [dict create]]
     if {[dict exists $metadata_dict rules]} {
@@ -1128,13 +1112,21 @@ if {$opts(policy) eq ""} {
     puts "Policy file: $opts(policy)"
 }
 
-# Validate the policy once, before any file is linted or any report is
-# written. An invalid policy is a configuration error (rc 2) with one line per
-# problem; without this check each file would end in TOOL_ERROR, and malformed
-# JSON would escape uncaught from the effective-policy export (rc 1).
+# Load the metadata and validate the policy once, before any file is linted
+# or any report is written; every file and the effective-policy export reuse
+# them (rules_config, metadata_dict, policy_dict). An invalid policy is a
+# configuration error (rc 2) with one line per problem; without this check
+# each file would end in TOOL_ERROR.
+if {[catch {
+    set metadata_dict [::aurig::lint::load_metadata $metadata_path]
+} metadata_err]} {
+    puts stderr "ERROR: cannot read metadata $metadata_path: $metadata_err"
+    exit 2
+}
+set policy_dict ""
 if {$opts(policy) ne ""} {
     if {[catch {
-        ::aurig::lint::load_policy $opts(policy) [::aurig::lint::load_metadata $metadata_path]
+        set policy_dict [::aurig::lint::load_policy $opts(policy) $metadata_dict]
     } policy_err]} {
         if {[lrange $::errorCode 0 2] eq {AURIG LINT POLICY}} {
             foreach line [split $policy_err \n] {
@@ -1146,6 +1138,7 @@ if {$opts(policy) ne ""} {
         exit 2
     }
 }
+set rules_config [::aurig::lint::merge_rules_config $metadata_dict $policy_dict]
 
 # Validate baseline flag combinations and resolve the baseline path.
 # -only_new and -update_baseline are mutually exclusive (the read-only
@@ -1490,12 +1483,9 @@ foreach vhdl_file $vhdl_files {
 
     # Call lint engine DIRECTLY (in-process, no exec)
     if {[catch {
-        set lint_args [list -input $normalized_path -metadata $metadata_path -mode lint \
+        set diagnostics [::aurig::lint::run -input $normalized_path \
+            -rules_config $rules_config -mode lint \
             -project_root $opts(project_root)]
-        if {$opts(policy) ne ""} {
-            lappend lint_args -policy $opts(policy)
-        }
-        set diagnostics [::aurig::lint::run {*}$lint_args]
     } lint_err]} {
         # Lint engine threw an error
         set result_state "TOOL_ERROR"
@@ -1725,7 +1715,7 @@ if {$opts(format) eq "html"} {
     #-------------------------------------------------------------------------
     # Export effective policy
     #-------------------------------------------------------------------------
-    set policy_files [lint_project_export_policy $metadata_path $opts(policy) $opts(outdir)]
+    set policy_files [lint_project_export_policy $metadata_dict $policy_dict $opts(outdir)]
     puts "  Exported effective policy: [file tail [lindex $policy_files 0]]"
 
     #-------------------------------------------------------------------------
