@@ -19,6 +19,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (BREAKING)
 
+- Policy files are validated before linting, by the single-file CLI (also
+  with `-export_rules`) and by the project runner. An invalid policy now
+  exits **2**, instead of being dropped in whole or in part without a
+  message (#16). Every problem is listed, one `invalid policy <file>:
+  <problem>` line each, including several problems of the same rule entry.
+  Rule ids, options, types and severities are quoted with JSON escapes, so
+  a control character in them cannot split a problem across lines. No
+  report or export file is written. Now rejected:
+  - a `-policy` file that does not exist (the CLI used to lint without it;
+    the runner already exited 2, and now prints the same `invalid policy
+    <file>: file not found` line);
+  - input that is not exactly one JSON value: malformed JSON, or text after
+    the value other than whitespace (`{"rules": {}} garbage` used to load).
+    The runner used to exit 1 with a Tcl stack trace from the
+    effective-policy export on malformed JSON;
+  - a top level, `"rules"` or rule entry that is not a JSON object. The JSON
+    type is checked: `"signal_naming": []` or `"signal_naming": "a b"` used
+    to load;
+  - a policy without the top-level `"rules"` key, and top-level keys other
+    than `rules`, `comment`, `generated` and `version`;
+  - a rule id that is not in the metadata and has no `"type"`, or whose
+    `"type"` is not a rule type used in the metadata;
+  - an option that is not among the options supported by the rule's type:
+    the keys of all the metadata rules of that type plus `type`, `enabled`,
+    `severity`, `message`; so every naming rule accepts
+    `entity_suffix_bindings` and `binding_message`. Rejected for example:
+    `bfm_patterns` or `excluded_architectures` on `forbid_latch_inference`,
+    which only `require_reset_in_clocked_process` reads. An exported effective
+    policy that carried such an option is rejected when fed back;
+  - a `"severity"` other than the strings `error`, `warning`, `info`;
+  - a `"type"` on a built-in rule that differs from its metadata;
+  - a user-defined `"naming"` rule without `"scope"` or `"pattern"`.
+
+  Option values are not type-checked otherwise, so an exported effective
+  policy with list options written as strings still loads. Keys starting
+  with `_` (such as `"_note"`) are comments and are ignored at the top
+  level, inside `"rules"` and inside a rule entry. See "Policy file" in the
+  README.
+
+- The production readers of policy and metadata files (the engine, the
+  single-file CLI including `-export_rules`, the project runner and
+  `doc/tools/generate_rules_reference.tcl`) read them as UTF-8 on every
+  platform and ignore one leading byte order mark (UTF-8 BOM, as written by
+  Notepad and Windows PowerShell 5.1). They used to read in the system
+  encoding, so on Windows (cp1252) each accented letter of a UTF-8 file
+  became two characters, and reading stopped at a Ctrl-Z (0x1A) character,
+  hiding any text after it. A Ctrl-Z is now an ordinary character. Policy
+  validation therefore reports text after a policy's JSON value; the rules
+  reference generator only changes how it decodes the metadata. The JSON
+  exports (`-export_rules <file>.json` and the runner's
+  `effective_policy.json`) are written as UTF-8 without a BOM, so an exported
+  policy with non-ASCII text reads back unchanged. Baseline files are
+  unchanged.
+
 - `tools/run_lint_project_inprocess.tcl`: a manifest that resolves to no VHDL
   files now exits **2** instead of 0. That covers a manifest with no
   `file_sets`, entries with no `src`, patterns that match nothing, and patterns

@@ -53,6 +53,7 @@ jobs:
             test/test_lint_cli_report_formats.tcl
             test/test_lint_cli_source_rc2.tcl
             test/test_lint_cli_source_safety.tcl
+            test/test_lint_policy_validation.tcl
             test/test_lint_pragma_suppression.tcl
             test/test_lint_process_diagnostic_lines.tcl
             test/test_run_lint_project_baseline.tcl

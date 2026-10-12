@@ -132,6 +132,40 @@ check_true "html: output names known rule '$known_rule'" \
     {[string first $known_rule $html_text] >= 0}
 
 # ----------------------------------------------------------------------------
+# BOM: a UTF-8 metadata file with a leading byte order mark (Notepad, Windows
+# PowerShell 5.1) generates the same Markdown as the original, as the CLI and
+# the runner accept it. Only the "Last updated" timestamp line may differ.
+# ----------------------------------------------------------------------------
+puts ""
+puts "=== BOM-prefixed metadata generates the same output ==="
+proc without_timestamp {text} {
+    return [regsub -line {^\*\*Last updated:\*\*.*$} $text {}]
+}
+set bom_meta [file join $tmp bom_metadata.json]
+set fp [open $bom_meta wb]
+puts -nonewline $fp "\xEF\xBB\xBF"
+close $fp
+set fp [open $bom_meta ab]
+set src [open $real_metadata rb]
+fcopy $src $fp
+close $src
+close $fp
+
+set rorig [run_gen $gen]
+check_eq "bom: original metadata, generator exits 0" 0 [lindex $rorig 0]
+set md_orig [read_text $md_out]
+# Remove the output so a failed run cannot be compared against a stale file.
+file delete $md_out
+set rbom [run_gen $gen -metadata $bom_meta]
+check_eq "bom: BOM-prefixed metadata, generator exits 0" 0 [lindex $rbom 0]
+set md_bom ""
+if {[file exists $md_out]} {
+    set md_bom [read_text $md_out]
+}
+check_true "bom: same Markdown as the original (timestamp line aside)" \
+    {[without_timestamp $md_bom] eq [without_timestamp $md_orig]}
+
+# ----------------------------------------------------------------------------
 # NEGATIVE CONTROL: empty/missing metadata must make the tool FAIL rather than
 # silently emit a doc. Proves the positive assertions above are not vacuous --
 # if generation were a no-op, this would still "pass" and reveal the test as
