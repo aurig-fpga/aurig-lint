@@ -908,7 +908,8 @@ proc ::aurig::lint::apply_overrides {config filename project_root} {
 # Build normalized symbol list from parser output
 #
 # Each symbol is a dict with:
-#   - scope: entity|architecture|package|port|generic|signal|constant|variable|library|type|etc
+#   - scope: entity|architecture|package|port|generic|signal|constant|variable|library|type|
+#            process|instance|generate|etc
 #   - name: Symbol name
 #   - line: Line number (from parser)
 #   - col: Column number (computed)
@@ -1094,6 +1095,32 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
                             context_path $p_ctx \
                             raw_data $pd]
                     }
+                }
+            }
+
+            # Labels of processes, instances and generates (#18), at the
+            # line of the label itself. An unlabelled process or generate
+            # has no name and gives no symbol. The parser reports the
+            # processes and instances inside a generate, at any depth, but
+            # only the generates that are not nested in another generate.
+            foreach {list_key label_scope} {
+                processes      process
+                instantiations instance
+                generates      generate
+            } {
+                if {![dict exists $arch $list_key]} { continue }
+                foreach item [dict get $arch $list_key] {
+                    set label [dict_get_default $item label ""]
+                    if {$label eq ""} { continue }
+                    set parser_line [dict_get_default $item line 0]
+                    set label_location [resolve_location $filename $parser_line $label]
+                    lappend symbols [dict create \
+                        scope $label_scope \
+                        name $label \
+                        line [dict get $label_location line] \
+                        col [dict get $label_location col] \
+                        context_path $ctx \
+                        raw_data $item]
                 }
             }
         }
@@ -2352,8 +2379,10 @@ proc ::aurig::lint::rule::identifier_case {symbols parse_result filename rule_id
         set col [dict get $symbol col]
         set context_path [dict get $symbol context_path]
 
-        # Skip library scope (ieee, std, etc. are lowercase by convention)
-        if {$scope eq "library"} {
+        # Skip library scope (ieee, std, etc. are lowercase by convention),
+        # and the process, instance and generate labels, which are checked
+        # by process_naming, instance_naming and generate_naming
+        if {$scope in {library process instance generate}} {
             continue
         }
 

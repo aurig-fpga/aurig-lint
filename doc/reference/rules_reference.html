@@ -42,8 +42,10 @@
                 <li><a href="#forbid-tabs">forbid_tabs</a></li>
                 <li><a href="#forbid-unconstrained-ports">forbid_unconstrained_ports</a></li>
                 <li><a href="#forbid-wait-statements">forbid_wait_statements</a></li>
+                <li><a href="#generate-naming">generate_naming</a></li>
                 <li><a href="#generic-naming">generic_naming</a></li>
                 <li><a href="#identifier-case">identifier_case</a></li>
+                <li><a href="#instance-naming">instance_naming</a></li>
                 <li><a href="#keyword-lowercase">keyword_lowercase</a></li>
                 <li><a href="#library-naming">library_naming</a></li>
                 <li><a href="#max-line-length">max_line_length</a></li>
@@ -52,6 +54,7 @@
                 <li><a href="#port-in-naming">port_in_naming</a></li>
                 <li><a href="#port-inout-naming">port_inout_naming</a></li>
                 <li><a href="#port-out-naming">port_out_naming</a></li>
+                <li><a href="#process-naming">process_naming</a></li>
                 <li><a href="#require-meaningful-comments">require_meaningful_comments</a></li>
                 <li><a href="#require-reset-in-clocked-process">require_reset_in_clocked_process</a></li>
                 <li><a href="#same-file-units">same_file_units</a></li>
@@ -65,7 +68,7 @@
             <h1>VHDL Lint Rules Reference</h1>
             <div class="meta-info">
                 <strong>Auto-generated</strong> from <code>lint/metadata.json</code><br>
-                <strong>Last updated:</strong> 2026-05-26 18:14:29
+                <strong>Last updated:</strong> 2026-10-12 13:02:53
             </div>
             <h2 id="allowed-libraries">allowed_libraries</h2>
             <p><strong>Type:</strong> <code>library</code></p>
@@ -477,6 +480,38 @@
     }
   }
 }</code></pre>
+            <h2 id="generate-naming">generate_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "generate_naming": {
+    "enabled": false,
+    "message": "Generate label '${name}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "scope": "generate",
+    "severity": "info",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Generate label '${name}' should be lowercase with underscores</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>generate</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>info</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "generate_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
             <h2 id="generic-naming">generic_naming</h2>
             <p><strong>Type:</strong> <code>naming</code></p>
             <h3>Default Configuration</h3>
@@ -534,6 +569,38 @@
             <pre><code>{
   "rules": {
     "identifier_case": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="instance-naming">instance_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "instance_naming": {
+    "enabled": false,
+    "message": "Instance label '${name}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "scope": "instance",
+    "severity": "info",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Instance label '${name}' should be lowercase with underscores</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>instance</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>info</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "instance_naming": {
       "enabled": true,
       "severity": "warning"
     }
@@ -801,6 +868,38 @@
             <pre><code>{
   "rules": {
     "port_out_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="process-naming">process_naming</h2>
+            <p><strong>Type:</strong> <code>naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "process_naming": {
+    "enabled": false,
+    "message": "Process label '${name}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "scope": "process",
+    "severity": "info",
+    "type": "naming"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Process label '${name}' should be lowercase with underscores</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>scope</code></td><td>string</td><td><code>process</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>info</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>naming</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "process_naming": {
       "enabled": true,
       "severity": "warning"
     }
