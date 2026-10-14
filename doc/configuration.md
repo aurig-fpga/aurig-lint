@@ -35,8 +35,16 @@ $runner = "C:/aurig/aurig-lint/tools/run_lint_project_inprocess.tcl"
 In bash, write `lint=/path/to/aurig-lint/lint/lint_cli.tcl` and
 `tclsh "$lint" ...`; the options and the output are the same.
 
-Every example in this guide was run as shown, and its output is copied
-unchanged. `$lint` is the single-file CLI and `$runner` the project runner (see
+**The examples.** Every file an example needs is shown in full, under a label
+with its path, such as `pragmas/regs.vhd`. The paths are relative to a work
+folder of your choice; the outputs below were produced in
+`C:\aurig-trial\l15\guide-run`, which appears in the prompts and in absolute
+paths in the output. Create the files as shown (UTF-8), go to the folder in
+the prompt, and run the command. Some examples use files from earlier ones,
+so follow the guide in order. Your output differs only in absolute paths and,
+for the project runner, in timestamps.
+
+`$lint` is the single-file CLI and `$runner` the project runner (see
 [Usage](../README.md#usage)). The CLI exit code is `0` when there are no
 diagnostics at or above `--fail-on` (default `error`), so a run that reports
 only warnings exits `0`; `1` when there are; `2` for an invalid policy or
@@ -50,6 +58,8 @@ another usage error. In PowerShell the exit code of the last command is in
 A policy is a JSON file, read as UTF-8 (a leading byte order mark, as written
 by Notepad, is ignored). It holds one object with a `"rules"` key, and
 optionally `"overrides"`:
+
+`discovery/.aurig/lint-policy.json`:
 
 ```json
 {
@@ -65,8 +75,8 @@ comment and ignored: at the top level, inside `"rules"`, inside a rule and
 inside an override entry. The other allowed top-level keys are `comment`,
 `generated` and `version`, which are also ignored.
 
-Everything you do not mention keeps its default. A policy with only the
-`"rules": {}` line is valid and changes nothing.
+Everything you do not mention keeps its default. A policy with only
+`"rules": {}` is valid and changes nothing.
 
 ### Which policy is used
 
@@ -76,24 +86,69 @@ Everything you do not mention keeps its default. A policy with only the
 | Project runner (`$runner`) | `<project_root>/.aurig/lint-policy.json`, only there | That file |
 
 Put the policy at `<project>/.aurig/lint-policy.json` and both tools find it.
-Each tool says which policy it took. In a project laid out as
 
-```text
-demo/
-  .aurig/lint-policy.json
-  config/project.yaml
-  src/gate.vhd
+What each tool prints about the policy:
+
+| Tool | Policy found by search | `-policy <file>` | No policy |
+|---|---|---|---|
+| Single-file CLI | `Using discovered policy: <path>` (on stderr) | nothing | nothing |
+| Project runner | `Policy file (auto): <path>` | `Policy file: <file>` ([example](#3-when-the-policy-is-wrong)) | nothing |
+
+So if the CLI prints no `Using discovered policy` line, either you passed
+`-policy` or it is linting with the defaults.
+
+To try discovery, complete the `discovery` project with a manifest and a
+source file:
+
+`discovery/config/project.yaml`:
+
+```yaml
+schema_version: "1.0"
+project_name: discovery
+top: gate
+project_root: ".."
+
+file_sets:
+  rtl:
+    - lib: work
+      vhdl_std: "2008"
+      src:
+        - src/*.vhd
 ```
 
-the CLI, run from `demo/src`, prints the discovered file on the first line
-(on stderr):
+`discovery/src/gate.vhd`:
+
+```vhdl
+library ieee;
+use ieee.std_logic_1164.all;
+
+entity gate is
+  port (
+    en : in  std_logic;
+    d  : in  std_logic;
+    q  : out std_logic
+  );
+end entity gate;
+
+architecture rtl of gate is
+begin
+  hold : process (en, d)
+  begin
+    if en = '1' then
+      q <= d;
+    end if;
+  end process hold;
+end architecture rtl;
+```
+
+The CLI, run from `discovery/src`, finds the policy one level up:
 
 ```powershell
-PS C:\aurig-trial\l15\guide\demo\src> tclsh $lint -input gate.vhd
+PS C:\aurig-trial\l15\guide-run\discovery\src> tclsh $lint -input gate.vhd
 ```
 
 ```text
-Using discovered policy: C:/aurig-trial/l15/guide/demo/.aurig/lint-policy.json
+Using discovered policy: C:/aurig-trial/l15/guide-run/discovery/.aurig/lint-policy.json
 gate.vhd:14: warning: Signal 'q' may infer a latch in process 'hold' - missing default assignment [forbid_latch_inference]
 
 Summary:
@@ -101,24 +156,23 @@ Summary:
   Total:    1
 ```
 
-and the runner prints `Policy file (auto):` in its header (excerpt):
+Exit code 0. The runner looks in `<project_root>/.aurig/` (excerpt of its
+output):
 
 ```powershell
-PS C:\aurig-trial\l15\guide\demo> tclsh $runner -project_root . -format text
+PS C:\aurig-trial\l15\guide-run\discovery> tclsh $runner -project_root . -format text
 ```
 
 ```text
-Project root: C:/aurig-trial/l15/guide/demo
-Configuration: C:/aurig-trial/l15/guide/demo/config/project.yaml
-Output directory: C:/aurig-trial/l15/guide/demo/lint_report
+Project root: C:/aurig-trial/l15/guide-run/discovery
+Configuration: C:/aurig-trial/l15/guide-run/discovery/config/project.yaml
+Output directory: C:/aurig-trial/l15/guide-run/discovery/lint_report
 Report format: text
 Fail-on level: error
-Policy file (auto): C:/aurig-trial/l15/guide/demo/.aurig/lint-policy.json
+Policy file (auto): C:/aurig-trial/l15/guide-run/discovery/.aurig/lint-policy.json
 ```
 
-With `-policy` the runner prints `Policy file: <path>` instead. If neither tool
-prints a policy line, no policy is in effect: you are linting with the
-defaults.
+Exit code 0.
 
 ### The project root
 
@@ -137,6 +191,8 @@ Each key under `"rules"` is a rule id from the [rules
 reference](reference/rules_reference.md). Its value lists the options you want
 to change:
 
+`signals/policy-error.json`:
+
 ```json
 {
   "rules": {
@@ -150,11 +206,33 @@ to change:
 }
 ```
 
-With this policy, the `uart_rx.vhd` of the [signals
-recipe](#signals-lowercamelcase-with-optional-active-low-_n) gives:
+`signals/uart_rx.vhd`:
+
+```vhdl
+library ieee;
+use ieee.std_logic_1164.all;
+
+entity uart_rx is
+  port (
+    clk   : in std_logic;
+    rst_n : in std_logic
+  );
+end entity uart_rx;
+
+architecture rtl of uart_rx is
+  signal bitCount  : integer range 0 to 9;
+  signal rxValid   : std_logic;
+  signal frameOk_n : std_logic;
+  signal rx_data   : std_logic_vector(7 downto 0);
+  signal RxReady   : std_logic;
+  signal busy_N    : std_logic;
+begin
+  rxValid <= not rst_n;
+end architecture rtl;
+```
 
 ```powershell
-PS> tclsh $lint -policy policy.json -input uart_rx.vhd
+PS C:\aurig-trial\l15\guide-run\signals> tclsh $lint -policy policy-error.json -input uart_rx.vhd
 ```
 
 ```text
@@ -231,6 +309,8 @@ applies to every scope you do not override in `"patterns"`; give a scope `""`
 to leave that scope unchecked. It runs **in addition to** the per-scope rules,
 not instead of them:
 
+`pack/policy.json`:
+
 ```json
 {
   "rules": {
@@ -242,8 +322,30 @@ not instead of them:
 }
 ```
 
+`pack/counter.vhd`:
+
+```vhdl
+library ieee;
+use ieee.std_logic_1164.all;
+
+entity counter is
+  generic (WIDTH : natural := 8);
+  port (
+    clk   : in  std_logic;
+    count : out std_logic_vector(WIDTH - 1 downto 0)
+  );
+end entity counter;
+
+architecture rtl of counter is
+  constant MAX_COUNT : natural := 2 ** WIDTH - 1;
+  signal countReg    : natural range 0 to MAX_COUNT;
+begin
+  count <= (others => '0');
+end architecture rtl;
+```
+
 ```powershell
-PS> tclsh $lint -policy policy.json -input counter.vhd
+PS C:\aurig-trial\l15\guide-run\pack> tclsh $lint -policy policy.json -input counter.vhd
 ```
 
 ```text
@@ -258,10 +360,10 @@ Summary:
   Total:    5
 ```
 
-`countReg` passes the pack's signal pattern but still fails `signal_naming`;
-`MAX_COUNT` is not checked by the pack. If you want your own convention, it
-is usually simpler to leave the pack off and configure the per-scope rules, as
-the recipes do.
+Exit code 0. `countReg` passes the pack's signal pattern but still fails
+`signal_naming`; `MAX_COUNT` is not checked by the pack. If you want your own
+convention, it is usually simpler to leave the pack off and configure the
+per-scope rules, as the recipes do.
 
 ## 3. When the policy is wrong
 
@@ -269,6 +371,8 @@ Both tools check the whole policy before linting anything. If anything is
 wrong they lint nothing, write no report, list **every** problem, one line
 each, and exit **2**. The CLI starts the lines with `Error:`, the runner with
 `ERROR:`. This policy has the three most common mistakes:
+
+`validation/policy.json`:
 
 ```json
 {
@@ -281,7 +385,7 @@ each, and exit **2**. The CLI starts the lines with `Error:`, the runner with
 ```
 
 ```powershell
-PS> tclsh $lint -policy policy.json -input uart_rx.vhd
+PS C:\aurig-trial\l15\guide-run\validation> tclsh $lint -policy policy.json -input ../signals/uart_rx.vhd
 ```
 
 ```text
@@ -301,6 +405,8 @@ Exit code 2. How to fix each:
 Malformed JSON is reported with its position. A trailing comma, which JSON
 does not allow:
 
+`validation/trailing-comma.json`:
+
 ```json
 {
   "rules": {
@@ -309,11 +415,17 @@ does not allow:
 }
 ```
 
+```powershell
+PS C:\aurig-trial\l15\guide-run\validation> tclsh $lint -policy trailing-comma.json -input ../signals/uart_rx.vhd
+```
+
 ```text
 Error: invalid policy trailing-comma.json: malformed JSON: expected a string key at line 4, column 3
 ```
 
-Rules written at the top level instead of under `"rules"`:
+Exit code 2. Rules written at the top level instead of under `"rules"`:
+
+`validation/no-rules.json`:
 
 ```json
 {
@@ -321,29 +433,40 @@ Rules written at the top level instead of under `"rules"`:
 }
 ```
 
+```powershell
+PS C:\aurig-trial\l15\guide-run\validation> tclsh $lint -policy no-rules.json -input ../signals/uart_rx.vhd
+```
+
 ```text
 Error: invalid policy no-rules.json: unknown top-level key "signal_naming" (allowed: rules, overrides, comment, generated, version; keys starting with "_" are comments)
 Error: invalid policy no-rules.json: missing top-level "rules" key
 ```
 
-A `-policy` path that does not exist:
+Exit code 2. A `-policy` path that does not exist:
+
+```powershell
+PS C:\aurig-trial\l15\guide-run\validation> tclsh $lint -policy missing.json -input ../signals/uart_rx.vhd
+```
 
 ```text
 Error: invalid policy missing.json: file not found
 ```
 
-The runner reports the same problems (excerpt):
+Exit code 2. The runner reports the same problems, after its header (excerpt
+of its output):
 
 ```powershell
-PS> tclsh $runner -project_root . -format text -policy ../validation/policy.json
+PS C:\aurig-trial\l15\guide-run\validation> tclsh $runner -project_root ../discovery -format text -policy policy.json
 ```
 
 ```text
-Policy file: ../validation/policy.json
-ERROR: invalid policy ../validation/policy.json: rule "signal_namig": unknown rule id (not in metadata and no "type" for a user-defined rule)
-ERROR: invalid policy ../validation/policy.json: rule "forbid_latch_inference": unsupported option "bfm_patterns" (supported: enabled, ignore_variables, message, severity, type)
-ERROR: invalid policy ../validation/policy.json: rule "entity_naming": invalid severity "warn" (must be the string error, warning or info)
+Policy file: policy.json
+ERROR: invalid policy policy.json: rule "signal_namig": unknown rule id (not in metadata and no "type" for a user-defined rule)
+ERROR: invalid policy policy.json: rule "forbid_latch_inference": unsupported option "bfm_patterns" (supported: enabled, ignore_variables, message, severity, type)
+ERROR: invalid policy policy.json: rule "entity_naming": invalid severity "warn" (must be the string error, warning or info)
 ```
+
+Exit code 2.
 
 Also rejected: a `"rules"` or rule entry that is not a JSON object; a
 `"type"` on a built-in rule that differs from its own; a user-defined naming
@@ -371,6 +494,8 @@ Matching:
   option, the **later entry wins**.
 - A file outside the project root is matched by its file name only.
 
+`overrides/policy.json`:
+
 ```json
 {
   "rules": {
@@ -384,10 +509,49 @@ Matching:
 }
 ```
 
-Each of the three files declares `signal WrPtr : bit;`:
+Three files, each with the signal `WrPtr`, which `signal_naming` reports:
+
+`overrides/src/fifo.vhd`:
+
+```vhdl
+entity fifo is
+end entity fifo;
+
+architecture rtl of fifo is
+  signal WrPtr : bit;
+begin
+  WrPtr <= '0';
+end architecture rtl;
+```
+
+`overrides/src/legacy/old_fifo.vhd`:
+
+```vhdl
+entity old_fifo is
+end entity old_fifo;
+
+architecture rtl of old_fifo is
+  signal WrPtr : bit;
+begin
+  WrPtr <= '0';
+end architecture rtl;
+```
+
+`overrides/tb/TB_FIFO.VHD`:
+
+```vhdl
+entity tb_fifo is
+end entity tb_fifo;
+
+architecture rtl of tb_fifo is
+  signal WrPtr : bit;
+begin
+  WrPtr <= '0';
+end architecture rtl;
+```
 
 ```powershell
-PS C:\aurig-trial\l15\guide\overrides> foreach ($f in "src/fifo.vhd", "src/legacy/old_fifo.vhd", "tb/TB_FIFO.VHD") { tclsh $lint -policy policy.json -input $f; "${f}: exit code $LASTEXITCODE" }
+PS C:\aurig-trial\l15\guide-run\overrides> foreach ($f in "src/fifo.vhd", "src/legacy/old_fifo.vhd", "tb/TB_FIFO.VHD") { tclsh $lint -policy policy.json -input $f; "${f}: exit code $LASTEXITCODE" }
 ```
 
 ```text
@@ -416,7 +580,7 @@ Run from `src/` with `-policy` and no `-project_root`, the project root is
 pattern matches; the top-level `warning` applies:
 
 ```powershell
-PS C:\aurig-trial\l15\guide\overrides\src> tclsh $lint -policy ../policy.json -input legacy/old_fifo.vhd
+PS C:\aurig-trial\l15\guide-run\overrides\src> tclsh $lint -policy ../policy.json -input legacy/old_fifo.vhd
 ```
 
 ```text
@@ -427,10 +591,10 @@ Summary:
   Total:    1
 ```
 
-With `-project_root ..` the override applies again:
+Exit code 0. With `-project_root ..` the override applies again:
 
 ```powershell
-PS C:\aurig-trial\l15\guide\overrides\src> tclsh $lint -policy ../policy.json -project_root .. -input legacy/old_fifo.vhd
+PS C:\aurig-trial\l15\guide-run\overrides\src> tclsh $lint -policy ../policy.json -project_root .. -input legacy/old_fifo.vhd
 ```
 
 ```text
@@ -441,15 +605,17 @@ Summary:
   Total:    1
 ```
 
-A policy discovered in `.aurig/` does not have this problem: its project root
-is the folder holding `.aurig/`. File-name patterns (no `/`) work from
-anywhere.
+Exit code 1. A policy discovered in `.aurig/` does not have this problem: its
+project root is the folder holding `.aurig/`. File-name patterns (no `/`) work
+from anywhere.
 
 ### What an override may not do
 
 An override cannot add a rule or change a rule's `"type"`: every rule it
 names must exist in the metadata or in the top-level `"rules"`. Errors name
 the entry by position, from 0:
+
+`overrides/bad-override.json`:
 
 ```json
 {
@@ -460,12 +626,17 @@ the entry by position, from 0:
 }
 ```
 
+```powershell
+PS C:\aurig-trial\l15\guide-run\overrides> tclsh $lint -policy bad-override.json -input src/fifo.vhd
+```
+
 ```text
 Error: invalid policy bad-override.json: overrides[0] files[0] "tb\\*.vhd": use "/" as the path separator
 Error: invalid policy bad-override.json: overrides[0] rule "forbid_latch_inference": "type" is not allowed in an override (a rule's type comes from metadata or the top-level "rules")
 ```
 
-Options, severities and unknown rule ids are checked as in section 3.
+Exit code 2. Options, severities and unknown rule ids are checked as in
+section 3.
 
 Some rules also have file-pattern options of their own:
 `require_meaningful_comments` skips `tb_*.vhd`, `*_tb.vhd` and
@@ -482,7 +653,12 @@ A comment in the VHDL file switches rules off without touching the policy:
 | `-- aurig-lint: disable-next-line <rule>[,<rule>...]` | The listed rules are off for the next line only |
 | `-- aurig-lint: disable <rule>[,<rule>...]` | The listed rules are off from this line to the end of the file |
 
+`pragmas/regs.vhd`:
+
 ```vhdl
+entity regs is
+end entity regs;
+
 architecture rtl of regs is
   signal CtrlReg : bit;
   -- aurig-lint: disable-next-line signal_naming
@@ -491,10 +667,14 @@ architecture rtl of regs is
   signal IrqMask : bit;
   constant reset_value : bit := '0';
 begin
+  CtrlReg <= reset_value;
+end architecture rtl;
 ```
 
+No policy is needed; `signal_naming` and `constant_naming` are on by default:
+
 ```powershell
-PS> tclsh $lint -input regs.vhd
+PS C:\aurig-trial\l15\guide-run\pragmas> tclsh $lint -input regs.vhd
 ```
 
 ```text
@@ -505,9 +685,10 @@ Summary:
   Total:    1
 ```
 
-Only `CtrlReg`, before both comments, is reported. Use the rule id as printed
-in brackets at the end of each diagnostic. There is no `enable` comment; to
-turn a rule off for whole files, use an override instead.
+Exit code 0. Only `CtrlReg`, before both comments, is reported; without the
+comments, `StatusReg`, `IrqMask` and `reset_value` would be reported too. Use
+the rule id as printed in brackets at the end of each diagnostic. There is no
+`enable` comment; to turn a rule off for whole files, use an override instead.
 
 ## 6. Checking the effective configuration
 
@@ -515,6 +696,8 @@ turn a rule off for whole files, use an override instead.
 defaults and your policy, then exits without linting. The format follows the
 extension: `.json`, `.md` or `.html`; JSON is written as UTF-8 without a
 byte order mark. `-input` is still required.
+
+`signals/export.json`:
 
 ```json
 {
@@ -532,7 +715,7 @@ byte order mark. `-input` is still required.
 ```
 
 ```powershell
-PS> tclsh $lint -policy policy.json -input uart_rx.vhd -export_rules effective.json
+PS C:\aurig-trial\l15\guide-run\signals> tclsh $lint -policy export.json -input uart_rx.vhd -export_rules effective.json
 ```
 
 ```text
@@ -543,12 +726,12 @@ Exported rules configuration to: effective.json
 Exit code 0. To see two rules of the result:
 
 ```powershell
-PS> Select-String '"signal_naming"|"require_reset_in_clocked_process"' effective.json
+PS C:\aurig-trial\l15\guide-run\signals> Select-String '"signal_naming"|"require_reset_in_clocked_process"' effective.json
 ```
 
 ```text
-C:\aurig-trial\l15\guide\export\effective.json:31:    "require_reset_in_clocked_process": {"bfm_patterns": "*_bfm.vhd", "enabled": true, "excluded_architectures": "bfm", "excluded_processes": "", "message": "Clocked process '${process}' missing ${policy} reset", "reset_policy": "either", "severity": "warning", "testbench_patterns": "*_sim.vhd", "type": "require_reset_in_clocked_process"},
-C:\aurig-trial\l15\guide\export\effective.json:33:    "signal_naming": {"enabled": true, "message": "Signal '${name}' should be lowercase with underscores", "pattern": "^[a-z][A-Za-z0-9]*(_n)?$", "scope": "signal", "severity": "warning", "type": "naming"},
+C:\aurig-trial\l15\guide-run\signals\effective.json:31:    "require_reset_in_clocked_process": {"bfm_patterns": "*_bfm.vhd", "enabled": true, "excluded_architectures": "bfm", "excluded_processes": "", "message": "Clocked process '${process}' missing ${policy} reset", "reset_policy": "either", "severity": "warning", "testbench_patterns": "*_sim.vhd", "type": "require_reset_in_clocked_process"},
+C:\aurig-trial\l15\guide-run\signals\effective.json:33:    "signal_naming": {"enabled": true, "message": "Signal '${name}' should be lowercase with underscores", "pattern": "^[a-z][A-Za-z0-9]*(_n)?$", "scope": "signal", "severity": "warning", "type": "naming"},
 ```
 
 Two things show here. `signal_naming` has the new pattern but still the
@@ -573,6 +756,8 @@ the patterns to match yours. To use several at once, merge their `"rules"`
 
 ### Entity names: UpperCamelCase, with optional `_top`, `_tb`, `_bfm` or `_top_tb`
 
+`entities/policy.json`:
+
 ```json
 {
   "rules": {
@@ -584,7 +769,7 @@ the patterns to match yours. To use several at once, merge their `"rules"`
 }
 ```
 
-`entities.vhd`:
+`entities/entities.vhd`:
 
 ```vhdl
 entity UartTx is
@@ -613,7 +798,7 @@ end entity UartRx_sim;
 ```
 
 ```powershell
-PS> tclsh $lint -policy policy.json -input entities.vhd
+PS C:\aurig-trial\l15\guide-run\entities> tclsh $lint -policy policy.json -input entities.vhd
 ```
 
 ```text
@@ -631,6 +816,11 @@ but `_tb_top` is not. Matching is case-sensitive, so `_TB` fails.
 
 ### Signals: lowerCamelCase, with optional active-low `_n`
 
+This recipe uses `signals/uart_rx.vhd` from [section
+2](#2-configuring-a-rule).
+
+`signals/policy.json`:
+
 ```json
 {
   "rules": {
@@ -642,33 +832,8 @@ but `_tb_top` is not. Matching is case-sensitive, so `_TB` fails.
 }
 ```
 
-`uart_rx.vhd`:
-
-```vhdl
-library ieee;
-use ieee.std_logic_1164.all;
-
-entity uart_rx is
-  port (
-    clk   : in std_logic;
-    rst_n : in std_logic
-  );
-end entity uart_rx;
-
-architecture rtl of uart_rx is
-  signal bitCount  : integer range 0 to 9;
-  signal rxValid   : std_logic;
-  signal frameOk_n : std_logic;
-  signal rx_data   : std_logic_vector(7 downto 0);
-  signal RxReady   : std_logic;
-  signal busy_N    : std_logic;
-begin
-  rxValid <= not rst_n;
-end architecture rtl;
-```
-
 ```powershell
-PS> tclsh $lint -policy policy.json -input uart_rx.vhd
+PS C:\aurig-trial\l15\guide-run\signals> tclsh $lint -policy policy.json -input uart_rx.vhd
 ```
 
 ```text
@@ -688,12 +853,15 @@ Exit code 0. Ports are not signals for this rule: they have their own rules,
 > statement part is empty (`begin` directly followed by `end`) reports none of
 > its declarations, so no signal in it is checked
 > ([aurig-core#49](https://github.com/aurig-fpga/aurig-core/issues/49)).
-> Real designs are not affected; a stub written to try a pattern is.
+> Real designs are not affected; a stub written to try a pattern is. That is
+> why `uart_rx.vhd` has one statement.
 
 ### Labels: `UpperCamelCase_proc` processes, `UpperCamelCase_inst` instances, every process labelled
 
 `process_naming`, `instance_naming` and `require_process_label` are off by
 default and are switched on here:
+
+`labels/policy.json`:
 
 ```json
 {
@@ -715,7 +883,7 @@ default and are switched on here:
 }
 ```
 
-`shifter.vhd`:
+`labels/shifter.vhd`:
 
 ```vhdl
 library ieee;
@@ -762,7 +930,7 @@ end architecture rtl;
 ```
 
 ```powershell
-PS> tclsh $lint -policy policy.json -input shifter.vhd
+PS C:\aurig-trial\l15\guide-run\labels> tclsh $lint -policy policy.json -input shifter.vhd
 ```
 
 ```text
@@ -785,6 +953,8 @@ and generate labels](../README.md#process-instance-and-generate-labels).
 `forbid_latch_inference` and `require_meaningful_comments` are on for every
 file, and off for files named `tb_*.vhd`, `*_tb.vhd` or `*_bfm.vhd`:
 
+`testbenches/policy.json`:
+
 ```json
 {
   "rules": {
@@ -804,8 +974,10 @@ file, and off for files named `tb_*.vhd`, `*_tb.vhd` or `*_bfm.vhd`:
 }
 ```
 
-The four files are the same design with a different entity name, with no
-comments and a latch:
+Four files with the same design, without comments and with a latch; only the
+entity name differs:
+
+`testbenches/src/gate.vhd`:
 
 ```vhdl
 library ieee;
@@ -830,8 +1002,83 @@ begin
 end architecture rtl;
 ```
 
+`testbenches/tb/tb_gate.vhd`:
+
+```vhdl
+library ieee;
+use ieee.std_logic_1164.all;
+
+entity tb_gate is
+  port (
+    en : in  std_logic;
+    d  : in  std_logic;
+    q  : out std_logic
+  );
+end entity tb_gate;
+
+architecture rtl of tb_gate is
+begin
+  hold : process (en, d)
+  begin
+    if en = '1' then
+      q <= d;
+    end if;
+  end process hold;
+end architecture rtl;
+```
+
+`testbenches/tb/gate_tb.vhd`:
+
+```vhdl
+library ieee;
+use ieee.std_logic_1164.all;
+
+entity gate_tb is
+  port (
+    en : in  std_logic;
+    d  : in  std_logic;
+    q  : out std_logic
+  );
+end entity gate_tb;
+
+architecture rtl of gate_tb is
+begin
+  hold : process (en, d)
+  begin
+    if en = '1' then
+      q <= d;
+    end if;
+  end process hold;
+end architecture rtl;
+```
+
+`testbenches/tb/uart_bfm.vhd`:
+
+```vhdl
+library ieee;
+use ieee.std_logic_1164.all;
+
+entity uart_bfm is
+  port (
+    en : in  std_logic;
+    d  : in  std_logic;
+    q  : out std_logic
+  );
+end entity uart_bfm;
+
+architecture rtl of uart_bfm is
+begin
+  hold : process (en, d)
+  begin
+    if en = '1' then
+      q <= d;
+    end if;
+  end process hold;
+end architecture rtl;
+```
+
 ```powershell
-PS> foreach ($f in "src/gate.vhd", "tb/tb_gate.vhd", "tb/gate_tb.vhd", "tb/uart_bfm.vhd") { tclsh $lint -policy policy.json -input $f; "${f}: exit code $LASTEXITCODE" }
+PS C:\aurig-trial\l15\guide-run\testbenches> foreach ($f in "src/gate.vhd", "tb/tb_gate.vhd", "tb/gate_tb.vhd", "tb/uart_bfm.vhd") { tclsh $lint -policy policy.json -input $f; "${f}: exit code $LASTEXITCODE" }
 ```
 
 ```text
@@ -861,6 +1108,8 @@ project runner applies the same overrides.
 There is no built-in rule for function names, so this policy creates one,
 `function_lower_camel`, for `lowerCamelCase_fn`:
 
+`functions/policy.json`:
+
 ```json
 {
   "rules": {
@@ -874,7 +1123,7 @@ There is no built-in rule for function names, so this policy creates one,
 }
 ```
 
-`crc_pkg.vhd`:
+`functions/crc_pkg.vhd`:
 
 ```vhdl
 library ieee;
@@ -888,7 +1137,7 @@ end package crc_pkg;
 ```
 
 ```powershell
-PS> tclsh $lint -policy policy.json -input crc_pkg.vhd
+PS C:\aurig-trial\l15\guide-run\functions> tclsh $lint -policy policy.json -input crc_pkg.vhd
 ```
 
 ```text
@@ -912,9 +1161,16 @@ Vendor IP wrappers and other generated files follow the vendor's naming, not
 yours. Leave them out of the lint run instead of writing overrides for them,
 with `lint.excludes` in the project manifest. Each entry is a Tcl regular
 expression, matched against the path relative to the project root (with `/`)
-and against the file name:
+and against the file name.
+
+`generated/config/project.yaml`:
 
 ```yaml
+schema_version: "1.0"
+project_name: generated
+top: gate
+project_root: ".."
+
 file_sets:
   rtl:
     - lib: work
@@ -928,8 +1184,30 @@ lint:
     - "^src/ip/"
 ```
 
+`project_root` is relative to the manifest's folder, so `".."` is the
+`generated` folder. A generated wrapper that breaks the default naming rules:
+
+`generated/src/ip/ClkWiz0.vhd`:
+
+```vhdl
+entity ClkWiz0 is
+end entity ClkWiz0;
+
+architecture STRUCTURE of ClkWiz0 is
+  signal CLKFBOUT : bit;
+begin
+  CLKFBOUT <= '0';
+end architecture STRUCTURE;
+```
+
+The design itself is `gate.vhd` from section 1:
+
 ```powershell
-PS C:\aurig-trial\l15\guide\generated> tclsh $runner -project_root . -format text
+PS C:\aurig-trial\l15\guide-run\generated> Copy-Item ../discovery/src/gate.vhd src/
+```
+
+```powershell
+PS C:\aurig-trial\l15\guide-run\generated> tclsh $runner -project_root . -format text
 ```
 
 ```text
@@ -941,14 +1219,16 @@ Found 2 VHDL file(s); skipping 1 via excludes
 Processing 1 file(s)
 ```
 
-The report lists the skipped file and the pattern that skipped it:
+Exit code 0 (excerpt of the output). The report lists the skipped file and
+the pattern that skipped it:
+
+```powershell
+PS C:\aurig-trial\l15\guide-run\generated> Select-String -CaseSensitive "SKIPPED" lint_report/lint_report.txt
+```
 
 ```text
-FILE: src/ip/ClkWiz0.vhd
-PATH: C:/aurig-trial/l15/guide/generated/src/ip/ClkWiz0.vhd
-STATUS: SKIPPED
-----------------------------------------------------------------------
-SKIPPED by project.yaml lint.excludes pattern: ^src/ip/
+C:\aurig-trial\l15\guide-run\generated\lint_report\lint_report.txt:21:STATUS: SKIPPED
+C:\aurig-trial\l15\guide-run\generated\lint_report\lint_report.txt:23:SKIPPED by project.yaml lint.excludes pattern: ^src/ip/
 ```
 
 `-exclude <regex>` on the command line does the same for one run. Unlike
@@ -962,12 +1242,33 @@ one `info` row saying how many were left out. Change the limit with
 `-max_diags_per_rule_per_file <N>`. The single-file CLI has no limit, so its
 total for a file can be higher than the runner's.
 
-With the defaults, `uart_rx.vhd` from the [signals
-recipe](#signals-lowercamelcase-with-optional-active-low-_n) has five
-`signal_naming` warnings in the CLI. With a limit of 2:
+With the default rules, `signals/uart_rx.vhd` from section 2 has five
+`signal_naming` warnings in the CLI. A project with only that file:
+
+`cap/config/project.yaml`:
+
+```yaml
+schema_version: "1.0"
+project_name: cap
+top: uart_rx
+project_root: ".."
+
+file_sets:
+  rtl:
+    - lib: work
+      vhdl_std: "2008"
+      src:
+        - src/*.vhd
+```
 
 ```powershell
-PS C:\aurig-trial\l15\guide\cap> tclsh $runner -project_root . -format text -max_diags_per_rule_per_file 2 | Select-String "Total diagnostics"
+PS C:\aurig-trial\l15\guide-run\cap> New-Item -ItemType Directory src | Out-Null; Copy-Item ../signals/uart_rx.vhd src/
+```
+
+With a limit of 2:
+
+```powershell
+PS C:\aurig-trial\l15\guide-run\cap> tclsh $runner -project_root . -format text -max_diags_per_rule_per_file 2 | Select-String "Total diagnostics"
 ```
 
 ```text
@@ -975,11 +1276,11 @@ PS C:\aurig-trial\l15\guide\cap> tclsh $runner -project_root . -format text -max
 ```
 
 ```powershell
-PS C:\aurig-trial\l15\guide\cap> Select-String "signal_naming" lint_report/lint_report.txt
+PS C:\aurig-trial\l15\guide-run\cap> Select-String "signal_naming" lint_report/lint_report.txt
 ```
 
 ```text
-C:\aurig-trial\l15\guide\cap\lint_report\lint_report.txt:23:C:/aurig-trial/l15/guide/cap/src/uart_rx.vhd:12: warning: Signal 'bitCount' should be lowercase with underscores [signal_naming]
-C:\aurig-trial\l15\guide\cap\lint_report\lint_report.txt:24:C:/aurig-trial/l15/guide/cap/src/uart_rx.vhd:13: warning: Signal 'rxValid' should be lowercase with underscores [signal_naming]
-C:\aurig-trial\l15\guide\cap\lint_report\lint_report.txt:25:C:/aurig-trial/l15/guide/cap/src/uart_rx.vhd:0: info: Suppressed 3 additional diagnostics for 'signal_naming' after 2 occurrences (configurable via -max_diags_per_rule_per_file) [signal_naming]
+C:\aurig-trial\l15\guide-run\cap\lint_report\lint_report.txt:23:C:/aurig-trial/l15/guide-run/cap/src/uart_rx.vhd:12: warning: Signal 'bitCount' should be lowercase with underscores [signal_naming]
+C:\aurig-trial\l15\guide-run\cap\lint_report\lint_report.txt:24:C:/aurig-trial/l15/guide-run/cap/src/uart_rx.vhd:13: warning: Signal 'rxValid' should be lowercase with underscores [signal_naming]
+C:\aurig-trial\l15\guide-run\cap\lint_report\lint_report.txt:25:C:/aurig-trial/l15/guide-run/cap/src/uart_rx.vhd:0: info: Suppressed 3 additional diagnostics for 'signal_naming' after 2 occurrences (configurable via -max_diags_per_rule_per_file) [signal_naming]
 ```

@@ -60,10 +60,10 @@ examples use `C:\aurig` as the working folder; substitute your own.
 
 No Windows distribution is endorsed. The options and their tradeoffs are
 listed in aurig-core's README under
-[Obtaining Tcl on Windows](https://github.com/aurig-fpga/aurig-core#obtaining-tcl-on-windows).
+[Getting a Tcl on Windows](https://github.com/aurig-fpga/aurig-core#getting-a-tcl-on-windows).
 Whichever you choose, the check in step 2 is the criterion. FPGA vendor tools
 ship their own Tcl and may put it on `PATH`; see
-[FPGA vendor tools ship their own Tcl](https://github.com/aurig-fpga/aurig-core#fpga-vendor-tools-ship-their-own-tcl).
+[Another Tcl first on `PATH`](https://github.com/aurig-fpga/aurig-core#another-tcl-first-on-path).
 
 ### 2. Check the interpreter
 
