@@ -2,7 +2,7 @@
 
 This document is auto-generated from `lint/metadata.json`.
 
-**Last updated:** 2026-10-14 11:57:44
+**Last updated:** 2026-10-14 17:16:22
 
 ---
 
@@ -13,6 +13,7 @@ This document is auto-generated from `lint/metadata.json`.
 - [clock_reset_naming](#clock-reset-naming)
 - [constant_naming](#constant-naming)
 - [entity_naming](#entity-naming)
+- [enum_literal_naming](#enum-literal-naming)
 - [forbid_bit_types](#forbid-bit-types)
 - [forbid_latch_inference](#forbid-latch-inference)
 - [forbid_nonstandard_arith](#forbid-nonstandard-arith)
@@ -273,6 +274,51 @@ This document is auto-generated from `lint/metadata.json`.
 {
   "rules": {
     "entity_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}
+```
+
+---
+
+## enum_literal_naming
+
+**Type:** `enum_literal_naming`
+
+**Default Configuration:**
+
+```json
+{
+  "enum_literal_naming": {
+    "enabled": false,
+    "message": "Literal '${name}' of type '${type}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "severity": "info",
+    "type": "enum_literal_naming",
+    "type_pattern": ""
+  }
+}
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | boolean | `false` | Whether rule is active |
+| `message` | string | `Literal '${name}' of type '${type}' should be lowercase with underscores` | Custom message template |
+| `pattern` | string | `^[a-z][a-z0-9_]*$` | Configuration option |
+| `severity` | string | `info` | Diagnostic severity level |
+| `type` | string | `enum_literal_naming` | Rule handler type |
+| `type_pattern` | string | `(empty)` | Regexp on the enumerated type name: when not empty, only the types whose name matches are checked (e.g. `_state_t$`); empty checks every enumerated type |
+
+**Example Override:**
+
+```json
+{
+  "rules": {
+    "enum_literal_naming": {
       "enabled": true,
       "severity": "warning"
     }

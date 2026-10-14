@@ -138,6 +138,14 @@
       "severity": "warning",
       "message": "Process at line ${line} has no label"
     },
+    "enum_literal_naming": {
+      "type": "enum_literal_naming",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type_pattern": "",
+      "enabled": false,
+      "severity": "info",
+      "message": "Literal '${name}' of type '${type}' should be lowercase with underscores"
+    },
     "allowed_libraries": {
       "type": "library",
       "allowed": ["ieee", "std", "work"],

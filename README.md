@@ -373,7 +373,8 @@ set TCLLIBPATH=C:/aurig/aurig-core C:/aurig/aurig-lint
 
 Rules and their defaults live in [`lint/metadata.json`](lint/metadata.json).
 They cover naming (signals, constants, generics, entities, process,
-instance and generate labels, …), required process labels, allowed
+instance and generate labels, enumeration literals, …), required process
+labels, allowed
 libraries, non-standard arithmetic, positional port/generic maps, latch
 inference, reset requirements, and documentation/comment checks. A generated
 catalogue is in [`doc/reference/rules_reference.md`](doc/reference/rules_reference.md)
@@ -430,6 +431,36 @@ no such rule for them. To skip testbenches, use an override:
   ]
 }
 ```
+
+### Enumeration literals
+
+`enum_literal_naming` checks the names of the literals of enumerated types,
+for example FSM state names. It is disabled by default; once enabled, it
+expects lowercase with underscores (`^[a-z][a-z0-9_]*$`) at severity `info`.
+Its options are `enabled`, `severity`, `pattern`, `type_pattern` and
+`message` (`${name}` is replaced by the literal, `${type}` by the name of its
+type). When `type_pattern` is not empty, only the enumerated types whose name
+matches it are checked, e.g. `"_state_t$"` for the state types:
+
+```json
+{
+  "rules": {
+    "enum_literal_naming": {
+      "enabled": true,
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "type_pattern": "_state_t$"
+    }
+  }
+}
+```
+
+Enumerated types declared in packages, architectures and process declarative
+parts are checked. A diagnostic points at the line of the literal itself,
+also when the list of literals is split over several lines. Character
+literals (`'0'`, `'X'`) are never checked. `pattern` and `type_pattern` are
+case-sensitive regular expressions. The rule needs an aurig-core that reports
+the literals (aurig-fpga/aurig-core#46); with an older one it reports
+nothing.
 
 ### Policy file
 

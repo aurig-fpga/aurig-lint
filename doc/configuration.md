@@ -950,6 +950,82 @@ only: `process_naming` has no name to check. `generate_naming` works the same
 way for generate labels. More on what these rules check: [Process, instance
 and generate labels](../README.md#process-instance-and-generate-labels).
 
+### FSM state names: UPPER_CASE literals for types ending in `_state_t`
+
+`enum_literal_naming` is off by default. With `type_pattern` it checks only
+the enumerated types whose name matches, here the state types:
+
+`fsm/policy.json`:
+
+```json
+{
+  "rules": {
+    "enum_literal_naming": {
+      "enabled": true,
+      "severity": "warning",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "type_pattern": "_state_t$",
+      "message": "State '${name}' of type '${type}' should be UPPER_CASE"
+    }
+  }
+}
+```
+
+`fsm/uart_tx.vhd`:
+
+```vhdl
+library ieee;
+use ieee.std_logic_1164.all;
+
+entity uart_tx is
+  port (
+    clk   : in  std_logic;
+    start : in  std_logic;
+    txd   : out std_logic
+  );
+end entity uart_tx;
+
+architecture rtl of uart_tx is
+  type tx_state_t is (IDLE, START_BIT,
+                      Data, stop_bit);
+  type parity_t is (even, odd);
+  signal state  : tx_state_t;
+  signal parity : parity_t;
+begin
+  fsm : process (clk)
+  begin
+    if rising_edge(clk) then
+      if state = IDLE and start = '1' then
+        state <= START_BIT;
+      end if;
+    end if;
+  end process fsm;
+
+  parity <= even;
+  txd    <= '0' when state = START_BIT else '1';
+end architecture rtl;
+```
+
+```powershell
+PS C:\aurig-trial\l15\guide-run\fsm> tclsh $lint -policy policy.json -input uart_tx.vhd
+```
+
+```text
+uart_tx.vhd:14: warning: State 'Data' of type 'tx_state_t' should be UPPER_CASE [enum_literal_naming]
+uart_tx.vhd:14: warning: State 'stop_bit' of type 'tx_state_t' should be UPPER_CASE [enum_literal_naming]
+
+Summary:
+  Warnings: 2
+  Total:    2
+```
+
+Exit code 0. Each diagnostic is on the line of the literal, here the second
+line of the list. `parity_t` does not end in `_state_t`, so `even` and `odd`
+are not checked; without `type_pattern` they are reported too. Character
+literals, such as `'0'` and `'X'` in a type of your own, are never checked.
+Types declared in packages and in process declarative parts are checked the
+same way.
+
 ### Testbenches and BFMs: no latch or comment checks
 
 `forbid_latch_inference` and `require_meaningful_comments` are on for every

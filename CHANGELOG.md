@@ -61,6 +61,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on every naming rule. The line is the parser's process line, as for the
   other process rules: with an aurig-core older than the fix of
   aurig-fpga/aurig-core#23 it can be early.
+- `enum_literal_naming` (#27): a built-in rule with its own type, disabled by
+  default, pattern `^[a-z][a-z0-9_]*$`, severity `info`. It checks the names
+  of the identifier literals of enumerated types declared in packages,
+  architectures and process declarative parts, for example FSM state names;
+  character literals (`'0'`, `'X'`) are never checked. A diagnostic is on the
+  literal's own line, also when the list of literals spans several lines.
+  `type_pattern`, empty by default, restricts the rule to the enumerated
+  types whose name matches it (e.g. `_state_t$`); `message` takes `${name}`
+  (the literal) and `${type}` (its type). It is a rule rather than a naming
+  scope because options are validated per rule type (#16), so `type_pattern`
+  would have been accepted on every naming rule. Needs an aurig-core that
+  reports the literals (aurig-fpga/aurig-core#46) and the types of process
+  declarative parts (aurig-fpga/aurig-core#54). See "FSM state names" in
+  `doc/configuration.md`.
 
 ### Changed (BREAKING)
 

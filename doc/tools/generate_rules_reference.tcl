@@ -375,6 +375,7 @@ proc get_option_description {key} {
         "whitelist" { return "Identifiers / types / libraries explicitly allowed even when the rule would otherwise flag them" }
         "header_keywords_mode" { return "Header-keywords match mode: \"any\" (default — at least one keyword present) or \"all\" (every listed keyword must appear)" }
         "allow_patterns" { return "Patterns to allow/ignore" }
+        "type_pattern" { return "Regexp on the enumerated type name: when not empty, only the types whose name matches are checked (e.g. `_state_t\$`); empty checks every enumerated type" }
         "ignore_variables" { return "Skip variable checking" }
         "file_header_required" { return "Require file header block" }
         "header_min_lines" { return "Minimum header lines" }
