@@ -1113,7 +1113,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
                     set label [dict_get_default $item label ""]
                     if {$label eq ""} { continue }
                     set parser_line [dict_get_default $item line 0]
-                    set label_location [resolve_location $filename $parser_line $label]
+                    set label_location [resolve_label_location $filename $parser_line $label]
                     lappend symbols [dict create \
                         scope $label_scope \
                         name $label \
@@ -2984,9 +2984,14 @@ proc ::aurig::lint::cache_file_lines {filename} {
 #   filename    : Source file path
 #   line_num    : Parser-reported line number (1-based)
 #   symbol_name : Symbol to search for
+#   pattern     : Optional regexp whose first group is the symbol; by
+#                 default any whole-word occurrence of symbol_name
 #
 # Returns: Dict with keys {line col} - both corrected if necessary
-proc ::aurig::lint::resolve_location {filename line_num symbol_name} {
+proc ::aurig::lint::resolve_location {filename line_num symbol_name {pattern ""}} {
+    if {$pattern eq ""} {
+        set pattern "(\\m${symbol_name}\\M)"
+    }
     # Get cached file lines
     set lines [cache_file_lines $filename]
     set total_lines [llength $lines]
@@ -3001,21 +3006,20 @@ proc ::aurig::lint::resolve_location {filename line_num symbol_name} {
 
     # Helper proc to search for symbol on a specific line
     # Returns column (0-based) or -1 if not found
-    proc find_on_line {lines total_lines check_line symbol_name} {
+    proc find_on_line {lines total_lines check_line pattern} {
         set line_idx [expr {$check_line - 1}]
         if {$line_idx < 0 || $line_idx >= $total_lines} {
             return -1
         }
         set line_content [lindex $lines $line_idx]
-        set pattern "\\m${symbol_name}\\M"
-        if {[regexp -nocase -indices -- $pattern $line_content match_idx]} {
+        if {[regexp -nocase -indices -- $pattern $line_content -> match_idx]} {
             return [lindex $match_idx 0]
         }
         return -1
     }
 
     # Step 1: Try parser-reported line
-    set col [find_on_line $lines $total_lines $line_num $symbol_name]
+    set col [find_on_line $lines $total_lines $line_num $pattern]
     if {$col >= 0} {
         return [dict create line $line_num col $col]
     }
@@ -3028,7 +3032,7 @@ proc ::aurig::lint::resolve_location {filename line_num symbol_name} {
     for {set offset -3} {$offset <= 12} {incr offset} {
         if {$offset == 0} continue ;# Already checked
         set check_line [expr {$line_num + $offset}]
-        set col [find_on_line $lines $total_lines $check_line $symbol_name]
+        set col [find_on_line $lines $total_lines $check_line $pattern]
         if {$col >= 0} {
             # Calculate distance from reported line
             set distance [expr {abs($offset)}]
@@ -3051,7 +3055,7 @@ proc ::aurig::lint::resolve_location {filename line_num symbol_name} {
     set candidates {}
 
     for {set check_line 1} {$check_line <= $total_lines} {incr check_line} {
-        set col [find_on_line $lines $total_lines $check_line $symbol_name]
+        set col [find_on_line $lines $total_lines $check_line $pattern]
         if {$col >= 0} {
             set distance [expr {abs($check_line - $line_num)}]
             lappend candidates [list $distance $check_line $col]
@@ -3080,6 +3084,24 @@ proc ::aurig::lint::resolve_location {filename line_num symbol_name} {
 
     # If not found anywhere, return original line with col 0
     return [dict create line $line_num col 0]
+}
+
+# Resolve the location of a process, instance or generate label
+#
+# Like resolve_location, but only a line that declares the label matches:
+# the label followed by a colon at the start of the line. A comment that
+# names the label, or an "end process <label>" / "end generate <label>"
+# line, is never chosen, even when the parser line is shifted.
+#
+# Arguments:
+#   filename : Source file path
+#   line_num : Parser-reported line number (1-based)
+#   label    : Label to search for
+#
+# Returns: Dict with keys {line col}
+proc ::aurig::lint::resolve_label_location {filename line_num label} {
+    set escaped [regsub -all {[][{}()*+?.\\^$|]} $label {\\&}]
+    return [resolve_location $filename $line_num $label "^\\s*(${escaped})\\s*:"]
 }
 
 # Compute approximate column position of a symbol within a line

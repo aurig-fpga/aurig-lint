@@ -345,6 +345,105 @@ foreach scope {process instance generate} {
 }
 
 # ----------------------------------------------------------------------------
+# A label is located at its declaration, "<label> :" at the start of the line,
+# never at a comment that names it or at its "end process <label>" /
+# "end generate <label>" line. Before the fix any word occurrence near the
+# parser line was taken: with a core that shifts the parser line (aurig-core
+# before #23), the comment just above each declaration was chosen.
+# ----------------------------------------------------------------------------
+set commented [file join $sandbox commented labels.vhd]
+write_file $commented {library ieee;
+use ieee.std_logic_1164.all;
+
+entity labels is
+  port (
+    clk : in  std_logic;
+    a   : in  std_logic;
+    q   : out std_logic
+  );
+end entity labels;
+
+architecture rtl of labels is
+  signal s : std_logic;
+
+  -- end of declarations
+begin
+  -- P_Bad drives q
+  P_Bad : process (s)
+  begin
+    q <= s;
+  end process P_Bad;
+
+  -- U_Bad is the child
+  U_Bad : entity work.child
+    port map (a => a);
+
+  -- Gen_Bad replicates u_loop
+  Gen_Bad : for i in 0 to 1 generate
+    -- P_InGen and U_InGen inside
+    P_InGen : process (clk)
+    begin
+    end process P_InGen;
+    U_InGen : entity work.child port map (a => a);
+  end generate Gen_Bad;
+
+  -- P_Split on two lines
+  P_Split :
+  process (a)
+  begin
+  end process P_Split;
+end architecture rtl;
+}
+
+dict for {rule_id labels} {
+    process_naming  {P_Bad P_InGen P_Split}
+    instance_naming {U_Bad U_InGen}
+    generate_naming {Gen_Bad}
+} {
+    set expected {}
+    foreach label $labels {
+        lappend expected "$commented:[label_line $commented $label]: info: [format [dict get $message $rule_id] $label] \[$rule_id\]"
+    }
+    check_eq "commented, $rule_id: at the declaration line, not at a comment naming the label" \
+        $expected [rule_lines $commented $p_rules $rule_id]
+}
+
+# The line of "end ... <label>" in a file.
+proc end_line {file label} {
+    set fp [open $file r]
+    set lines [split [read $fp] \n]
+    close $fp
+    set index [lsearch -regexp $lines "^\\s*end\\s+\\w+\\s+${label}\\s*;"]
+    return [expr {$index + 1}]
+}
+
+# A parser line that points at the "end process" / "end generate" line of a
+# label: the symbol is still at the declaration.
+set parse_result [::aurig::core::analyze::vhdlscan -in $commented]
+set arch [lindex [dict get $parse_result architectures] 0]
+foreach list_key {processes generates} {
+    set items {}
+    foreach item [dict get $arch $list_key] {
+        dict set item line [end_line $commented [dict get $item label]]
+        lappend items $item
+    }
+    dict set arch $list_key $items
+}
+dict set parse_result architectures [list $arch]
+set found {}
+foreach symbol [::aurig::lint::build_symbol_list $parse_result $commented] {
+    if {[dict get $symbol scope] in {process generate}} {
+        lappend found [list [dict get $symbol name] [dict get $symbol line]]
+    }
+}
+set expected {}
+foreach label {P_Bad P_InGen P_Split Gen_Bad} {
+    lappend expected [list $label [label_line $commented $label]]
+}
+check_eq "commented, parser line at the end line: process and generate symbols at the declaration" \
+    [lsort -integer -index 1 $expected] [lsort -integer -index 1 $found]
+
+# ----------------------------------------------------------------------------
 # Cleanup
 # ----------------------------------------------------------------------------
 catch {file delete -force $sandbox}
