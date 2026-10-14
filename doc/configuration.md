@@ -254,7 +254,7 @@ Every rule has these options:
 |---|---|
 | `enabled` | `true` or `false`. Many rules are off by default; the reference shows each default. |
 | `severity` | `"error"`, `"warning"` or `"info"`. Only `error` fails the run by default (`--fail-on`). |
-| `message` | The text of the diagnostic. Placeholders such as `${name}` are filled in; the rule's default message in the reference shows which ones it uses. A naming rule fills in `${name}` only. |
+| `message` | The text of the diagnostic. Placeholders such as `${name}` are filled in. Each rule's placeholders are listed in the reference, in its default messages and option descriptions. A naming rule fills in `${name}` in `message`; `architecture_naming` also has `binding_message`, used when `entity_suffix_bindings` is configured, which fills in `${name}`, `${entity}`, `${suffix}` and `${allowed}`. |
 
 The other options belong to the rule's **type**. In the reference, each rule
 shows its `Type:` and a table of its options with their defaults. A rule
@@ -737,13 +737,15 @@ C:\aurig-trial\l15\guide-run\signals\effective.json:33:    "signal_naming": {"en
 Two things show here. `signal_naming` has the new pattern but still the
 default message. `testbench_patterns` is only `*_sim.vhd`, the list that
 replaced the default. Lists are exported as space-separated strings
-(`"*_sim.vhd"`, `"ieee std work"`). The exported file can be used as a policy
-again.
+(`"*_sim.vhd"`, `"ieee std work"`).
 
-**`"overrides"` are not exported yet** ([#17](https://github.com/aurig-fpga/aurig-lint/issues/17)):
-the export shows the top-level configuration only, as above, where the
-`*_bfm.vhd` entry is missing. To check an override, lint a file it should
-match, as in section 4. With `-format html` (its default) the runner writes
+**The export is incomplete** ([#17](https://github.com/aurig-fpga/aurig-lint/issues/17)).
+It contains the built-in rules only: user-defined rules, such as
+`function_lower_camel` from the [recipe](#a-naming-rule-of-your-own-functions),
+are left out, and so is `"overrides"` (above, the `*_bfm.vhd` entry is
+missing). Fed back as a policy, the exported file therefore loses both; keep
+your own policy as the source. To check a user-defined rule or an override,
+lint a file it should match, as in sections 4 and 7. With `-format html` (its default) the runner writes
 the same export as `effective_policy.json` and `effective_policy.md` in its
 report folder, with the same limitation.
 
