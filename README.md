@@ -379,7 +379,7 @@ inference, reset requirements, and documentation/comment checks. A generated
 catalogue is in [`doc/reference/rules_reference.md`](doc/reference/rules_reference.md)
 (regenerate with `doc/tools/generate_rules_reference.tcl`).
 
-#### Process, instance and generate labels
+### Process, instance and generate labels
 
 The labels of processes, component or entity instances and generate
 statements are checked by `process_naming`, `instance_naming` and
