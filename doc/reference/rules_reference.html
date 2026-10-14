@@ -56,6 +56,7 @@
                 <li><a href="#port-out-naming">port_out_naming</a></li>
                 <li><a href="#process-naming">process_naming</a></li>
                 <li><a href="#require-meaningful-comments">require_meaningful_comments</a></li>
+                <li><a href="#require-process-label">require_process_label</a></li>
                 <li><a href="#require-reset-in-clocked-process">require_reset_in_clocked_process</a></li>
                 <li><a href="#same-file-units">same_file_units</a></li>
                 <li><a href="#signal-naming">signal_naming</a></li>
@@ -68,7 +69,7 @@
             <h1>VHDL Lint Rules Reference</h1>
             <div class="meta-info">
                 <strong>Auto-generated</strong> from <code>lint/metadata.json</code><br>
-                <strong>Last updated:</strong> 2026-10-12 13:02:53
+                <strong>Last updated:</strong> 2026-10-14 11:57:45
             </div>
             <h2 id="allowed-libraries">allowed_libraries</h2>
             <p><strong>Type:</strong> <code>library</code></p>
@@ -956,6 +957,34 @@
             <pre><code>{
   "rules": {
     "require_meaningful_comments": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="require-process-label">require_process_label</h2>
+            <p><strong>Type:</strong> <code>require_process_label</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "require_process_label": {
+    "enabled": false,
+    "message": "Process at line ${line} has no label",
+    "severity": "warning",
+    "type": "require_process_label"
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Process at line ${line} has no label</code></td><td>Custom message template</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>require_process_label</code></td><td>Rule handler type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "require_process_label": {
       "enabled": true,
       "severity": "warning"
     }

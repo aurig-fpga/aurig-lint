@@ -132,6 +132,12 @@
       "severity": "info",
       "message": "Generate label '${name}' should be lowercase with underscores"
     },
+    "require_process_label": {
+      "type": "require_process_label",
+      "enabled": false,
+      "severity": "warning",
+      "message": "Process at line ${line} has no label"
+    },
     "allowed_libraries": {
       "type": "library",
       "allowed": ["ieee", "std", "work"],

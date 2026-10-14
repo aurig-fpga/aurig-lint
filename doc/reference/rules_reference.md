@@ -2,7 +2,7 @@
 
 This document is auto-generated from `lint/metadata.json`.
 
-**Last updated:** 2026-10-12 13:02:53
+**Last updated:** 2026-10-14 11:57:44
 
 ---
 
@@ -35,6 +35,7 @@ This document is auto-generated from `lint/metadata.json`.
 - [port_out_naming](#port-out-naming)
 - [process_naming](#process-naming)
 - [require_meaningful_comments](#require-meaningful-comments)
+- [require_process_label](#require-process-label)
 - [require_reset_in_clocked_process](#require-reset-in-clocked-process)
 - [same_file_units](#same-file-units)
 - [signal_naming](#signal-naming)
@@ -1277,6 +1278,47 @@ This document is auto-generated from `lint/metadata.json`.
 {
   "rules": {
     "require_meaningful_comments": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}
+```
+
+---
+
+## require_process_label
+
+**Type:** `require_process_label`
+
+**Default Configuration:**
+
+```json
+{
+  "require_process_label": {
+    "enabled": false,
+    "message": "Process at line ${line} has no label",
+    "severity": "warning",
+    "type": "require_process_label"
+  }
+}
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | boolean | `false` | Whether rule is active |
+| `message` | string | `Process at line ${line} has no label` | Custom message template |
+| `severity` | string | `warning` | Diagnostic severity level |
+| `type` | string | `require_process_label` | Rule handler type |
+
+**Example Override:**
+
+```json
+{
+  "rules": {
+    "require_process_label": {
       "enabled": true,
       "severity": "warning"
     }
