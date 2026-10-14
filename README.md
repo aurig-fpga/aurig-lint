@@ -377,7 +377,8 @@ instance and generate labels, …), required process labels, allowed
 libraries, non-standard arithmetic, positional port/generic maps, latch
 inference, reset requirements, and documentation/comment checks. A generated
 catalogue is in [`doc/reference/rules_reference.md`](doc/reference/rules_reference.md)
-(regenerate with `doc/tools/generate_rules_reference.tcl`).
+(regenerate with `doc/tools/generate_rules_reference.tcl`); to configure them,
+see the [configuration guide](doc/configuration.md).
 
 ### Process, instance and generate labels
 
@@ -432,127 +433,30 @@ no such rule for them. To skip testbenches, use an override:
 
 ### Policy file
 
-A policy (`-policy <file>`, or a discovered `.aurig/lint-policy.json`)
-overrides the defaults rule by rule:
+A policy file changes the rules to fit your conventions: turn rules on or off,
+change their severity, pattern or message, add naming rules of your own, and
+treat testbenches or other files differently. Put it at
+`<project>/.aurig/lint-policy.json`, where both the single-file CLI and the
+project runner find it, or pass `-policy <file>`:
 
 ```json
 {
   "_note": "keys starting with _ are comments",
   "rules": {
-    "forbid_latch_inference": { "enabled": true, "severity": "error" },
-    "function_naming": { "type": "naming", "scope": "function", "pattern": "^f_" }
-  }
-}
-```
-
-The production readers (the engine, the single-file CLI, the project runner
-and `doc/tools/generate_rules_reference.tcl`) read policy and metadata files
-as UTF-8 on every platform; one leading byte order mark (UTF-8 BOM, as written
-by Notepad and Windows PowerShell 5.1) is ignored. The JSON exports of the
-effective policy (`-export_rules <file>.json`, the runner's
-`effective_policy.json`) are written as UTF-8 without a BOM.
-
-Both the single-file CLI (also with `-export_rules`) and the project runner
-check the policy before linting and exit 2 if any of these is wrong. Every
-problem is listed, one `invalid policy <file>: <problem>` line each; rule ids,
-options, types and severities are quoted with JSON escapes, so a control
-character in them cannot split a problem across lines:
-
-- the file is missing, or is not exactly one JSON value: malformed JSON, or
-  any text after the value other than whitespace;
-- the top level, `"rules"` or a rule entry is not a JSON object (an array or
-  a string is rejected);
-- the top-level `"rules"` key is missing; other top-level keys must be
-  `overrides`, `comment`, `generated` or `version`;
-- a rule id is not in the metadata and has no `"type"`, or its `"type"` is
-  not a rule type the metadata uses (this is how user-defined rules are
-  made; a user-defined `"naming"` rule needs `"scope"` and `"pattern"`);
-- a rule has an option that is not among the options supported by the rule's
-  type: the keys of all the metadata rules of that type, plus `type`,
-  `enabled`, `severity` and `message`. Every naming rule therefore
-  accepts `entity_suffix_bindings` and `binding_message`, which only
-  `architecture_naming` declares, while `forbid_latch_inference` does not
-  accept `bfm_patterns`;
-- `"type"` differs from the metadata on a built-in rule;
-- `"severity"` is not one of the strings `error`, `warning`, `info`;
-- `"overrides"` is wrong (see [Per-file overrides](#per-file-overrides)).
-
-Option values are not type-checked otherwise: a list option written as a
-string, as in the exported effective policy, still loads.
-
-Keys starting with `_` are comments and are ignored at the top level, inside
-`"rules"`, inside a rule entry and inside an override entry.
-
-#### Per-file overrides
-
-`"overrides"` changes rules for some files only, typically testbenches and
-bus functional models (BFMs) found by file name:
-
-```json
-{
-  "rules": {
-    "forbid_latch_inference": { "enabled": true }
+    "forbid_latch_inference": { "enabled": true, "severity": "error" }
   },
   "overrides": [
-    { "_note": "testbenches and BFMs may infer latches",
-      "files": ["tb_*.vhd", "*_tb.vhd", "*_bfm.vhd"],
-      "rules": { "forbid_latch_inference": { "enabled": false } } },
-    { "files": ["src/legacy/*"],
-      "rules": { "signal_naming": { "severity": "info" } } }
+    { "files": ["tb_*.vhd", "*_tb.vhd", "*_bfm.vhd"],
+      "rules": { "forbid_latch_inference": { "enabled": false } } }
   ]
 }
 ```
 
-Each entry has `"files"`, a non-empty list of glob patterns, and `"rules"`,
-written like the top-level `"rules"`. For each linted file, every entry with a
-matching pattern is merged on top of the rule configuration, in the order of
-the list, rule by rule: the metadata defaults, then the top-level `"rules"`,
-then each matching entry. An entry changes only the options it sets, and a
-later entry wins over an earlier one; above, a file named `tb_top.vhd` under
-`src/legacy/` gets both changes.
-
-Matching:
-
-- a pattern without `/` matches the file name (`tb_*.vhd`);
-- a pattern with `/` matches the file's path relative to the project root,
-  written with `/` and without a leading `./` (`src/legacy/*`), also on
-  Windows; a pattern with a backslash (`"src\\legacy\\*"` in JSON) is
-  rejected, since it would never match;
-- matching ignores case, so `tb_*.vhd` matches `TB_TOP.VHD`;
-- patterns follow Tcl `string match`: `*` matches any characters **including
-  `/`** (`src/*` matches every file below `src/`), `?` one character,
-  `[abc]` one of a set; there is no `**`;
-- a file outside the project root is matched by its file name only.
-
-For the project runner the project root is `-project_root`, or with
-`-manifest` the manifest's `project_root`. The single-file
-CLI takes `-project_root <dir>`; without it, the root is the folder that
-holds the `.aurig/` folder where the policy was discovered, or the current
-directory when `-policy` is given. Engine callers pass `-project_root` to
-`::aurig::lint::run`; without it only file-name patterns match.
-
-The project runner and the single-file CLI give the same result for a file.
-`-- aurig-lint: disable` pragmas still remove diagnostics afterwards, and the
-runner's cap of diagnostics per rule per file counts what is left after the
-overrides. Rule options that take file patterns of their own
-(`testbench_patterns`, `bfm_patterns`, `excluded_architectures` on
-`require_reset_in_clocked_process` and `forbid_wait_statements`) work as
-before and combine with the overrides.
-
-The policy is rejected (exit 2, one `invalid policy <file>: <problem>` line
-per problem, entries named by position from 0, e.g. `overrides[1] rule
-"signal_naming": ...`) when `"overrides"` is not a list of objects; an entry
-has keys other than `"files"` and `"rules"`; `"files"` is missing, not a
-list, empty, or holds something other than a non-empty string; a pattern
-contains a backslash (`overrides[0] files[1] "src\\tb\\*.vhd": use "/" as
-the path separator`); `"rules"` is
-missing or not an object; a rule is neither in the metadata nor in the
-top-level `"rules"`; a rule sets `"type"`; or a rule has an unsupported
-option or an invalid `"severity"` (checked as for the top-level entry).
-
-The effective-policy exports (`-export_rules`, the runner's
-`effective_policy.json` and `.md`) do not include `"overrides"` yet: they show
-the top-level configuration only (#17).
+An invalid policy stops the run with exit code 2 and one `invalid policy
+<file>: <problem>` line per problem. The
+**[configuration guide](doc/configuration.md)** explains discovery, rule
+options, validation errors, per-file overrides, `-- aurig-lint: disable`
+comments and `-export_rules`, with recipes for common naming conventions.
 
 ## Development & tests
 

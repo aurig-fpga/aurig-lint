@@ -29,8 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   strings, a pattern with a backslash, `"rules"` not an object, an unknown rule id, `"type"` in an
   override, an unsupported option or severity) exit **2** with one `invalid
   policy <file>: <problem>` line each, as in #16. The effective-policy exports
-  do not include `"overrides"` yet (#17). See "Per-file overrides" in the
-  README.
+  do not include `"overrides"` yet (#17). See "Different rules for some
+  files: overrides" in `doc/configuration.md`.
 - `lint/lint_cli.tcl`: `-project_root <dir>`, the root for the `"overrides"`
   patterns that contain `/`. Default: the folder holding the `.aurig/` folder
   where the policy was discovered, else the current directory.
@@ -100,8 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Option values are not type-checked otherwise, so an exported effective
   policy with list options written as strings still loads. Keys starting
   with `_` (such as `"_note"`) are comments and are ignored at the top
-  level, inside `"rules"` and inside a rule entry. See "Policy file" in the
-  README.
+  level, inside `"rules"` and inside a rule entry. See "When the policy is
+  wrong" in `doc/configuration.md`.
 
 - The production readers of policy and metadata files (the engine, the
   single-file CLI including `-export_rules`, the project runner and
@@ -169,6 +169,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- `doc/configuration.md`, a configuration guide (#15): where the policy lives
+  and how the CLI and the runner find it, rule options and how they merge with
+  the defaults, validation errors and how to fix them, per-file overrides,
+  `-- aurig-lint: disable` comments, `-export_rules`, excluding generated
+  sources and the runner's per-rule cap, and recipes (UpperCamelCase entities
+  with `_top`/`_tb`/`_bfm`/`_top_tb`, lowerCamelCase signals with `_n`,
+  process and instance labels, testbench/BFM overrides, a user-defined
+  function naming rule). Every example was run and its output is shown. The
+  README's "Policy file" section is now a short introduction that links to it.
 - README: a Windows walkthrough from an empty machine to a first lint run
   (interpreter check, clone layout, `TCLLIBPATH` in PowerShell and cmd.exe,
   paths with spaces, persistent setting, Git Bash's own `tclsh`); the project
