@@ -373,7 +373,7 @@ set TCLLIBPATH=C:/aurig/aurig-core C:/aurig/aurig-lint
 
 Rules and their defaults live in [`lint/metadata.json`](lint/metadata.json).
 They cover naming (signals, constants, generics, entities, process,
-instance and generate labels, …), allowed
+instance and generate labels, …), required process labels, allowed
 libraries, non-standard arithmetic, positional port/generic maps, latch
 inference, reset requirements, and documentation/comment checks. A generated
 catalogue is in [`doc/reference/rules_reference.md`](doc/reference/rules_reference.md)
@@ -411,6 +411,24 @@ processes without a label (they have no name), generate statements nested
 inside another generate statement (the parser does not report them yet),
 and labels of other statements (blocks, concurrent assignments).
 `identifier_case` does not check labels.
+
+To require a label on every process, enable `require_process_label`
+(disabled by default, severity `warning`). It reports each process without a
+label on its `process` line, with the message `Process at line N has no
+label`; processes inside generate statements are included. Its options are
+`enabled`, `severity` and `message` (`${line}` is replaced by the line).
+Instances and generate statements always have a label in VHDL, so there is
+no such rule for them. To skip testbenches, use an override:
+
+```json
+{
+  "rules": { "require_process_label": { "enabled": true } },
+  "overrides": [
+    { "files": ["tb_*.vhd", "*_tb.vhd"],
+      "rules": { "require_process_label": { "enabled": false } } }
+  ]
+}
+```
 
 ### Policy file
 

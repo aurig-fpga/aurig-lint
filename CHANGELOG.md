@@ -51,6 +51,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   labels. The line is the parser's, checked against the label text as for
   other symbols, so it is also right with an aurig-core older than the fix
   of aurig-fpga/aurig-core#23.
+- `require_process_label` (#19): a built-in rule with its own type, disabled
+  by default, severity `warning`. It reports each process without a label on
+  its `process` line, with the message `Process at line N has no label`
+  (`${line}` in `message`); processes inside generate statements are
+  included. Its options are `enabled`, `severity` and `message`. It is a rule
+  rather than a `require_label` option on `process_naming` because options
+  are validated per rule type (#16), so the option would have been accepted
+  on every naming rule. The line is the parser's process line, as for the
+  other process rules: with an aurig-core older than the fix of
+  aurig-fpga/aurig-core#23 it can be early.
 
 ### Changed (BREAKING)
 
