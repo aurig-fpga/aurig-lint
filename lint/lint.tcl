@@ -3916,6 +3916,51 @@ proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename 
     return $diagnostics
 }
 
+# Rule: require_process_label
+# Flags processes without a label (#19), at the parser line of the process,
+# which for an unlabelled process is the line of the `process` keyword. The
+# parser reports the processes inside a generate statement, at any depth, in
+# the processes of the architecture, so those are covered too. Instances and
+# generate statements always carry a label in VHDL; only a process can be
+# unlabelled.
+#
+# Options (besides type, enabled, severity):
+#   message : Diagnostic message; ${line} is replaced by the process line
+proc ::aurig::lint::rule::require_process_label {symbols parse_result filename rule_id rule_config} {
+    set diagnostics {}
+
+    set severity "warning"
+    if {[dict exists $rule_config severity]} {
+        set severity [dict get $rule_config severity]
+    }
+    set template {Process at line ${line} has no label}
+    if {[dict exists $rule_config message]} {
+        set template [dict get $rule_config message]
+    }
+
+    if {![dict exists $parse_result architectures]} {
+        return $diagnostics
+    }
+
+    foreach arch [dict get $parse_result architectures] {
+        if {![dict exists $arch processes]} {
+            continue
+        }
+        foreach proc [dict get $arch processes] {
+            set proc_label [expr {[dict exists $proc label] ? [dict get $proc label] : ""}]
+            if {$proc_label ne ""} {
+                continue
+            }
+            set proc_line [expr {[dict exists $proc line] ? [dict get $proc line] : 0}]
+            set msg [string map [list \${line} $proc_line] $template]
+            lappend diagnostics [::aurig::lint::create_diagnostic \
+                $rule_id $severity $msg $filename $proc_line 0 "process" "" ""]
+        }
+    }
+
+    return $diagnostics
+}
+
 # Rule: forbid_unconstrained_ports
 # Detects unconstrained vector/array ports in entities
 proc ::aurig::lint::rule::forbid_unconstrained_ports {symbols parse_result filename rule_id rule_config} {
