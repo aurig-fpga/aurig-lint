@@ -372,11 +372,45 @@ set TCLLIBPATH=C:/aurig/aurig-core C:/aurig/aurig-lint
 ## Rules
 
 Rules and their defaults live in [`lint/metadata.json`](lint/metadata.json).
-They cover naming (signals, constants, generics, entities, …), allowed
+They cover naming (signals, constants, generics, entities, process,
+instance and generate labels, …), allowed
 libraries, non-standard arithmetic, positional port/generic maps, latch
 inference, reset requirements, and documentation/comment checks. A generated
 catalogue is in [`doc/reference/rules_reference.md`](doc/reference/rules_reference.md)
 (regenerate with `doc/tools/generate_rules_reference.tcl`).
+
+### Process, instance and generate labels
+
+The labels of processes, component or entity instances and generate
+statements are checked by `process_naming`, `instance_naming` and
+`generate_naming`. They are disabled by default; once enabled, they expect
+lowercase with underscores (`^[a-z][a-z0-9_]*$`) at severity `info`. The
+`process`, `instance` and `generate` patterns of `naming_conventions_pack`
+and user-defined naming rules with `"scope": "process"`, `"instance"` or
+`"generate"` apply to the same labels. For example, to require
+`UpperCamelCase_proc` process labels and a `u_` prefix on instances:
+
+```json
+{
+  "rules": {
+    "process_naming": {
+      "enabled": true,
+      "severity": "warning",
+      "pattern": "^[A-Z][A-Za-z0-9]*_proc$",
+      "message": "Process label '${name}' should be UpperCamelCase_proc"
+    },
+    "instance_naming": { "enabled": true, "pattern": "^u_" }
+  }
+}
+```
+
+A diagnostic points at the line of the label itself, also when the label
+and the `process` keyword are on separate lines. Processes and instances
+inside a generate statement are checked like the others. Not checked:
+processes without a label (they have no name), generate statements nested
+inside another generate statement (the parser does not report them yet),
+and labels of other statements (blocks, concurrent assignments).
+`identifier_case` does not check labels.
 
 ### Policy file
 

@@ -2,7 +2,7 @@
 
 This document is auto-generated from `lint/metadata.json`.
 
-**Last updated:** 2026-05-26 18:12:15
+**Last updated:** 2026-10-12 13:02:53
 
 ---
 
@@ -21,8 +21,10 @@ This document is auto-generated from `lint/metadata.json`.
 - [forbid_tabs](#forbid-tabs)
 - [forbid_unconstrained_ports](#forbid-unconstrained-ports)
 - [forbid_wait_statements](#forbid-wait-statements)
+- [generate_naming](#generate-naming)
 - [generic_naming](#generic-naming)
 - [identifier_case](#identifier-case)
+- [instance_naming](#instance-naming)
 - [keyword_lowercase](#keyword-lowercase)
 - [library_naming](#library-naming)
 - [max_line_length](#max-line-length)
@@ -31,6 +33,7 @@ This document is auto-generated from `lint/metadata.json`.
 - [port_in_naming](#port-in-naming)
 - [port_inout_naming](#port-inout-naming)
 - [port_out_naming](#port-out-naming)
+- [process_naming](#process-naming)
 - [require_meaningful_comments](#require-meaningful-comments)
 - [require_reset_in_clocked_process](#require-reset-in-clocked-process)
 - [same_file_units](#same-file-units)
@@ -620,6 +623,51 @@ This document is auto-generated from `lint/metadata.json`.
 
 ---
 
+## generate_naming
+
+**Type:** `naming`
+
+**Default Configuration:**
+
+```json
+{
+  "generate_naming": {
+    "enabled": false,
+    "message": "Generate label '${name}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "scope": "generate",
+    "severity": "info",
+    "type": "naming"
+  }
+}
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | boolean | `false` | Whether rule is active |
+| `message` | string | `Generate label '${name}' should be lowercase with underscores` | Custom message template |
+| `pattern` | string | `^[a-z][a-z0-9_]*$` | Configuration option |
+| `scope` | string | `generate` | Configuration option |
+| `severity` | string | `info` | Diagnostic severity level |
+| `type` | string | `naming` | Rule handler type |
+
+**Example Override:**
+
+```json
+{
+  "rules": {
+    "generate_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}
+```
+
+---
+
 ## generic_naming
 
 **Type:** `naming`
@@ -699,6 +747,51 @@ This document is auto-generated from `lint/metadata.json`.
 {
   "rules": {
     "identifier_case": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}
+```
+
+---
+
+## instance_naming
+
+**Type:** `naming`
+
+**Default Configuration:**
+
+```json
+{
+  "instance_naming": {
+    "enabled": false,
+    "message": "Instance label '${name}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "scope": "instance",
+    "severity": "info",
+    "type": "naming"
+  }
+}
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | boolean | `false` | Whether rule is active |
+| `message` | string | `Instance label '${name}' should be lowercase with underscores` | Custom message template |
+| `pattern` | string | `^[a-z][a-z0-9_]*$` | Configuration option |
+| `scope` | string | `instance` | Configuration option |
+| `severity` | string | `info` | Diagnostic severity level |
+| `type` | string | `naming` | Rule handler type |
+
+**Example Override:**
+
+```json
+{
+  "rules": {
+    "instance_naming": {
       "enabled": true,
       "severity": "warning"
     }
@@ -1070,6 +1163,51 @@ This document is auto-generated from `lint/metadata.json`.
 {
   "rules": {
     "port_out_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}
+```
+
+---
+
+## process_naming
+
+**Type:** `naming`
+
+**Default Configuration:**
+
+```json
+{
+  "process_naming": {
+    "enabled": false,
+    "message": "Process label '${name}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "scope": "process",
+    "severity": "info",
+    "type": "naming"
+  }
+}
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | boolean | `false` | Whether rule is active |
+| `message` | string | `Process label '${name}' should be lowercase with underscores` | Custom message template |
+| `pattern` | string | `^[a-z][a-z0-9_]*$` | Configuration option |
+| `scope` | string | `process` | Configuration option |
+| `severity` | string | `info` | Diagnostic severity level |
+| `type` | string | `naming` | Rule handler type |
+
+**Example Override:**
+
+```json
+{
+  "rules": {
+    "process_naming": {
       "enabled": true,
       "severity": "warning"
     }

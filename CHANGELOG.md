@@ -36,6 +36,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where the policy was discovered, else the current directory.
   `::aurig::lint::run` takes `-project_root` too; without it only file-name
   patterns match.
+- Naming rules for process, instance and generate labels (#18):
+  `process_naming`, `instance_naming` and `generate_naming`, type `naming`,
+  disabled by default, pattern `^[a-z][a-z0-9_]*$`, severity `info`. The
+  labels were parsed but never checked: the `process`, `instance` and
+  `generate` patterns of `naming_conventions_pack` never fired, and a
+  user-defined naming rule with `"scope": "process"` was accepted and did
+  nothing. Both now report labels, so a policy that already enables
+  `naming_conventions_pack` gets new diagnostics. A diagnostic points at the
+  label's own line; processes and instances inside a generate statement are
+  included. Processes without a label, generate statements nested inside
+  another generate statement (not reported by the parser) and the labels of
+  other statements are not checked, and `identifier_case` does not check
+  labels. The line is the parser's, checked against the label text as for
+  other symbols, so it is also right with an aurig-core older than the fix
+  of aurig-fpga/aurig-core#23.
 
 ### Changed (BREAKING)
 

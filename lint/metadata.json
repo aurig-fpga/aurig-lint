@@ -108,6 +108,30 @@
       "severity": "warning",
       "message": "Subtype '${name}' should be lowercase with underscores"
     },
+    "process_naming": {
+      "type": "naming",
+      "scope": "process",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "enabled": false,
+      "severity": "info",
+      "message": "Process label '${name}' should be lowercase with underscores"
+    },
+    "instance_naming": {
+      "type": "naming",
+      "scope": "instance",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "enabled": false,
+      "severity": "info",
+      "message": "Instance label '${name}' should be lowercase with underscores"
+    },
+    "generate_naming": {
+      "type": "naming",
+      "scope": "generate",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "enabled": false,
+      "severity": "info",
+      "message": "Generate label '${name}' should be lowercase with underscores"
+    },
     "allowed_libraries": {
       "type": "library",
       "allowed": ["ieee", "std", "work"],
