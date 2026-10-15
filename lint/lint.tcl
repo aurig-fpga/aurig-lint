@@ -2808,6 +2808,10 @@ proc ::aurig::lint::rule::forbid_positional_genericmap {symbols parse_result fil
 #   -- aurig-lint: disable-next-line <rule_id>[,<rule_id>...]
 #      Disables rules only for the next line
 #
+# Rule ids match ignoring case (#49): every rule id is lowercase, so the ids
+# are stored in lowercase and filter_suppressed_diagnostics compares the
+# lowercase id of each diagnostic.
+#
 # Arguments:
 #   filename : Source file path
 #
@@ -2852,7 +2856,7 @@ proc ::aurig::lint::parse_suppressions {filename} {
             set rules [split $rules_str ","]
             set rule_list {}
             foreach rule $rules {
-                set rule [string trim $rule]
+                set rule [string tolower [string trim $rule]]
                 if {$rule ne ""} {
                     lappend rule_list $rule
                 }
@@ -2871,7 +2875,7 @@ proc ::aurig::lint::parse_suppressions {filename} {
             # Parse comma-separated rule list
             set rules [split $rules_str ","]
             foreach rule $rules {
-                set rule [string trim $rule]
+                set rule [string tolower [string trim $rule]]
                 if {$rule ne ""} {
                     lappend globally_disabled $rule
                 }
@@ -2910,7 +2914,7 @@ proc ::aurig::lint::filter_suppressed_diagnostics {diagnostics suppressions} {
         set is_suppressed 0
         if {[dict exists $suppressions $line]} {
             set suppressed_rules [dict get $suppressions $line]
-            if {$rule_id in $suppressed_rules} {
+            if {[string tolower $rule_id] in $suppressed_rules} {
                 set is_suppressed 1
             }
         }

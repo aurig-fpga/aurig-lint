@@ -700,7 +700,11 @@ comments, `StatusReg`, `IrqMask` and `reset_value` would be reported too. Use
 the rule id as printed in brackets at the end of each diagnostic. A comment
 can name any rule, built-in or user-defined, because every rule id is made of
 lowercase letters, digits and underscores and starts with a letter: the
-policy rejects a user-defined rule with any other id (section 3). There is no
+policy rejects a user-defined rule with any other id (section 3). The rule
+ids in a comment match ignoring case, like VHDL names: `disable
+Signal_Naming` or `DISABLE SIGNAL_NAMING` switches off `signal_naming`. The
+`aurig-lint:` marker and the words `disable` and `disable-next-line` may also
+be written in any case. There is no
 `enable` comment; to turn a rule off for whole files, use an override instead.
 
 ## 6. Checking the effective configuration
