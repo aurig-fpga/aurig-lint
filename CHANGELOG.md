@@ -177,6 +177,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conflict for package "Tcl": have 8.5.9, need 8.6` and exit **2**. Tcl 9
   is refused at load as before (the requirement, like the old one, does not
   accept a new major version); Tcl 9 is not tested.
+  `test/test_tcl_minimum_version.tcl` fails if any file declares the 8.5
+  minimum again or `lint/lint.tcl` stops requiring 8.6.
 
 ### Removed
 
