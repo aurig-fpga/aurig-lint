@@ -194,6 +194,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The HTML reports load nothing from the network (#2). The project runner's
+  `index.html` imported the Oswald and Roboto fonts from Google Fonts, and
+  its source viewer pages (`sources/*.html`) loaded CodeMirror's scripts and
+  stylesheets from cdnjs and Oswald from Google Fonts; opened without
+  network access, the index fell back to other fonts and the source viewer
+  showed the bare source in a small text box, without line numbers,
+  highlighted diagnostic lines or the jump to a diagnostic's line. The pages
+  now use system font stacks (`system-ui, "Segoe UI", Roboto, Helvetica,
+  Arial, sans-serif` and `Consolas, "SF Mono", Menlo, monospace`), and the
+  source viewer is plain HTML written by the runner: numbered lines with ids
+  `L<n>`, so the report's `#L<n>` links and `:target` highlighting work
+  without JavaScript; lines with a diagnostic coloured by severity; VHDL
+  comments, literals and reserved words coloured. Links to
+  `https://www.logimentor.com` remain links. The single-file CLI and runner
+  reports, the `-export_rules` HTML and `rules_reference.html` already
+  loaded nothing; a test now checks every HTML page the tools write.
+
 - `tools/run_lint_project_inprocess.tcl -format md` no longer crashes with
   `invalid command name "OK"` and exit 1 (#48). The `[OK] No files with lint
   issues.` and `[OK] No tool errors.` lines were in double quotes, so Tcl ran
