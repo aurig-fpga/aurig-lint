@@ -4268,12 +4268,10 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
             # or `\` carried regex meaning, and an unbalanced
             # bracket in a keyword propagated up as a hard
             # tool error that brought down the whole lint sweep.
-            # The literal-substring form matches the documented
-            # contract in doc/reference/lint_rules.md and is
-            # robust to user typos in header_keywords. Pinned by
-            # the regex-vs-substring case in
-            # test/lint/test_require_meaningful_comments.tcl
-            # Suite 4 (see the "D.te" / "[bad" assertions).
+            # The literal-substring form is robust to user typos in
+            # header_keywords. doc/reference/rules_reference.md
+            # lists the option but does not state this matching
+            # rule. No test in this repository pins it.
             set header_text [join $header_lines " "]
             set header_text_lc [string tolower $header_text]
             set found_keywords {}
@@ -4293,7 +4291,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 # and we'd rather degrade to the safe default than
                 # block the whole lint sweep on a typo. The schema
                 # is documented in lint/metadata.json and
-                # doc/reference/lint_rules.md.
+                # doc/reference/rules_reference.md.
             }
             if {$keywords_mode eq "all"} {
                 set missing {}
@@ -4654,10 +4652,10 @@ proc ::aurig::lint::check_comment_presence {file_lines line_num comment_style} {
             # port is independently wrong and should fire its own
             # diagnostic — but NOT mask the documentation of portX).
             # Caught against eo_cpu/src/CalibrateDetection.vhd:50
-            # (true section header above 12 ports) vs.
-            # test/lint/fixtures/bit_types_violations.vhd:17
-            # (per-port comment that the prior single-port lookahead
-            # was treating as a section header).
+            # (true section header above 12 ports) vs. a per-port
+            # comment in a fixture of the earlier test suite, not in
+            # this repository, that the prior single-port lookahead
+            # was treating as a section header.
             # Walk forward through non-blank lines below the current
             # declaration, stopping when we either see a comment
             # (next port has its own doc), a non-port-like line
