@@ -21,7 +21,7 @@
 # interpreter can resolve it. signal_naming is enabled by default in
 # lint/metadata.json.
 
-package require Tcl 8.5
+package require Tcl 8.6
 
 set script_dir [file dirname [file normalize [info script]]]
 set lint_root  [file dirname $script_dir]

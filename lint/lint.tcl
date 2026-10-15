@@ -28,7 +28,7 @@
 #   - symbol_name: Name of the offending symbol
 #   - context_path: Hierarchical context (e.g., "entity:foo/arch:rtl")
 
-package require Tcl 8.5
+package require Tcl 8.6
 
 # Explicit dependency on the parser stack. The engine calls
 # ::aurig::core::analyze::vhdlscan; requiring the core package guarantees it is

@@ -24,7 +24,7 @@
 # the unfixed code. No aurig::core / TCLLIBPATH needed: the stub stands in for
 # the engine and the broken sibling source returns before any engine proc runs.
 
-package require Tcl 8.5
+package require Tcl 8.6
 
 set script_dir [file dirname [file normalize [info script]]]
 set lint_root  [file dirname $script_dir]

@@ -27,7 +27,7 @@
 # set TCLLIBPATH to the aurig-core checkout (dev/CI) so the child inherits it.
 #=============================================================================
 
-package require Tcl 8.5
+package require Tcl 8.6
 
 set script_dir [file dirname [file normalize [info script]]]
 set lint_root  [file dirname $script_dir]

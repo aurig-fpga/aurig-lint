@@ -169,6 +169,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `::aurig::lint::run` takes `-rules_config <dict>` (from `load_rules_config`
   or the new `merge_rules_config`) in place of `-metadata` and `-policy`.
 
+- The declared Tcl minimum is now 8.6, the version CI tests and the README
+  states (#33): `lint/lint.tcl` and the tests declare `package require Tcl
+  8.6` instead of `8.5`. An 8.5 interpreter, such as the one bundled with
+  some FPGA vendor tools, used to load the engine and fail later or run
+  untested code; the CLI and both runners now stop at load with `version
+  conflict for package "Tcl": have 8.5.9, need 8.6` and exit **2**. Tcl 9
+  is refused at load as before (the requirement, like the old one, does not
+  accept a new major version); Tcl 9 is not tested.
+
 ### Removed
 
 - `tools/run_lint_project_inprocess.tcl`: the `-allow_degraded_yaml_reader`

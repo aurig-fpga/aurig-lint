@@ -18,7 +18,7 @@
 # package to be treated as missing during the check. This keeps the test
 # self-contained and avoids mutating the dev/CI tclsh environment.
 
-package require Tcl 8.5
+package require Tcl 8.6
 
 # aurig-lint carve: self-anchor on this test's own location (test/ -> parent
 # is the repo root); no helpers_root.tcl marker-file walk. The subprocess
