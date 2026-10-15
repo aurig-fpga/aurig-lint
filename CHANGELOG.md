@@ -181,6 +181,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runner still exits 2 with the same install and PATH guidance, whose probe now
   also identifies which interpreter it ran in.
 
+### Fixed
+
+- `require_reset_in_clocked_process`: the default message no longer reads
+  `Clocked process 'X' missing either reset` (#25). The shipped template is
+  now `Clocked process '${process}' missing ${reset}`, where the new `${reset}`
+  placeholder is `a synchronous or asynchronous reset` (`either`), `a
+  synchronous reset` (`sync`) or `an asynchronous reset` (`async`). A
+  `message` of your own keeps its interpolation: `${policy}` is still the raw
+  `reset_policy` value. The message used when no template is set at all is
+  unchanged.
+
 ### Documentation
 
 - `doc/configuration.md`, a configuration guide (#15): where the policy lives

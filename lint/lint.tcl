@@ -3830,8 +3830,17 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
                 }
 
                 if {[dict exists $rule_config message]} {
+                    # ${reset} is the requirement in words (used by the
+                    # shipped template); ${policy} stays the raw value for
+                    # templates that already use it.
+                    switch -exact -- $reset_policy {
+                        either  { set reset_words "a synchronous or asynchronous reset" }
+                        sync    { set reset_words "a synchronous reset" }
+                        async   { set reset_words "an asynchronous reset" }
+                        default { set reset_words "$reset_policy reset" }
+                    }
                     set msg [dict get $rule_config message]
-                    set msg [string map [list \${process} $proc_label \${policy} $reset_policy] $msg]
+                    set msg [string map [list \${process} $proc_label \${policy} $reset_policy \${reset} $reset_words] $msg]
                 }
 
                 lappend diagnostics [::aurig::lint::create_diagnostic \

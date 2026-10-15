@@ -266,7 +266,7 @@
       "bfm_patterns": ["*_bfm.vhd"],
       "excluded_architectures": ["bfm"],
       "excluded_processes": [],
-      "message": "Clocked process '${process}' missing ${policy} reset"
+      "message": "Clocked process '${process}' missing ${reset}"
     },
     "forbid_wait_statements": {
       "type": "forbid_wait_statements",
