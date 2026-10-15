@@ -78,6 +78,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (BREAKING)
 
+- A user-defined rule id must match `^[a-z][a-z0-9_]*$`, the form of the
+  built-in ids (#49). In-source pragmas (`-- aurig-lint: disable` and
+  `disable-next-line`) name rules only in that form, so the diagnostics of a
+  rule such as `FunctionNaming` or `function-naming` could not be
+  suppressed, and the pragma was ignored without a message. Such a rule id
+  now exits **2** with one `invalid policy <file>: rule "<id>": invalid rule
+  id (...)` line, like the other policy mistakes of #16; the other problems
+  of the entry are still listed. A policy with such a rule id that loaded
+  before is now rejected: rename the rule (and the baselines that name it).
+  Pragmas now match rule ids ignoring case: `-- aurig-lint: disable
+  Signal_Naming` was accepted but suppressed nothing, without a message; it
+  now suppresses `signal_naming`. `doc/configuration.md` states the rule in the
+  pragma section and lists the scopes `naming_conventions_pack` checks.
+
 - Policy files are validated before linting, by the single-file CLI (also
   with `-export_rules`) and by the project runner. An invalid policy now
   exits **2**, instead of being dropped in whole or in part without a

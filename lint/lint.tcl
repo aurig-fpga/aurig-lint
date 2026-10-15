@@ -384,6 +384,8 @@ proc ::aurig::lint::policy_problem_line {policy_file problem} {
 #   - a rule id that is not in metadata is a user-defined rule and needs a
 #     "type" that has a handler and is used by at least one metadata rule;
 #     a user-defined "naming" rule needs "scope" and "pattern";
+#   - a user-defined rule id matches ^[a-z][a-z0-9_]*$, the form of the
+#     built-in ids and the only form an in-source pragma can name (#49);
 #   - a built-in rule keeps its metadata "type";
 #   - the options a rule supports are the same for every rule of a type: the
 #     union of the metadata keys of all rules of that type, plus type,
@@ -475,6 +477,12 @@ proc ::aurig::lint::validate_policy {policy metadata} {
         if {$kind ne "object"} {
             lappend problems "$where: entry is not a JSON object (found $kind)"
             continue
+        }
+
+        # A user-defined rule id must have the form a pragma can name.
+        if {![dict exists $builtin_rules $rule_id] && [dict exists $entry type]
+                && ![regexp {^[a-z][a-z0-9_]*$} $rule_id]} {
+            lappend problems "$where: invalid rule id (a user-defined rule id must match ^\[a-z\]\[a-z0-9_\]*\$, the form a pragma can name)"
         }
 
         # The supported options follow from the rule type. When the type
@@ -2805,6 +2813,10 @@ proc ::aurig::lint::rule::forbid_positional_genericmap {symbols parse_result fil
 #   -- aurig-lint: disable-next-line <rule_id>[,<rule_id>...]
 #      Disables rules only for the next line
 #
+# Rule ids match ignoring case (#49): every rule id is lowercase, so the ids
+# are stored in lowercase and filter_suppressed_diagnostics compares the
+# lowercase id of each diagnostic.
+#
 # Arguments:
 #   filename : Source file path
 #
@@ -2849,7 +2861,7 @@ proc ::aurig::lint::parse_suppressions {filename} {
             set rules [split $rules_str ","]
             set rule_list {}
             foreach rule $rules {
-                set rule [string trim $rule]
+                set rule [string tolower [string trim $rule]]
                 if {$rule ne ""} {
                     lappend rule_list $rule
                 }
@@ -2868,7 +2880,7 @@ proc ::aurig::lint::parse_suppressions {filename} {
             # Parse comma-separated rule list
             set rules [split $rules_str ","]
             foreach rule $rules {
-                set rule [string trim $rule]
+                set rule [string tolower [string trim $rule]]
                 if {$rule ne ""} {
                     lappend globally_disabled $rule
                 }
@@ -2907,7 +2919,7 @@ proc ::aurig::lint::filter_suppressed_diagnostics {diagnostics suppressions} {
         set is_suppressed 0
         if {[dict exists $suppressions $line]} {
             set suppressed_rules [dict get $suppressions $line]
-            if {$rule_id in $suppressed_rules} {
+            if {[string tolower $rule_id] in $suppressed_rules} {
                 set is_suppressed 1
             }
         }
