@@ -4253,9 +4253,10 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
             # or `\` carried regex meaning, and an unbalanced
             # bracket in a keyword propagated up as a hard
             # tool error that brought down the whole lint sweep.
-            # The literal-substring form matches the documented
-            # contract in doc/reference/lint_rules.md and is
-            # robust to user typos in header_keywords. Pinned by
+            # The literal-substring form is robust to user typos in
+            # header_keywords. doc/reference/rules_reference.md
+            # lists the option but does not state this matching
+            # rule. Pinned by
             # the regex-vs-substring case in
             # test/lint/test_require_meaningful_comments.tcl
             # Suite 4 (see the "D.te" / "[bad" assertions).
@@ -4278,7 +4279,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 # and we'd rather degrade to the safe default than
                 # block the whole lint sweep on a typo. The schema
                 # is documented in lint/metadata.json and
-                # doc/reference/lint_rules.md.
+                # doc/reference/rules_reference.md.
             }
             if {$keywords_mode eq "all"} {
                 set missing {}

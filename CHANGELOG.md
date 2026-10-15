@@ -198,6 +198,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project" section, which documents the exit codes. The comment on how
   `-fail_on` differs from the single-file CLI no longer cites the missing
   file.
+  `lint/lint.tcl` cited `doc/reference/lint_rules.md`, which does not exist
+  either; it now cites `doc/reference/rules_reference.md`. In
+  `doc/configuration.md`, the `-export_rules` example shows the current line
+  numbers of `effective.json` (32 and 34; `enum_literal_naming` moved them).
 
 - README: a Windows walkthrough from an empty machine to a first lint run
   (interpreter check, clone layout, `TCLLIBPATH` in PowerShell and cmd.exe,

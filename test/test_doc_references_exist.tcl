@@ -5,10 +5,11 @@
 # Regression (#37): no reference to a missing documentation file
 #
 # tools/run_lint_project_inprocess.tcl told readers to see
-# doc/user/linter.md, a file this repository never had. This test scans the
-# runner for paths that start with `doc/` and checks that each one exists in
-# the checkout, and that the runner still cites the README for its exit
-# codes.
+# doc/user/linter.md, a file this repository never had, and lint/lint.tcl
+# cited doc/reference/lint_rules.md (the file is rules_reference.md). This
+# test scans the runner and the engine for paths that start with `doc/` and
+# checks that each one exists in the checkout, and that the runner still
+# cites the README for its exit codes.
 #=============================================================================
 
 set script_anchor [file dirname [file normalize [info script]]]
@@ -17,7 +18,9 @@ set repo_root [file dirname $script_anchor]
 set ::pass_count 0
 set ::fail_count 0
 
-set sources [list [file join $repo_root tools run_lint_project_inprocess.tcl]]
+set sources [list \
+    [file join $repo_root tools run_lint_project_inprocess.tcl] \
+    [file join $repo_root lint lint.tcl]]
 
 set refs 0
 foreach src $sources {
