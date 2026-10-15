@@ -34,6 +34,7 @@
                 <li><a href="#clock-reset-naming">clock_reset_naming</a></li>
                 <li><a href="#constant-naming">constant_naming</a></li>
                 <li><a href="#entity-naming">entity_naming</a></li>
+                <li><a href="#enum-literal-naming">enum_literal_naming</a></li>
                 <li><a href="#forbid-bit-types">forbid_bit_types</a></li>
                 <li><a href="#forbid-latch-inference">forbid_latch_inference</a></li>
                 <li><a href="#forbid-nonstandard-arith">forbid_nonstandard_arith</a></li>
@@ -69,7 +70,7 @@
             <h1>VHDL Lint Rules Reference</h1>
             <div class="meta-info">
                 <strong>Auto-generated</strong> from <code>lint/metadata.json</code><br>
-                <strong>Last updated:</strong> 2026-10-14 11:57:45
+                <strong>Last updated:</strong> 2026-10-14 17:16:22
             </div>
             <h2 id="allowed-libraries">allowed_libraries</h2>
             <p><strong>Type:</strong> <code>library</code></p>
@@ -238,6 +239,38 @@
             <pre><code>{
   "rules": {
     "entity_naming": {
+      "enabled": true,
+      "severity": "warning"
+    }
+  }
+}</code></pre>
+            <h2 id="enum-literal-naming">enum_literal_naming</h2>
+            <p><strong>Type:</strong> <code>enum_literal_naming</code></p>
+            <h3>Default Configuration</h3>
+            <pre><code>{
+  "enum_literal_naming": {
+    "enabled": false,
+    "message": "Literal '${name}' of type '${type}' should be lowercase with underscores",
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "severity": "info",
+    "type": "enum_literal_naming",
+    "type_pattern": ""
+  }
+}</code></pre>
+            <h3>Configuration Options</h3>
+            <table>
+                <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
+                <tr><td><code>message</code></td><td>string</td><td><code>Literal '${name}' of type '${type}' should be lowercase with underscores</code></td><td>Custom message template</td></tr>
+                <tr><td><code>pattern</code></td><td>string</td><td><code>^[a-z][a-z0-9_]*$</code></td><td>Configuration option</td></tr>
+                <tr><td><code>severity</code></td><td>string</td><td><code>info</code></td><td>Diagnostic severity level</td></tr>
+                <tr><td><code>type</code></td><td>string</td><td><code>enum_literal_naming</code></td><td>Rule handler type</td></tr>
+                <tr><td><code>type_pattern</code></td><td>string</td><td><code>(empty)</code></td><td>Regexp on the enumerated type name: when not empty, only the types whose name matches are checked (e.g. `_state_t$`); empty checks every enumerated type</td></tr>
+            </table>
+            <h3>Example Override</h3>
+            <pre><code>{
+  "rules": {
+    "enum_literal_naming": {
       "enabled": true,
       "severity": "warning"
     }

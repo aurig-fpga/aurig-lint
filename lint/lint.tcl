@@ -3961,6 +3961,82 @@ proc ::aurig::lint::rule::require_process_label {symbols parse_result filename r
     return $diagnostics
 }
 
+# Rule: enum_literal_naming
+# Checks the names of the literals of enumerated types (#27), e.g. FSM state
+# names, in packages, architectures, process declarative parts and subprogram
+# bodies: every type symbol whose parser record carries `literals`. Only
+# identifier literals are checked; character literals ('0', 'X') never are.
+# A diagnostic is on the literal's own line, as reported by the parser, also
+# when the literal list is split over several lines. It is a rule with its
+# own type, not a naming scope, because options are validated per rule type
+# (#16): type_pattern on the naming type would be accepted on every naming
+# rule.
+#
+# Options (besides type, enabled, severity):
+#   pattern      : Regexp a literal name must match (case-sensitive)
+#   type_pattern : Regexp on the enumerated type name; when not empty, only
+#                  the types whose name matches are checked
+#   message      : Diagnostic message; ${name} is replaced by the literal,
+#                  ${type} by the name of its enumerated type
+proc ::aurig::lint::rule::enum_literal_naming {symbols parse_result filename rule_id rule_config} {
+    set diagnostics {}
+
+    if {![dict exists $rule_config pattern]} {
+        return {}
+    }
+    set pattern [dict get $rule_config pattern]
+    set type_pattern ""
+    if {[dict exists $rule_config type_pattern]} {
+        set type_pattern [dict get $rule_config type_pattern]
+    }
+    set severity "warning"
+    if {[dict exists $rule_config severity]} {
+        set severity [dict get $rule_config severity]
+    }
+    set template "Literal '\${name}' of type '\${type}' does not match pattern: $pattern"
+    if {[dict exists $rule_config message]} {
+        set template [dict get $rule_config message]
+    }
+
+    foreach symbol $symbols {
+        if {[dict get $symbol scope] ne "type"} {
+            continue
+        }
+        set raw [dict get $symbol raw_data]
+        if {![dict exists $raw literals]} {
+            continue
+        }
+        set type_name [dict get $symbol name]
+        if {$type_pattern ne "" && ![regexp -- $type_pattern $type_name]} {
+            continue
+        }
+        foreach literal [dict get $raw literals] {
+            if {[::aurig::lint::dict_get_default $literal kind ""] ne "identifier"} {
+                continue
+            }
+            set name [dict get $literal name]
+            if {[regexp -- $pattern $name]} {
+                continue
+            }
+            set line [::aurig::lint::dict_get_default $literal line 0]
+            # The column only when the name is found on the literal's line;
+            # the line itself is never moved. An extended identifier
+            # (\a b\) is not a valid search pattern and keeps column 0.
+            set col 0
+            if {![catch {::aurig::lint::resolve_location $filename $line $name} location]
+                    && [dict get $location line] == $line} {
+                set col [dict get $location col]
+            }
+            set msg [string map [list \${name} $name \${type} $type_name] $template]
+            lappend diagnostics [::aurig::lint::create_diagnostic \
+                $rule_id $severity $msg $filename $line $col "enum_literal" $name \
+                [dict get $symbol context_path]]
+        }
+    }
+
+    return $diagnostics
+}
+
 # Rule: forbid_unconstrained_ports
 # Detects unconstrained vector/array ports in entities
 proc ::aurig::lint::rule::forbid_unconstrained_ports {symbols parse_result filename rule_id rule_config} {
