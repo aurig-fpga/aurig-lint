@@ -730,7 +730,7 @@ PS C:\aurig-trial\l15\guide-run\signals> Select-String '"signal_naming"|"require
 ```
 
 ```text
-C:\aurig-trial\l15\guide-run\signals\effective.json:32:    "require_reset_in_clocked_process": {"bfm_patterns": "*_bfm.vhd", "enabled": true, "excluded_architectures": "bfm", "excluded_processes": "", "message": "Clocked process '${process}' missing ${policy} reset", "reset_policy": "either", "severity": "warning", "testbench_patterns": "*_sim.vhd", "type": "require_reset_in_clocked_process"},
+C:\aurig-trial\l15\guide-run\signals\effective.json:32:    "require_reset_in_clocked_process": {"bfm_patterns": "*_bfm.vhd", "enabled": true, "excluded_architectures": "bfm", "excluded_processes": "", "message": "Clocked process '${process}' missing ${reset}", "reset_policy": "either", "severity": "warning", "testbench_patterns": "*_sim.vhd", "type": "require_reset_in_clocked_process"},
 C:\aurig-trial\l15\guide-run\signals\effective.json:34:    "signal_naming": {"enabled": true, "message": "Signal '${name}' should be lowercase with underscores", "pattern": "^[a-z][A-Za-z0-9]*(_n)?$", "scope": "signal", "severity": "warning", "type": "naming"},
 ```
 

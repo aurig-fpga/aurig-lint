@@ -527,6 +527,7 @@ foreach {label exported} [list "-export_rules" $accented_cli_export \
     set report ""
     catch {
         set fp [open [file join $outdir lint_report.txt] r]
+        fconfigure $fp -encoding utf-8
         set report [read $fp]
         close $fp
     }
