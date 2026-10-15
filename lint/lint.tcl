@@ -1605,13 +1605,16 @@ proc ::aurig::lint::rule::library {symbols parse_result filename rule_id rule_co
         if {$scope eq "library"} {
             set lib_name [dict get $symbol name]
 
+            # Library names are VHDL identifiers, so case does not matter:
+            # IEEE is ieee (#3). The message keeps the name as written.
+
             # Skip 'work' library (implicit)
-            if {$lib_name eq "work"} {
+            if {[string equal -nocase $lib_name "work"]} {
                 continue
             }
 
             # Check if library is in allowed list
-            if {$lib_name ni $allowed_libs} {
+            if {[lsearch -exact -nocase $allowed_libs $lib_name] < 0} {
                 set line [dict get $symbol line]
                 set col [dict get $symbol col]
                 set context_path [dict get $symbol context_path]

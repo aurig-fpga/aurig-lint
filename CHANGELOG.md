@@ -194,6 +194,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `allowed_libraries` compares library names ignoring case, as VHDL does
+  (#3). `library IEEE;` was reported as not in the allowed list although
+  `ieee` is in it, and so were `STD` and `WORK`; a policy listing `"IEEE"`
+  reported `library ieee;`. The diagnostic still shows the name as written
+  in the source.
+
 - `tools/run_lint_project_inprocess.tcl -format md` no longer crashes with
   `invalid command name "OK"` and exit 1 (#48). The `[OK] No files with lint
   issues.` and `[OK] No tool errors.` lines were in double quotes, so Tcl ran
