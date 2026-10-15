@@ -22,7 +22,7 @@
 # Both legs run under a child interpreter (subprocess), matching the isolation
 # style of test/test_lint_cli_source_rc2.tcl.
 
-package require Tcl 8.5
+package require Tcl 8.6
 
 set script_dir [file dirname [file normalize [info script]]]
 set lint_root  [file dirname $script_dir]

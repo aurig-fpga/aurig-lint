@@ -24,7 +24,7 @@
 # pull in the proc; its single-exit-boundary guard does NOT run main when the
 # file is sourced (argv0 is this test, not lint_cli.tcl).
 
-package require Tcl 8.5
+package require Tcl 8.6
 package require json
 
 set script_dir [file dirname [file normalize [info script]]]
