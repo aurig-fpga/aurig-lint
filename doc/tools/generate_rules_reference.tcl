@@ -162,6 +162,18 @@ set rule_ids [lsort [dict keys $rules]]
 # Markdown Generator
 #=============================================================================
 
+# The anchor GitHub gives a Markdown heading: the text in lowercase, without
+# the characters other than letters, digits, spaces, hyphens and
+# underscores, each space replaced by a hyphen. Underscores are kept, so
+# "## entity_naming" is #entity_naming (#45). (GitHub also appends -1, -2...
+# to a repeated anchor; rule ids are unique and differ from the other
+# headings, so that never applies here.)
+proc github_anchor {heading} {
+    set anchor [string tolower $heading]
+    regsub -all {[^a-z0-9 _-]} $anchor {} anchor
+    return [string map {" " -} $anchor]
+}
+
 proc generate_markdown {rules rule_ids} {
     # Pull the centralised type allowlists into the proc scope.
     global ARRAY_TYPED_FIELDS OBJECT_TYPED_FIELDS
@@ -175,15 +187,13 @@ proc generate_markdown {rules rule_ids} {
     # Table of contents
     append output "## Table of Contents\n\n"
     foreach rule_id $rule_ids {
-        set anchor [string map {_ - : -} [string tolower $rule_id]]
-        append output "- \[$rule_id\](#$anchor)\n"
+        append output "- \[$rule_id\](#[github_anchor $rule_id])\n"
     }
     append output "\n---\n\n"
 
     # Individual rule sections
     foreach rule_id $rule_ids {
         set rule [dict get $rules $rule_id]
-        set anchor [string map {_ - : -} [string tolower $rule_id]]
 
         append output "## $rule_id\n\n"
 
