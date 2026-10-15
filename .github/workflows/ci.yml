@@ -57,6 +57,7 @@ jobs:
             test/test_lint_label_naming.tcl
             test/test_lint_policy_overrides.tcl
             test/test_lint_policy_validation.tcl
+            test/test_lint_policy_rule_id.tcl
             test/test_lint_pragma_suppression.tcl
             test/test_lint_process_diagnostic_lines.tcl
             test/test_lint_require_process_label.tcl
