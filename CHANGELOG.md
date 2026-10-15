@@ -189,6 +189,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `[OK]` as a command; every Markdown run without tool errors died there and
   left a truncated `lint_report.md`. The report is now written in full and the
   exit code follows `-fail_on` as for the other formats.
+  `lint_report.md` is now written as UTF-8 with LF line endings, as the CSV
+  report. It used the system encoding (cp1252 on Windows), so characters
+  outside it, such as CJK text in a policy message, were written as `?` and
+  others, such as an accented file name, were not UTF-8.
 
 ### Documentation
 
