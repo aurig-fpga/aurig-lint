@@ -198,7 +198,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (#3). `library IEEE;` was reported as not in the allowed list although
   `ieee` is in it, and so were `STD` and `WORK`; a policy listing `"IEEE"`
   reported `library ieee;`. The diagnostic still shows the name as written
-  in the source.
+  in the source. `forbid_nonstandard_arith` compares package names the same
+  way: `use IEEE.STD_LOGIC_ARITH.ALL;` and `use Ieee.Std_Logic_Unsigned.all;`
+  were not reported, and a `"whitelist"` entry `"STD_LOGIC_ARITH"` did not
+  exempt `use ieee.std_logic_arith.all;`. `same_file_units`, the other rule
+  that compares package names, already ignored case.
 
 - `tools/run_lint_project_inprocess.tcl -format md` no longer crashes with
   `invalid command name "OK"` and exit 1 (#48). The `[OK] No files with lint

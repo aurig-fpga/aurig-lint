@@ -1950,8 +1950,10 @@ proc ::aurig::lint::rule::forbid_nonstandard_arith {symbols parse_result filenam
         # Check if this is a use clause
         # Pattern matches: use library.package
         if {[regexp -nocase {^\s*use\s+([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)} $cleaned_line -> lib_name pkg_name]} {
-            # Check if package name is in forbidden list
-            if {$pkg_name in $forbidden_libs && $pkg_name ni $whitelist} {
+            # Check if package name is in forbidden list. Package names are
+            # VHDL identifiers, so case does not matter (#3).
+            if {[lsearch -exact -nocase $forbidden_libs $pkg_name] >= 0
+                    && [lsearch -exact -nocase $whitelist $pkg_name] < 0} {
                 set col 0
                 if {[regexp {^\s*use\s+} $line match]} {
                     set col [string length $match]

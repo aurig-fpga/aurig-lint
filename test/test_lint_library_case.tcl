@@ -10,11 +10,19 @@
 # default list, and `library WORK;` was reported although work is always
 # skipped. A policy listing "IEEE" reported `library ieee;` the same way.
 #
+# forbid_nonstandard_arith compared package names exactly: `use
+# IEEE.STD_LOGIC_ARITH.ALL;` was not reported, and a whitelist entry
+# "STD_LOGIC_ARITH" did not exempt `use ieee.std_logic_arith.all;`.
+#
+# The other rules that compare library or package names: same_file_units
+# (package against package body) already ignored case; its check is a pin.
+#
 # Checks labelled [control] hold before and after the fix: the lowercase
-# names are accepted, and a library that is not in the list is still
-# reported, with its name as written in the source. Every other check fails
-# on the code before the fix, except "runner ...: report written", which
-# only shows that the runner ran.
+# names are accepted, a library that is not in the list is still reported,
+# with its name as written in the source, lowercase non-standard packages
+# are still reported and numeric_std in any case is not. Every other check
+# fails on the code before the fix, except "runner ...: report written",
+# which only shows that the runner ran, and the same_file_units pin.
 #=============================================================================
 
 set script_anchor [file dirname [file normalize [info script]]]
@@ -182,6 +190,80 @@ check_true "\[control\] library UNISIM: name as written in the source" \
 lassign [library_lines [unit other_policy2 {library work;
 library mylib;}] -policy $upper_policy] rc lines
 check_eq "\[control\] policy \[\"IEEE\", \"STD\"\], library mylib: one diagnostic" 1 [llength $lines]
+
+# ----------------------------------------------------------------------------
+# forbid_nonstandard_arith: package names in any case
+# ----------------------------------------------------------------------------
+# Run the CLI on a file; return the lines of the given rule.
+proc rule_lines {rule path args} {
+    lassign [run_tool $::cli -input $path {*}$args] rc o
+    set lines {}
+    foreach line [split $o \n] {
+        if {[string match "*\\\[$rule\\\]*" $line]} {
+            lappend lines [string trim $line]
+        }
+    }
+    return $lines
+}
+
+foreach {name clause} {
+    arith_upper    {library IEEE;
+use IEEE.STD_LOGIC_ARITH.ALL;}
+    unsigned_mixed {library Ieee;
+use Ieee.Std_Logic_Unsigned.all;}
+} {
+    set lines [rule_lines forbid_nonstandard_arith [unit $name $clause]]
+    check_eq "$name: one forbid_nonstandard_arith diagnostic" 1 [llength $lines]
+    check_true "$name: package named as written" \
+        {[string match "*$name.vhd:2:*Non-standard arithmetic library 'S*" [lindex $lines 0]]}
+}
+
+set arith_whitelist [file join $pol arith_whitelist.json]
+write_file $arith_whitelist \
+    {{"rules": {"forbid_nonstandard_arith": {"whitelist": ["STD_LOGIC_ARITH"]}}}}
+set lines [rule_lines forbid_nonstandard_arith \
+    [unit arith_whitelisted {library ieee;
+use ieee.std_logic_arith.all;}] -policy $arith_whitelist]
+check_eq "whitelist \[\"STD_LOGIC_ARITH\"\], use ieee.std_logic_arith: no diagnostic" {} $lines
+
+set lines [rule_lines forbid_nonstandard_arith [unit arith_lower {library ieee;
+use ieee.std_logic_arith.all;}]]
+check_eq "\[control\] use ieee.std_logic_arith: one diagnostic" 1 [llength $lines]
+foreach {name clause} {
+    numeric_mixed {library Ieee;
+use Ieee.Numeric_Std.all;}
+    numeric_upper {library IEEE;
+use IEEE.NUMERIC_STD.ALL;}
+} {
+    check_eq "\[control\] $name: no forbid_nonstandard_arith diagnostic" {} \
+        [rule_lines forbid_nonstandard_arith [unit $name $clause]]
+    check_eq "$name: no allowed_libraries diagnostic" {} \
+        [rule_lines allowed_libraries [file join $src $name.vhd]]
+}
+
+# ----------------------------------------------------------------------------
+# same_file_units: package and package body in different case (pin)
+# ----------------------------------------------------------------------------
+set units_policy [file join $pol units.json]
+write_file $units_policy {{"rules": {"same_file_units": {"enabled": true}}}}
+set units_vhd [file join $src units_pkg.vhd]
+write_file $units_vhd \
+{package My_Pkg is
+  constant C_ONE : integer := 1;
+end package My_Pkg;
+
+package body MY_PKG is
+end package body MY_PKG;
+}
+check_eq "\[control\] same_file_units: package My_Pkg matches body MY_PKG" {} \
+    [rule_lines same_file_units $units_vhd -policy $units_policy]
+set orphan_vhd [file join $src orphan_body.vhd]
+write_file $orphan_vhd \
+{package body Other_Pkg is
+end package body Other_Pkg;
+}
+check_eq "\[control\] same_file_units: a body without its package is reported" 1 \
+    [llength [rule_lines same_file_units $orphan_vhd -policy $units_policy]]
 
 # ----------------------------------------------------------------------------
 # Cleanup and summary
