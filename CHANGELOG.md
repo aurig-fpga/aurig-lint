@@ -193,6 +193,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   report. It used the system encoding (cp1252 on Windows), so characters
   outside it, such as CJK text in a policy message, were written as `?` and
   others, such as an accented file name, were not UTF-8.
+  The text report (`lint_report.txt`) and `effective_policy.md` are written
+  the same way; with these, every file the runner writes sets its encoding.
 
 ### Documentation
 
