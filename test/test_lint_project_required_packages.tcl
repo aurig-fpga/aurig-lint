@@ -176,7 +176,8 @@ set probe [file join $root_dir tools check_tcl.tcl]
 test "Missing yaml: hint runs tclsh on the shipped probe script" {
     global r probe
     set expected "tclsh \"$probe\""
-    assert_true [string match "*\n          $expected\n*" [dict get $r output]] \
+    # A literal search: the checkout path may hold glob characters ([, ], *, ?).
+    assert_true [expr {[string first "\n          $expected\n" [dict get $r output]] >= 0}] \
         "Expected the line '$expected'; output:\n[dict get $r output]"
 }
 
