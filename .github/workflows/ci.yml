@@ -71,6 +71,7 @@ jobs:
             test/test_generate_rules_reference.tcl
             test/test_doc_references_exist.tcl
             test/test_tcl_minimum_version.tcl
+            test/test_report_encoding.tcl
           )
           for t in "${tests[@]}"; do
             echo "==================== $t ===================="
