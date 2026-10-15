@@ -277,7 +277,7 @@ if {$result_state eq "TOOL_ERROR"} {
     }
 
     if {$output_format eq "html"} {
-        set html "<!DOCTYPE html>\n<html><head><title>Lint Tool Error</title></head>\n"
+        set html "<!DOCTYPE html>\n<html><head><meta charset=\"UTF-8\"><title>Lint Tool Error</title></head>\n"
         append html "<body style='font-family: sans-serif; padding: 40px;'>\n"
         append html "<h1 style='color: #c0392b;'>Tool Error</h1>\n"
         append html "<p><strong>File:</strong> [escape_html $input_file]</p>\n"
@@ -286,6 +286,7 @@ if {$result_state eq "TOOL_ERROR"} {
         append html "</body></html>\n"
 
         set f [open $report_path w]
+        fconfigure $f -encoding utf-8
         puts $f $html
         close $f
     } elseif {$output_format eq "md"} {
@@ -294,6 +295,7 @@ if {$result_state eq "TOOL_ERROR"} {
         append md "## Error Details\n\n```\n$tool_error_msg\n```\n"
 
         set f [open $report_path w]
+        fconfigure $f -encoding utf-8
         puts $f $md
         close $f
     } else {
@@ -304,6 +306,7 @@ if {$result_state eq "TOOL_ERROR"} {
         append txt "ERROR:\n$tool_error_msg\n"
 
         set f [open $report_path w]
+        fconfigure $f -encoding utf-8
         puts $f $txt
         close $f
     }
@@ -316,12 +319,14 @@ if {$result_state eq "TOOL_ERROR"} {
             set report_path [file join $output_dir "lint_report.md"]
             set md_content [::aurig::lint::report::format_markdown $diagnostics $input_file]
             set f [open $report_path w]
+            fconfigure $f -encoding utf-8
             puts $f $md_content
             close $f
         } else {
             # Text - simple format
             set report_path [file join $output_dir "lint_report.txt"]
             set f [open $report_path w]
+            fconfigure $f -encoding utf-8
             puts $f "VHDL Lint Report"
             puts $f "================"
             puts $f ""
@@ -356,6 +361,7 @@ if {$result_state eq "TOOL_ERROR"} {
         puts stderr "WARNING: report_generator.tcl not loaded, using simple output"
         set report_path [file join $output_dir "lint_report.txt"]
         set f [open $report_path w]
+        fconfigure $f -encoding utf-8
         puts $f "File: $input_file"
         puts $f "Diagnostics: $diag_count"
         foreach diag $diagnostics {

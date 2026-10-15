@@ -341,6 +341,7 @@ proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
     # Write to file
     set output_file [file join $output_dir "index.html"]
     set f [open $output_file w]
+    fconfigure $f -encoding utf-8
     puts -nonewline $f $html
     close $f
 
@@ -443,6 +444,7 @@ proc ::aurig::lint::report::export_rules {metadata_dict policy_dict output_file}
     } elseif {$ext eq ".md"} {
         # Markdown format
         set f [open $output_file w]
+        fconfigure $f -encoding utf-8
         puts $f "# Effective Lint Rules Configuration\n"
         puts $f "**Generated:** [clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}]\n"
         puts $f "This shows the merged configuration from metadata.json and your policy file.\n"
@@ -463,6 +465,7 @@ proc ::aurig::lint::report::export_rules {metadata_dict policy_dict output_file}
     } elseif {$ext eq ".html"} {
         # HTML format
         set f [open $output_file w]
+        fconfigure $f -encoding utf-8
         puts $f "<!DOCTYPE html>"
         puts $f "<html><head>"
         puts $f "<meta charset=\"UTF-8\">"

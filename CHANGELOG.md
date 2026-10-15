@@ -233,6 +233,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cmd.exe pipe; it is now step 4, after the clone that provides the probe
   (Git and the clone move up to steps 2 and 3).
 
+- Every report file is now written as UTF-8, as the project runner's
+  (#48). `lint/lint_cli.tcl -report_format md` and `-report_format html`,
+  `-export_rules` to `.md` and `.html`, and `tools/run_lint_single_file.tcl`
+  in every format, including its tool-error report and the plain-text report
+  it writes without `report_generator.tcl`, used the system encoding (cp1252
+  on Windows): characters outside it, such as CJK text in a policy message,
+  were written as `?` and others, such as an accented letter, were not
+  UTF-8, while both HTML reports declared `charset="UTF-8"`. The single-file
+  tool-error HTML page now declares `charset="UTF-8"` too.
+
 ### Documentation
 
 - `doc/configuration.md`, a configuration guide (#15): where the policy lives

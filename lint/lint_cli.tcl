@@ -652,6 +652,7 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
             if {[catch {
                 set md_content [::aurig::lint::report::format_markdown $diagnostics $opts(-input)]
                 set f [open $out_path w]
+                fconfigure $f -encoding utf-8
                 puts $f $md_content
                 close $f
                 puts stderr "Markdown report generated: $out_path"
