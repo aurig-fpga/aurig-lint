@@ -948,18 +948,31 @@ proc ::aurig::lint::apply_overrides {config filename project_root} {
 # Symbol List Builder
 #=============================================================================
 
-# The scopes of the symbols build_symbol_list creates. Policy validation
-# takes the valid "scope" values of a naming rule from symbol_scopes, so a
-# new kind of symbol must be added here when it is added to the builder.
-#   unit_scopes        : design units, generics and libraries
-#   port_modes         : the modes the parser accepts; a port symbol has
-#                        scope port_<mode>
+# The scopes of the symbols build_symbol_list creates. The builder takes
+# them from these variables, and policy validation takes the valid "scope"
+# values of a naming rule from symbol_scopes, which lists the same ones.
+#   unit_scopes        : parse-result list key -> scope of its items (design
+#                        units, generics of an entity, libraries)
+#   port_scope         : scope of a port without a mode
+#   port_modes         : the modes the parser accepts; a port with one of
+#                        them has scope <port_scope>_<mode> (port_symbol_scope)
 #   label_scopes       : architecture list key -> scope of its labels
 #   declaration_scopes : the "kind" of the declarations the parser reports
 #                        (architecture, package, process and subprogram
-#                        declarative parts); the builder uses it as the scope
+#                        declarative parts), which the builder uses as the
+#                        scope as it comes. The parser does not export its
+#                        kinds; test_lint_policy_naming_scope parses every
+#                        .vhd file of aurig-core's test tree and fails on a
+#                        kind missing here.
 namespace eval ::aurig::lint {
-    variable unit_scopes {entity generic architecture package library}
+    variable unit_scopes {
+        entities      entity
+        generics      generic
+        architectures architecture
+        packages      package
+        libraries     library
+    }
+    variable port_scope port
     variable port_modes {in out inout buffer}
     variable label_scopes {
         processes      process
@@ -969,18 +982,36 @@ namespace eval ::aurig::lint {
     variable declaration_scopes {signal constant variable type subtype function procedure}
 }
 
-# The scopes a symbol can have, sorted. "port" is included: a naming rule
-# with scope "port" matches the ports of every mode.
+# The scope of a port symbol: <port_scope>_<mode> for a mode in port_modes,
+# else port_scope.
+#
+# Arguments:
+#   mode : Port mode from the parser ("" when none)
+#
+# Returns: Scope name
+proc ::aurig::lint::port_symbol_scope {mode} {
+    variable port_scope
+    variable port_modes
+    if {$mode in $port_modes} {
+        return ${port_scope}_$mode
+    }
+    return $port_scope
+}
+
+# The scopes a symbol can have, sorted. port_scope is included: a naming
+# rule with scope "port" also matches the ports of every mode.
 #
 # Returns: List of scope names
 proc ::aurig::lint::symbol_scopes {} {
     variable unit_scopes
+    variable port_scope
     variable port_modes
     variable label_scopes
     variable declaration_scopes
-    set scopes [concat $unit_scopes $declaration_scopes [dict values $label_scopes] port]
+    set scopes [concat [dict values $unit_scopes] $declaration_scopes \
+        [dict values $label_scopes] $port_scope]
     foreach mode $port_modes {
-        lappend scopes port_$mode
+        lappend scopes [port_symbol_scope $mode]
     }
     return [lsort -unique $scopes]
 }
@@ -1014,7 +1045,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             set ctx [build_context_path $parse_result [dict create entity_name $name]]
 
             lappend symbols [dict create \
-                scope "entity" \
+                scope [dict get $::aurig::lint::unit_scopes entities] \
                 name $name \
                 line $line \
                 col $col \
@@ -1032,7 +1063,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
                     set gen_ctx [build_context_path $parse_result [dict create entity_name $name]]
 
                     lappend symbols [dict create \
-                        scope "generic" \
+                        scope [dict get $::aurig::lint::unit_scopes generics] \
                         name $gen_name \
                         line $gen_line \
                         col $gen_col \
@@ -1052,10 +1083,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
                     set port_ctx [build_context_path $parse_result [dict create entity_name $name]]
                     set port_mode [dict_get_default $port mode ""]
 
-                    set port_scope "port"
-                    if {$port_mode ne ""} {
-                        set port_scope "port_${port_mode}"
-                    }
+                    set port_scope [port_symbol_scope $port_mode]
 
                     lappend symbols [dict create \
                         scope $port_scope \
@@ -1097,7 +1125,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             set ctx [build_context_path $parse_result $ctx_info]
 
             lappend symbols [dict create \
-                scope "architecture" \
+                scope [dict get $::aurig::lint::unit_scopes architectures] \
                 name $name \
                 line $line \
                 col $col \
@@ -1212,7 +1240,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             set ctx [build_context_path $parse_result [dict create pkg_name $name]]
 
             lappend symbols [dict create \
-                scope "package" \
+                scope [dict get $::aurig::lint::unit_scopes packages] \
                 name $name \
                 line $line \
                 col $col \
@@ -1340,7 +1368,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             set col [dict get $location col]
 
             lappend symbols [dict create \
-                scope "library" \
+                scope [dict get $::aurig::lint::unit_scopes libraries] \
                 name $name \
                 line $line \
                 col $col \

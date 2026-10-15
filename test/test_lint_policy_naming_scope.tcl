@@ -17,6 +17,17 @@
 # every kind of symbol and compare the scopes the builder produced with that
 # list, so the list cannot drift from the builder.
 #
+# The [builder] checks pin that the builder takes the unit and port scopes
+# from the same variables as symbol_scopes (unit_scopes, port_scope,
+# port_modes): they set those variables to probe values and expect the
+# probe scopes on the symbols. They fail on 46e78ca, whose builder wrote the
+# scopes as literals. Declaration scopes are the parser's "kind" values,
+# which aurig-core does not export: the [parser kinds] checks parse every
+# .vhd file of the aurig-core checkout's test/ tree (the one on ::auto_path)
+# and fail if a declaration kind it returns, at any depth, is missing from
+# declaration_scopes; a self-check removes "signal" from the list and
+# expects it reported.
+#
 # Checks labelled [control] hold before and after the fix: every scope used
 # by a built-in naming rule (read from metadata.json), the label scopes
 # (process, instance, generate), "port" and "function" are accepted. Every
@@ -261,6 +272,128 @@ if {$has_list} {
             {$scope in $built}
     }
 }
+
+# ----------------------------------------------------------------------------
+# [builder] Unit and port scopes come from the shared variables
+# ----------------------------------------------------------------------------
+set saved [list $::aurig::lint::unit_scopes $::aurig::lint::port_modes]
+if {[info exists ::aurig::lint::port_scope]} {
+    lappend saved $::aurig::lint::port_scope
+} else {
+    lappend saved ""
+}
+set ::aurig::lint::unit_scopes {
+    entities      probe_entity
+    generics      probe_generic
+    architectures probe_architecture
+    packages      probe_package
+    libraries     probe_library
+}
+set ::aurig::lint::port_scope probe_port
+# buffer left out: a buffer port gets the plain port scope.
+set ::aurig::lint::port_modes {in out inout}
+set probe_scopes {}
+foreach symbol [::aurig::lint::build_symbol_list \
+        [::aurig::core::analyze::vhdlscan -in $vhd] $vhd] {
+    dict set probe_scopes [dict get $symbol name] [dict get $symbol scope]
+}
+lassign $saved ::aurig::lint::unit_scopes ::aurig::lint::port_modes ::aurig::lint::port_scope
+foreach {name expected} {
+    scopes       probe_entity
+    G_DEPTH      probe_generic
+    rtl          probe_architecture
+    scopes_pkg   probe_package
+    ieee         probe_library
+    clk          probe_port_in
+    q            probe_port_out
+    bus1         probe_port_inout
+    fb           probe_port
+} {
+    set actual ""
+    if {[dict exists $probe_scopes $name]} {
+        set actual [dict get $probe_scopes $name]
+    }
+    check_eq "\[builder\] $name gets its scope from the shared variables" $expected $actual
+}
+
+# ----------------------------------------------------------------------------
+# [parser kinds] Every declaration kind of the parser is a declaration scope
+# ----------------------------------------------------------------------------
+# Kinds of the items of every "declarations" or "body_declarations" list in a
+# parse result, at any depth: dict kind -> 1.
+proc declaration_kinds {value kindsVar} {
+    upvar 1 $kindsVar kinds
+    if {[catch {dict size $value}]} {
+        return
+    }
+    dict for {key member} $value {
+        if {$key in {declarations body_declarations}} {
+            foreach item $member {
+                if {![catch {dict get $item kind} kind]} {
+                    dict set kinds $kind 1
+                }
+                declaration_kinds $item kinds
+            }
+        } elseif {![catch {llength $member} n] && $n > 0
+                && ![catch {dict size [lindex $member 0]}]
+                && [llength [lindex $member 0]] > 2} {
+            # A list of dicts (entities, architectures, processes...).
+            foreach item $member {
+                declaration_kinds $item kinds
+            }
+        }
+    }
+}
+
+proc vhd_files {dir} {
+    set files [glob -nocomplain -types f -directory $dir *.vhd *.vhdl]
+    foreach sub [glob -nocomplain -types d -directory $dir *] {
+        lappend files {*}[vhd_files $sub]
+    }
+    return [lsort $files]
+}
+
+# Kinds missing from a declaration scope list.
+proc missing_kinds {kinds scopes} {
+    set missing {}
+    foreach kind [dict keys $kinds] {
+        if {$kind ni $scopes} {
+            lappend missing $kind
+        }
+    }
+    return [lsort $missing]
+}
+
+set core_dir [file dirname [lindex [package ifneeded aurig::core [package present aurig::core]] end]]
+set core_files [vhd_files [file join $core_dir test]]
+set kinds [dict create]
+set parsed 0
+set builder_scopes {}
+foreach file $core_files {
+    # Some fixtures are invalid on purpose; they have no kinds to report.
+    if {[catch {::aurig::core::analyze::vhdlscan -in $file} parse_result]} {
+        continue
+    }
+    incr parsed
+    declaration_kinds $parse_result kinds
+    foreach symbol [::aurig::lint::build_symbol_list $parse_result $file] {
+        lappend builder_scopes [dict get $symbol scope]
+    }
+}
+puts "aurig-core test tree: [llength $core_files] .vhd files, $parsed parsed, kinds: [lsort [dict keys $kinds]]"
+check_true "\[parser kinds\] aurig-core test tree parsed (at least 100 files)" {$parsed >= 100}
+check_true "\[parser kinds\] declaration kinds found" {[dict size $kinds] > 0}
+check_eq "\[parser kinds\] every declaration kind is in declaration_scopes" {} \
+    [missing_kinds $kinds $::aurig::lint::declaration_scopes]
+check_eq "\[parser kinds\] self-check: a kind removed from the list is reported" signal \
+    [missing_kinds $kinds [lsearch -all -inline -not -exact $::aurig::lint::declaration_scopes signal]]
+set stray {}
+foreach scope [lsort -unique $builder_scopes] {
+    if {$scope ni [::aurig::lint::symbol_scopes]} {
+        lappend stray $scope
+    }
+}
+check_eq "\[parser kinds\] every scope the builder makes from the tree is valid" {} $stray
 
 # ----------------------------------------------------------------------------
 # Cleanup and summary
