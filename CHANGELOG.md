@@ -183,6 +183,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `tools/run_lint_project_inprocess.tcl -format md` no longer crashes with
+  `invalid command name "OK"` and exit 1 (#48). The `[OK] No files with lint
+  issues.` and `[OK] No tool errors.` lines were in double quotes, so Tcl ran
+  `[OK]` as a command; every Markdown run without tool errors died there and
+  left a truncated `lint_report.md`. The report is now written in full and the
+  exit code follows `-fail_on` as for the other formats.
+  `lint_report.md` is now written as UTF-8 with LF line endings, as the CSV
+  report. It used the system encoding (cp1252 on Windows), so characters
+  outside it, such as CJK text in a policy message, were written as `?` and
+  others, such as an accented file name, were not UTF-8.
+  The text report (`lint_report.txt`) and `effective_policy.md` are written
+  the same way; with these, every file the runner writes sets its encoding.
+
 - `require_reset_in_clocked_process`: the default message no longer reads
   `Clocked process 'X' missing either reset` (#25). The shipped template is
   now `Clocked process '${process}' missing ${reset}`, where the new `${reset}`
