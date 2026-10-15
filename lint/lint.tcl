@@ -384,6 +384,10 @@ proc ::aurig::lint::policy_problem_line {policy_file problem} {
 #   - a rule id that is not in metadata is a user-defined rule and needs a
 #     "type" that has a handler and is used by at least one metadata rule;
 #     a user-defined "naming" rule needs "scope" and "pattern";
+#   - a user-defined rule id matches ^[a-z][a-z0-9_]*$, the form of the
+#     built-in ids and the only form an in-source pragma can name (#49);
+#   - the "scope" of a naming rule (built-in or user-defined, also in an
+#     override) is one of symbol_scopes (#44);
 #   - a built-in rule keeps its metadata "type";
 #   - the options a rule supports are the same for every rule of a type: the
 #     union of the metadata keys of all rules of that type, plus type,
@@ -450,6 +454,15 @@ proc ::aurig::lint::validate_policy {policy metadata} {
     }
     set usable_types [lsort $usable_types]
 
+    # Naming rules, whose "scope" is checked: built-in ones here,
+    # user-defined ones as they are validated below.
+    set naming_rules {}
+    dict for {rule_id rule_meta} $builtin_rules {
+        if {[dict exists $rule_meta type] && [dict get $rule_meta type] eq "naming"} {
+            lappend naming_rules $rule_id
+        }
+    }
+
     # Supported options of every rule an override may name (the built-in
     # rules and the policy's user-defined rules), sorted, or "" when the
     # rule's type cannot be determined.
@@ -477,6 +490,12 @@ proc ::aurig::lint::validate_policy {policy metadata} {
             continue
         }
 
+        # A user-defined rule id must have the form a pragma can name.
+        if {![dict exists $builtin_rules $rule_id] && [dict exists $entry type]
+                && ![regexp {^[a-z][a-z0-9_]*$} $rule_id]} {
+            lappend problems "$where: invalid rule id (a user-defined rule id must match ^\[a-z\]\[a-z0-9_\]*\$, the form a pragma can name)"
+        }
+
         # The supported options follow from the rule type. When the type
         # cannot be determined only the option check is skipped; every other
         # check on the entry still runs.
@@ -502,6 +521,7 @@ proc ::aurig::lint::validate_policy {policy metadata} {
             set allowed [lsort -unique [concat $common_keys [dict get $keys_by_type $given_type]]]
             dict set allowed_by_rule $rule_id $allowed
             if {$given_type eq "naming"} {
+                lappend naming_rules $rule_id
                 foreach required {scope pattern} {
                     if {![dict exists $entry $required]} {
                         lappend problems "$where: user-defined naming rule requires \"$required\""
@@ -511,11 +531,14 @@ proc ::aurig::lint::validate_policy {policy metadata} {
         }
 
         lappend problems {*}[_policy_entry_problems $where $entry $allowed]
+        if {$rule_id in $naming_rules} {
+            lappend problems {*}[_naming_scope_problems $where $entry]
+        }
     }
 
     if {[dict exists $top overrides]} {
         lappend problems {*}[_validate_policy_overrides \
-            [dict get $top overrides] $allowed_by_rule]
+            [dict get $top overrides] $allowed_by_rule $naming_rules]
     }
 
     return $problems
@@ -548,6 +571,29 @@ proc ::aurig::lint::_policy_entry_problems {where entry allowed} {
     return $problems
 }
 
+# Scope problem of a naming rule entry (top level or override): a "scope"
+# that is not a string or not one of symbol_scopes would match no symbol.
+#
+# Arguments:
+#   where : Prefix naming the entry, e.g. rule "x" or overrides[0] rule "x"
+#   entry : Typed members of the entry (an object's member dict)
+#
+# Returns: List of problem strings
+proc ::aurig::lint::_naming_scope_problems {where entry} {
+    if {![dict exists $entry scope]} {
+        return {}
+    }
+    lassign [dict get $entry scope] kind scope
+    if {$kind ne "string"} {
+        return [list "$where: \"scope\" is not a string (found $kind)"]
+    }
+    set valid [symbol_scopes]
+    if {$scope ni $valid} {
+        return [list "$where: unknown scope \"[_policy_quote $scope]\" (valid scopes: [join $valid {, }])"]
+    }
+    return {}
+}
+
 # Validate the policy's "overrides" value.
 #
 # Rules:
@@ -559,16 +605,18 @@ proc ::aurig::lint::_policy_entry_problems {where entry allowed} {
 #   - "rules" is an object of rule entries, each an object; a rule id must be
 #     a built-in rule or a rule of the top-level "rules"; "type" is not
 #     allowed (an override cannot turn a rule into another kind of rule);
-#     options and severity are checked as for the top-level entry.
+#     options, severity and the scope of a naming rule are checked as for
+#     the top-level entry.
 # Entries are named by their 0-based position: overrides[0], overrides[1]...
 #
 # Arguments:
 #   typed           : Typed tree of the "overrides" value
 #   allowed_by_rule : Rule id -> supported options ("" when unknown), for
 #                     every rule an override may name
+#   naming_rules    : Ids of the naming rules (built-in and user-defined)
 #
 # Returns: List of problem strings
-proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule} {
+proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule naming_rules} {
     lassign $typed kind items
     if {$kind ne "array"} {
         return [list "\"overrides\" is not a JSON array (found $kind)"]
@@ -646,6 +694,9 @@ proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule} {
                 dict unset entry type
             }
             lappend problems {*}[_policy_entry_problems $rule_where $entry $allowed]
+            if {$rule_id in $naming_rules} {
+                lappend problems {*}[_naming_scope_problems $rule_where $entry]
+            }
         }
     }
     return $problems
@@ -905,11 +956,78 @@ proc ::aurig::lint::apply_overrides {config filename project_root} {
 # Symbol List Builder
 #=============================================================================
 
+# The scopes of the symbols build_symbol_list creates. The builder takes
+# them from these variables, and policy validation takes the valid "scope"
+# values of a naming rule from symbol_scopes, which lists the same ones.
+#   unit_scopes        : parse-result list key -> scope of its items (design
+#                        units, generics of an entity, libraries)
+#   port_scope         : scope of a port without a mode
+#   port_modes         : the modes the parser accepts; a port with one of
+#                        them has scope <port_scope>_<mode> (port_symbol_scope)
+#   label_scopes       : architecture list key -> scope of its labels
+#   declaration_scopes : the "kind" of the declarations the parser reports
+#                        (architecture, package, process and subprogram
+#                        declarative parts), which the builder uses as the
+#                        scope as it comes. The parser does not export its
+#                        kinds; test_lint_policy_naming_scope parses every
+#                        .vhd file of aurig-core's test tree and fails on a
+#                        kind missing here.
+namespace eval ::aurig::lint {
+    variable unit_scopes {
+        entities      entity
+        generics      generic
+        architectures architecture
+        packages      package
+        libraries     library
+    }
+    variable port_scope port
+    variable port_modes {in out inout buffer}
+    variable label_scopes {
+        processes      process
+        instantiations instance
+        generates      generate
+    }
+    variable declaration_scopes {signal constant variable type subtype function procedure}
+}
+
+# The scope of a port symbol: <port_scope>_<mode> for a mode in port_modes,
+# else port_scope.
+#
+# Arguments:
+#   mode : Port mode from the parser ("" when none)
+#
+# Returns: Scope name
+proc ::aurig::lint::port_symbol_scope {mode} {
+    variable port_scope
+    variable port_modes
+    if {$mode in $port_modes} {
+        return ${port_scope}_$mode
+    }
+    return $port_scope
+}
+
+# The scopes a symbol can have, sorted. port_scope is included: a naming
+# rule with scope "port" also matches the ports of every mode.
+#
+# Returns: List of scope names
+proc ::aurig::lint::symbol_scopes {} {
+    variable unit_scopes
+    variable port_scope
+    variable port_modes
+    variable label_scopes
+    variable declaration_scopes
+    set scopes [concat [dict values $unit_scopes] $declaration_scopes \
+        [dict values $label_scopes] $port_scope]
+    foreach mode $port_modes {
+        lappend scopes [port_symbol_scope $mode]
+    }
+    return [lsort -unique $scopes]
+}
+
 # Build normalized symbol list from parser output
 #
 # Each symbol is a dict with:
-#   - scope: entity|architecture|package|port|generic|signal|constant|variable|library|type|
-#            process|instance|generate|etc
+#   - scope: one of symbol_scopes
 #   - name: Symbol name
 #   - line: Line number (from parser)
 #   - col: Column number (computed)
@@ -935,7 +1053,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             set ctx [build_context_path $parse_result [dict create entity_name $name]]
 
             lappend symbols [dict create \
-                scope "entity" \
+                scope [dict get $::aurig::lint::unit_scopes entities] \
                 name $name \
                 line $line \
                 col $col \
@@ -953,7 +1071,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
                     set gen_ctx [build_context_path $parse_result [dict create entity_name $name]]
 
                     lappend symbols [dict create \
-                        scope "generic" \
+                        scope [dict get $::aurig::lint::unit_scopes generics] \
                         name $gen_name \
                         line $gen_line \
                         col $gen_col \
@@ -973,10 +1091,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
                     set port_ctx [build_context_path $parse_result [dict create entity_name $name]]
                     set port_mode [dict_get_default $port mode ""]
 
-                    set port_scope "port"
-                    if {$port_mode ne ""} {
-                        set port_scope "port_${port_mode}"
-                    }
+                    set port_scope [port_symbol_scope $port_mode]
 
                     lappend symbols [dict create \
                         scope $port_scope \
@@ -1018,7 +1133,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             set ctx [build_context_path $parse_result $ctx_info]
 
             lappend symbols [dict create \
-                scope "architecture" \
+                scope [dict get $::aurig::lint::unit_scopes architectures] \
                 name $name \
                 line $line \
                 col $col \
@@ -1103,11 +1218,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             # has no name and gives no symbol. The parser reports the
             # processes and instances inside a generate, at any depth, but
             # only the generates that are not nested in another generate.
-            foreach {list_key label_scope} {
-                processes      process
-                instantiations instance
-                generates      generate
-            } {
+            foreach {list_key label_scope} $::aurig::lint::label_scopes {
                 if {![dict exists $arch $list_key]} { continue }
                 foreach item [dict get $arch $list_key] {
                     set label [dict_get_default $item label ""]
@@ -1137,7 +1248,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             set ctx [build_context_path $parse_result [dict create pkg_name $name]]
 
             lappend symbols [dict create \
-                scope "package" \
+                scope [dict get $::aurig::lint::unit_scopes packages] \
                 name $name \
                 line $line \
                 col $col \
@@ -1265,7 +1376,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             set col [dict get $location col]
 
             lappend symbols [dict create \
-                scope "library" \
+                scope [dict get $::aurig::lint::unit_scopes libraries] \
                 name $name \
                 line $line \
                 col $col \
@@ -1605,13 +1716,16 @@ proc ::aurig::lint::rule::library {symbols parse_result filename rule_id rule_co
         if {$scope eq "library"} {
             set lib_name [dict get $symbol name]
 
+            # Library names are VHDL identifiers, so case does not matter:
+            # IEEE is ieee (#3). The message keeps the name as written.
+
             # Skip 'work' library (implicit)
-            if {$lib_name eq "work"} {
+            if {[string equal -nocase $lib_name "work"]} {
                 continue
             }
 
             # Check if library is in allowed list
-            if {$lib_name ni $allowed_libs} {
+            if {[lsearch -exact -nocase $allowed_libs $lib_name] < 0} {
                 set line [dict get $symbol line]
                 set col [dict get $symbol col]
                 set context_path [dict get $symbol context_path]
@@ -1947,8 +2061,10 @@ proc ::aurig::lint::rule::forbid_nonstandard_arith {symbols parse_result filenam
         # Check if this is a use clause
         # Pattern matches: use library.package
         if {[regexp -nocase {^\s*use\s+([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)} $cleaned_line -> lib_name pkg_name]} {
-            # Check if package name is in forbidden list
-            if {$pkg_name in $forbidden_libs && $pkg_name ni $whitelist} {
+            # Check if package name is in forbidden list. Package names are
+            # VHDL identifiers, so case does not matter (#3).
+            if {[lsearch -exact -nocase $forbidden_libs $pkg_name] >= 0
+                    && [lsearch -exact -nocase $whitelist $pkg_name] < 0} {
                 set col 0
                 if {[regexp {^\s*use\s+} $line match]} {
                     set col [string length $match]
@@ -2800,6 +2916,10 @@ proc ::aurig::lint::rule::forbid_positional_genericmap {symbols parse_result fil
 #   -- aurig-lint: disable-next-line <rule_id>[,<rule_id>...]
 #      Disables rules only for the next line
 #
+# Rule ids match ignoring case (#49): every rule id is lowercase, so the ids
+# are stored in lowercase and filter_suppressed_diagnostics compares the
+# lowercase id of each diagnostic.
+#
 # Arguments:
 #   filename : Source file path
 #
@@ -2844,7 +2964,7 @@ proc ::aurig::lint::parse_suppressions {filename} {
             set rules [split $rules_str ","]
             set rule_list {}
             foreach rule $rules {
-                set rule [string trim $rule]
+                set rule [string tolower [string trim $rule]]
                 if {$rule ne ""} {
                     lappend rule_list $rule
                 }
@@ -2863,7 +2983,7 @@ proc ::aurig::lint::parse_suppressions {filename} {
             # Parse comma-separated rule list
             set rules [split $rules_str ","]
             foreach rule $rules {
-                set rule [string trim $rule]
+                set rule [string tolower [string trim $rule]]
                 if {$rule ne ""} {
                     lappend globally_disabled $rule
                 }
@@ -2902,7 +3022,7 @@ proc ::aurig::lint::filter_suppressed_diagnostics {diagnostics suppressions} {
         set is_suppressed 0
         if {[dict exists $suppressions $line]} {
             set suppressed_rules [dict get $suppressions $line]
-            if {$rule_id in $suppressed_rules} {
+            if {[string tolower $rule_id] in $suppressed_rules} {
                 set is_suppressed 1
             }
         }
@@ -4495,9 +4615,9 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 }
             }
 
-            # Check instantiations
-            if {$instantiations_required && [dict exists $arch instances]} {
-                foreach instance [dict get $arch instances] {
+            # Check instantiations (the parser's key is "instantiations")
+            if {$instantiations_required && [dict exists $arch instantiations]} {
+                foreach instance [dict get $arch instantiations] {
                     set inst_label [expr {[dict exists $instance label] ? [dict get $instance label] : ""}]
                     set inst_line [expr {[dict exists $instance line] ? [dict get $instance line] : 0}]
 

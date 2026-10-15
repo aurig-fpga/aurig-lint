@@ -78,6 +78,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (BREAKING)
 
+- A user-defined rule id must match `^[a-z][a-z0-9_]*$`, the form of the
+  built-in ids (#49). In-source pragmas (`-- aurig-lint: disable` and
+  `disable-next-line`) name rules only in that form, so the diagnostics of a
+  rule such as `FunctionNaming` or `function-naming` could not be
+  suppressed, and the pragma was ignored without a message. Such a rule id
+  now exits **2** with one `invalid policy <file>: rule "<id>": invalid rule
+  id (...)` line, like the other policy mistakes of #16; the other problems
+  of the entry are still listed. A policy with such a rule id that loaded
+  before is now rejected: rename the rule (and the baselines that name it).
+  Pragmas now match rule ids ignoring case: `-- aurig-lint: disable
+  Signal_Naming` was accepted but suppressed nothing, without a message; it
+  now suppresses `signal_naming`. `doc/configuration.md` states the rule in the
+  pragma section and lists the scopes `naming_conventions_pack` checks.
+
+- The `"scope"` of a naming rule is validated (#44). A scope that no symbol
+  can have, such as `"sigal"` or `"Process"`, or a `"scope"` that is not a
+  string, used to load and then match nothing without a message; it now
+  exits **2** with one `invalid policy <file>: rule "<id>": unknown scope
+  "<scope>" (valid scopes: ...)` line, like the other policy mistakes of
+  #16. Checked on user-defined and built-in naming rules, and in
+  `"overrides"` entries. The valid scopes are those of the symbols the
+  engine builds (`::aurig::lint::symbol_scopes`): `architecture`,
+  `constant`, `entity`, `function`, `generate`, `generic`, `instance`,
+  `library`, `package`, `port`, `port_buffer`, `port_in`, `port_inout`,
+  `port_out`, `procedure`, `process`, `signal`, `subtype`, `type`,
+  `variable`. A policy with a misspelled scope that loaded before is now
+  rejected.
+
 - Policy files are validated before linting, by the single-file CLI (also
   with `-export_rules`) and by the project runner. An invalid policy now
   exits **2**, instead of being dropped in whole or in part without a
@@ -194,6 +222,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `require_meaningful_comments` with `"instantiations_required": true`
+  reports an instantiation without a comment on one of the two lines above
+  it (#20). The rule read the instantiations from a parse-result key that
+  does not exist (`instances` instead of `instantiations`), so the option had
+  no effect. A policy that enables the option now gets these diagnostics,
+  one per undocumented instantiation, on the line of its label.
+
+- `allowed_libraries` compares library names ignoring case, as VHDL does
+  (#3). `library IEEE;` was reported as not in the allowed list although
+  `ieee` is in it, and so were `STD` and `WORK`; a policy listing `"IEEE"`
+  reported `library ieee;`. The diagnostic still shows the name as written
+  in the source. `forbid_nonstandard_arith` compares package names the same
+  way: `use IEEE.STD_LOGIC_ARITH.ALL;` and `use Ieee.Std_Logic_Unsigned.all;`
+  were not reported, and a `"whitelist"` entry `"STD_LOGIC_ARITH"` did not
+  exempt `use ieee.std_logic_arith.all;`. `same_file_units`, the other rule
+  that compares package names, already ignored case.
+
 - The HTML reports load nothing from the network (#2). The project runner's
   `index.html` imported the Oswald and Roboto fonts from Google Fonts, and
   its source viewer pages (`sources/*.html`) loaded CodeMirror's scripts and
@@ -269,6 +314,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tool-error HTML page now declares `charset="UTF-8"` too.
 
 ### Documentation
+
+- The table of contents of `doc/reference/rules_reference.md` links to the
+  rule sections again (#45). `doc/tools/generate_rules_reference.tcl` wrote
+  anchors with hyphens (`#entity-naming`), while GitHub keeps the
+  underscores of a heading in its anchor (`#entity_naming`), so every entry
+  pointed nowhere. The generator now writes GitHub's anchor of each heading,
+  and `rules_reference.md` and `rules_reference.html` are regenerated (the
+  HTML only changes its timestamp; its own links already matched its ids).
 
 - `doc/configuration.md`, a configuration guide (#15): where the policy lives
   and how the CLI and the runner find it, rule options and how they merge with
