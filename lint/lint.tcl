@@ -3839,8 +3839,14 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
                         async   { set reset_words "an asynchronous reset" }
                         default { set reset_words "$reset_policy reset" }
                     }
-                    set msg [dict get $rule_config message]
-                    set msg [string map [list \${process} $proc_label \${policy} $reset_policy \${reset} $reset_words] $msg]
+                    # An unlabelled process has no name to quote: the
+                    # quoted '${process}' becomes "at line N" rather than ''.
+                    set map [list \${line} $proc_line \${policy} $reset_policy \${reset} $reset_words]
+                    if {$proc_label eq ""} {
+                        lappend map '\${process}' "at line $proc_line"
+                    }
+                    lappend map \${process} $proc_label
+                    set msg [string map $map [dict get $rule_config message]]
                 }
 
                 lappend diagnostics [::aurig::lint::create_diagnostic \

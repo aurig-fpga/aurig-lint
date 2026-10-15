@@ -17,11 +17,15 @@
 #   noreset.vhd  no reset at all
 #   async.vhd    asynchronous reset (if rst ... elsif rising_edge ...)
 #   sync.vhd     synchronous reset (if rising_edge ... if rst ...)
+#   unlabelled.vhd  no reset, process without a label: the shipped template
+#                   gives "Clocked process at line N missing ...", not
+#                   "Clocked process '' missing ..."
 # Policies only enable the rule and set reset_policy; the message comes from
 # the shipped lint/metadata.json.
 #
 # Before the fix the three "complete message" checks fail; the checks
-# labelled [control] pass before and after.
+# labelled [control] pass before and after. Before the unlabelled-process
+# fix the two "unlabelled" checks fail.
 #=============================================================================
 
 set script_anchor [file dirname [file normalize [info script]]]
@@ -130,6 +134,16 @@ write_file $async "${head}  reg_proc : process (clk, rst)
 end architecture;
 "
 
+set unlabelled [file join $sandbox unlabelled.vhd]
+write_file $unlabelled "${head}  process (clk)
+  begin
+    if rising_edge(clk) then
+      q <= d;
+    end if;
+  end process;
+end architecture;
+"
+
 set sync [file join $sandbox sync.vhd]
 write_file $sync "${head}  reg_proc : process (clk)
   begin
@@ -148,6 +162,9 @@ foreach p {either sync async} {
     set pol($p) [file join $sandbox policy_$p.json]
     write_file $pol($p) "{\"rules\": {\"require_reset_in_clocked_process\": {\"enabled\": true, \"reset_policy\": \"$p\"}}}\n"
 }
+set pol(custom_line) [file join $sandbox policy_custom_line.json]
+write_file $pol(custom_line) {{"rules": {"require_reset_in_clocked_process": {"enabled": true, "message": "Line ${line}: no reset"}}}
+}
 set pol(custom) [file join $sandbox policy_custom.json]
 write_file $pol(custom) {{"rules": {"require_reset_in_clocked_process": {"enabled": true, "reset_policy": "either", "message": "No ${policy} reset in ${process}"}}}
 }
@@ -164,6 +181,19 @@ check_eq "sync: complete default message" \
 check_eq "async: complete default message" \
     [expected_line $noreset "Clocked process 'reg_proc' missing an asynchronous reset"] \
     [rule_lines $noreset $pol(async)]
+
+# ----------------------------------------------------------------------------
+# Unlabelled process: the line of its `process` keyword replaces the label
+# ----------------------------------------------------------------------------
+set fp [open $unlabelled r]
+set unlabelled_n [expr {[lsearch -regexp [split [read $fp] \n] {^\s*process\M}] + 1}]
+close $fp
+set unlabelled_line "$unlabelled:$unlabelled_n: warning: Clocked process at line $unlabelled_n missing a synchronous or asynchronous reset \[require_reset_in_clocked_process\]"
+check_eq "unlabelled: default message names the line, not ''" \
+    [list $unlabelled_line] [rule_lines $unlabelled $pol(either)]
+check_eq "unlabelled: \${line} in a template of your own" \
+    [list "$unlabelled:$unlabelled_n: warning: Line $unlabelled_n: no reset \[require_reset_in_clocked_process\]"] \
+    [rule_lines $unlabelled $pol(custom_line)]
 
 # ----------------------------------------------------------------------------
 # Controls: a process that satisfies the selected policy is not reported

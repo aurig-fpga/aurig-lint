@@ -365,7 +365,7 @@ proc get_option_description {key} {
         "severity" { return "Diagnostic severity level" }
         "message" { return "Custom message template" }
         "patterns" { return "Naming patterns configuration" }
-        "reset_policy" { return "Reset style requirement: `either`, `sync` or `async`. In `message`, `\${reset}` is the requirement in words (`a synchronous or asynchronous reset`, `a synchronous reset`, `an asynchronous reset`), `\${policy}` the raw value and `\${process}` the process label" }
+        "reset_policy" { return "Reset style requirement: `either`, `sync` or `async`. In `message`, `\${reset}` is the requirement in words (`a synchronous or asynchronous reset`, `a synchronous reset`, `an asynchronous reset`), `\${policy}` the raw value, `\${process}` the process label and `\${line}` the process line. For a process without a label, a quoted `'\${process}'` becomes `at line N`" }
         "testbench_patterns" { return "Testbench file patterns" }
         "bfm_patterns" { return "BFM (bus-functional model) file-name glob patterns that bypass the rule (case-sensitive, replaces — does not extend — the default; aligned with the testbench_patterns semantics on the same rule); use for files matching the _bfm.vhd suffix/pattern whose architecture name does not match excluded_architectures. A project using mixed-case filenames (e.g. Dac_BFM.vhd) must list each variant explicitly" }
         "excluded_architectures" { return "Architecture names that bypass the rule (case-insensitive, replaces — does not extend — the default)" }

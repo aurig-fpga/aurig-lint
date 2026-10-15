@@ -189,8 +189,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   placeholder is `a synchronous or asynchronous reset` (`either`), `a
   synchronous reset` (`sync`) or `an asynchronous reset` (`async`). A
   `message` of your own keeps its interpolation: `${policy}` is still the raw
-  `reset_policy` value. The message used when no template is set at all is
-  unchanged.
+  `reset_policy` value. For a process without a label the message reads
+  `Clocked process at line N missing ...` instead of `Clocked process ''
+  missing ...`: a quoted `'${process}'` in the template becomes `at line N`.
+  The new `${line}` placeholder is the process line in any template. The
+  message used when no template is set at all is unchanged.
 
 ### Documentation
 

@@ -2,7 +2,7 @@
 
 This document is auto-generated from `lint/metadata.json`.
 
-**Last updated:** 2026-10-15 08:51:04
+**Last updated:** 2026-10-15 09:17:42
 
 ---
 
@@ -1413,7 +1413,7 @@ This document is auto-generated from `lint/metadata.json`.
 | `excluded_architectures` | array | `["bfm"]` | Architecture names that bypass the rule (case-insensitive, replaces — does not extend — the default) |
 | `excluded_processes` | array | `[]` | Process labels that bypass the rule (case-insensitive); use for reset synchronizers and similar by-design no-reset processes |
 | `message` | string | `Clocked process '${process}' missing ${reset}` | Custom message template |
-| `reset_policy` | string | `either` | Reset style requirement: `either`, `sync` or `async`. In `message`, `${reset}` is the requirement in words (`a synchronous or asynchronous reset`, `a synchronous reset`, `an asynchronous reset`), `${policy}` the raw value and `${process}` the process label |
+| `reset_policy` | string | `either` | Reset style requirement: `either`, `sync` or `async`. In `message`, `${reset}` is the requirement in words (`a synchronous or asynchronous reset`, `a synchronous reset`, `an asynchronous reset`), `${policy}` the raw value, `${process}` the process label and `${line}` the process line. For a process without a label, a quoted `'${process}'` becomes `at line N` |
 | `severity` | string | `warning` | Diagnostic severity level |
 | `testbench_patterns` | array | `["tb_*.vhd", "*_tb.vhd", "*_testbench.vhd"]` | Testbench file patterns |
 | `type` | string | `require_reset_in_clocked_process` | Rule handler type |
