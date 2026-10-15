@@ -290,19 +290,20 @@ underscores (`^[a-z][a-z0-9_]*$`), like the built-in ids, so that a comment
 in the source can name it (section 5): `function_naming` is accepted,
 `FunctionNaming` and `function-naming` are rejected (section 3). A
 user-defined `"naming"` rule needs `"scope"` and `"pattern"`; it is enabled,
-with severity `warning`, unless you say otherwise. Scopes include `entity`,
-`architecture`, `package`, `signal`, `constant`, `variable`, `generic`,
-`type`, `subtype`, `function`, `procedure`, `port` (all ports), `port_in`,
-`port_out`, `port_inout`, `process`, `instance` and `generate`; most have a
-built-in rule already (`signal_naming` and so on), which you can configure
-directly. `function` and `procedure` have none, so they need a user-defined
-rule: see the [recipe](#a-naming-rule-of-your-own-functions). Without a
+with severity `warning`, unless you say otherwise. The scopes are `entity`,
+`architecture`, `package`, `library`, `signal`, `constant`, `variable`,
+`generic`, `type`, `subtype`, `function`, `procedure`, `port` (all ports),
+`port_in`, `port_out`, `port_inout`, `port_buffer`, `process`, `instance` and
+`generate`; most have a built-in rule already (`signal_naming` and so on),
+which you can configure directly. `function`, `procedure`, `port` and
+`port_buffer` have none, so they need a user-defined rule: see the
+[recipe](#a-naming-rule-of-your-own-functions). Without a
 `message`, a user-defined naming rule reports `Name '<name>' does not match
 pattern: <pattern>`.
 
-The `scope` value is not checked: a misspelled scope such as `"sigal"` is
-accepted and the rule reports nothing. After adding a rule, lint a file that
-should violate it and check that it fires.
+The `scope` must be one of these, written in lowercase: a misspelled scope
+such as `"sigal"` is rejected (section 3). After adding a rule, lint a file
+that should violate it and check that it fires.
 
 ### `naming_conventions_pack`
 
@@ -479,8 +480,9 @@ Exit code 2.
 Also rejected: a `"rules"` or rule entry that is not a JSON object; a
 `"type"` on a built-in rule that differs from its own; a user-defined naming
 rule without `"scope"` or `"pattern"`; a user-defined rule whose id is not
-lowercase letters, digits and underscores starting with a letter; and the
-override mistakes in section 4.
+lowercase letters, digits and underscores starting with a letter; a naming
+rule whose `"scope"` is not one of the scopes listed under "User-defined
+rules"; and the override mistakes in section 4.
 Option *values* are not checked: a pattern that never matches, or a number
 where a list belongs, is accepted.
 
