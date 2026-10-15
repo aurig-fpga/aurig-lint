@@ -192,13 +192,33 @@ proc toc_links {text} {
     return $links
 }
 
-set rule_count [dict size [dict get $md_dict rules]]
+# Names of the TOC entries, sorted, duplicates kept.
+proc toc_names {text} {
+    return [lsort [lmap link [toc_links $text] {lindex $link 0}]]
+}
+
+# The TOC lists every rule exactly once: its sorted names are the sorted rule
+# ids of the metadata (a count alone misses a duplicate plus an omission).
+set rule_ids [lsort [dict keys [dict get $md_dict rules]]]
+
+# [mutation] A TOC built from the rule ids with the first entry duplicated
+# and the second removed: the entry count is right, the names are not.
+set mutated "## Table of Contents\n\n"
+foreach rule_id [lreplace [linsert $rule_ids 0 [lindex $rule_ids 0]] 2 2] {
+    append mutated "- \[$rule_id\](#$rule_id)\n"
+}
+append mutated "\n---\n"
+check_eq "\[mutation\] one entry duplicated, one removed: same count" \
+    [llength $rule_ids] [llength [toc_links $mutated]]
+check_true "\[mutation\] one entry duplicated, one removed: detected" \
+    {[toc_names $mutated] ne $rule_ids}
+
 foreach {label path} [list "generated" $md_out \
         "committed" [file join $repo_root doc reference rules_reference.md]] {
     set text [read_text $path]
     set anchors [github_anchors $text]
     set links [toc_links $text]
-    check_eq "anchors, $label: one TOC entry per rule" $rule_count [llength $links]
+    check_eq "anchors, $label: the TOC lists every rule exactly once" $rule_ids [toc_names $text]
     set unresolved {}
     set misformatted {}
     foreach link $links {
