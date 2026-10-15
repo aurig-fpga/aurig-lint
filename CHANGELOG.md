@@ -208,6 +208,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `require_meaningful_comments` with `"instantiations_required": true`
+  reports an instantiation without a comment on one of the two lines above
+  it (#20). The rule read the instantiations from a parse-result key that
+  does not exist (`instances` instead of `instantiations`), so the option had
+  no effect. A policy that enables the option now gets these diagnostics,
+  one per undocumented instantiation, on the line of its label.
+
+- `allowed_libraries` compares library names ignoring case, as VHDL does
+  (#3). `library IEEE;` was reported as not in the allowed list although
+  `ieee` is in it, and so were `STD` and `WORK`; a policy listing `"IEEE"`
+  reported `library ieee;`. The diagnostic still shows the name as written
+  in the source. `forbid_nonstandard_arith` compares package names the same
+  way: `use IEEE.STD_LOGIC_ARITH.ALL;` and `use Ieee.Std_Logic_Unsigned.all;`
+  were not reported, and a `"whitelist"` entry `"STD_LOGIC_ARITH"` did not
+  exempt `use ieee.std_logic_arith.all;`. `same_file_units`, the other rule
+  that compares package names, already ignored case.
+
 - `tools/run_lint_project_inprocess.tcl -format md` no longer crashes with
   `invalid command name "OK"` and exit 1 (#48). The `[OK] No files with lint
   issues.` and `[OK] No tool errors.` lines were in double quotes, so Tcl ran
@@ -258,6 +275,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tool-error HTML page now declares `charset="UTF-8"` too.
 
 ### Documentation
+
+- The table of contents of `doc/reference/rules_reference.md` links to the
+  rule sections again (#45). `doc/tools/generate_rules_reference.tcl` wrote
+  anchors with hyphens (`#entity-naming`), while GitHub keeps the
+  underscores of a heading in its anchor (`#entity_naming`), so every entry
+  pointed nowhere. The generator now writes GitHub's anchor of each heading,
+  and `rules_reference.md` and `rules_reference.html` are regenerated (the
+  HTML only changes its timestamp; its own links already matched its ids).
 
 - `doc/configuration.md`, a configuration guide (#15): where the policy lives
   and how the CLI and the runner find it, rule options and how they merge with
