@@ -2394,7 +2394,7 @@ if {$opts(format) eq "html"} {
         }
     }
     if {!$has_lint} {
-        puts $f "[OK] No files with lint issues."
+        puts $f {[OK] No files with lint issues.}
         puts $f ""
     }
 
@@ -2416,7 +2416,7 @@ if {$opts(format) eq "html"} {
         }
     }
     if {!$has_errors} {
-        puts $f "[OK] No tool errors."
+        puts $f {[OK] No tool errors.}
         puts $f ""
     }
 
