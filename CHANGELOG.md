@@ -196,6 +196,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The text report (`lint_report.txt`) and `effective_policy.md` are written
   the same way; with these, every file the runner writes sets its encoding.
 
+- `require_reset_in_clocked_process`: the default message no longer reads
+  `Clocked process 'X' missing either reset` (#25). The shipped template is
+  now `Clocked process '${process}' missing ${reset}`, where the new `${reset}`
+  placeholder is `a synchronous or asynchronous reset` (`either`), `a
+  synchronous reset` (`sync`) or `an asynchronous reset` (`async`). A
+  `message` of your own keeps its interpolation: `${policy}` is still the raw
+  `reset_policy` value. For a process without a label the message reads
+  `Clocked process at line N missing ...` instead of `Clocked process ''
+  missing ...`: a quoted `'${process}'` in the template becomes `at line N`.
+  The new `${line}` placeholder is the process line in any template. The
+  message used when no template is set at all is unchanged.
+
 ### Documentation
 
 - `doc/configuration.md`, a configuration guide (#15): where the policy lives
