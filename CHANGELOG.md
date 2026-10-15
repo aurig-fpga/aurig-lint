@@ -183,6 +183,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `tools/run_lint_project_inprocess.tcl -format md` no longer crashes with
+  `invalid command name "OK"` and exit 1 (#48). The `[OK] No files with lint
+  issues.` and `[OK] No tool errors.` lines were in double quotes, so Tcl ran
+  `[OK]` as a command; every Markdown run without tool errors died there and
+  left a truncated `lint_report.md`. The report is now written in full and the
+  exit code follows `-fail_on` as for the other formats.
+  `lint_report.md` is now written as UTF-8 with LF line endings, as the CSV
+  report. It used the system encoding (cp1252 on Windows), so characters
+  outside it, such as CJK text in a policy message, were written as `?` and
+  others, such as an accented file name, were not UTF-8.
+  The text report (`lint_report.txt`) and `effective_policy.md` are written
+  the same way; with these, every file the runner writes sets its encoding.
+
+- `require_reset_in_clocked_process`: the default message no longer reads
+  `Clocked process 'X' missing either reset` (#25). The shipped template is
+  now `Clocked process '${process}' missing ${reset}`, where the new `${reset}`
+  placeholder is `a synchronous or asynchronous reset` (`either`), `a
+  synchronous reset` (`sync`) or `an asynchronous reset` (`async`). A
+  `message` of your own keeps its interpolation: `${policy}` is still the raw
+  `reset_policy` value. For a process without a label the message reads
+  `Clocked process at line N missing ...` instead of `Clocked process ''
+  missing ...`: a quoted `'${process}'` in the template becomes `at line N`.
+  The new `${line}` placeholder is the process line in any template. The
+  message used when no template is set at all is unchanged.
+
 - `tools/run_lint_project_inprocess.tcl`: the hint printed when tcllib is
   missing no longer suggests piping one-liners into `tclsh` (#34). In
   Windows PowerShell 5.1 the piped input can start with a byte-order mark
@@ -208,6 +233,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   process and instance labels, testbench/BFM overrides, a user-defined
   function naming rule). Every example was run and its output is shown. The
   README's "Policy file" section is now a short introduction that links to it.
+- `tools/run_lint_project_inprocess.tcl` no longer refers readers to
+  `doc/user/linter.md`, a file this repository does not have (#37). The
+  comment above the exit-code block now points to the README's "Whole
+  project" section, which documents the exit codes. The comment on how
+  `-fail_on` differs from the single-file CLI no longer cites the missing
+  file.
+  `lint/lint.tcl` cited `doc/reference/lint_rules.md`, which does not exist
+  either; it now cites `doc/reference/rules_reference.md`. Two of its
+  comments also cited a test and a fixture this repository does not have
+  (`test/lint/test_require_meaningful_comments.tcl`,
+  `test/lint/fixtures/bit_types_violations.vhd`); the citations are gone. In
+  `doc/configuration.md`, the `-export_rules` example shows the current line
+  numbers of `effective.json` (32 and 34; `enum_literal_naming` moved them).
+
 - README: a Windows walkthrough from an empty machine to a first lint run
   (interpreter check, clone layout, `TCLLIBPATH` in PowerShell and cmd.exe,
   paths with spaces, persistent setting, Git Bash's own `tclsh`); the project
