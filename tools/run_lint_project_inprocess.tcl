@@ -490,6 +490,21 @@ proc lint_project_escape_html {text} {
     return [string map $map $text]
 }
 
+# Percent-encode one path segment (a file name) for a URL in an href or src
+# attribute: every UTF-8 byte other than A-Z a-z 0-9 - . _ ~ becomes %XX, so
+# "&", "#", "?", spaces and quotes in a file name stay part of the name.
+proc lint_project_url_encode {segment} {
+    set out ""
+    foreach byte [split [encoding convertto utf-8 $segment] ""] {
+        if {[string match {[A-Za-z0-9._~-]} $byte]} {
+            append out $byte
+        } else {
+            append out [format %%%02X [scan $byte %c]]
+        }
+    }
+    return $out
+}
+
 # Escape a value for a single Markdown table cell. An unescaped `|`
 # closes the cell early and spawns ghost columns, so any user-derived
 # value placed in a cell (filename, exclude source, pattern) must run
@@ -1755,8 +1770,8 @@ if {$opts(format) eq "html"} {
         set source_html "${safe_name}.html"
         set source_path [file join $sources_dir $source_html]
 
-        # Store mapping
-        set source_viewer_map($fullpath) "sources/$source_html"
+        # Store mapping: the link to the page, its file name percent-encoded
+        set source_viewer_map($fullpath) "sources/[lint_project_url_encode $source_html]"
 
         # Generate source viewer with diagnostic highlights
         lint_project_emit_source_viewer $fullpath $source_path $filename $diagnostics
@@ -2112,7 +2127,7 @@ if {$opts(format) eq "html"} {
             set fullpath [dict get $result path]
             set anchor_id [format "file-%08x" [lint_project_hash32 $fullpath]]
             set diag_count [dict get $result diag_count]
-            puts $f "<li><a href=\"#$anchor_id\">$filename</a> ($diag_count diagnostics)</li>"
+            puts $f "<li><a href=\"#$anchor_id\">[lint_project_escape_html $filename]</a> ($diag_count diagnostics)</li>"
         }
         puts $f "</ul>"
     }
@@ -2133,7 +2148,7 @@ if {$opts(format) eq "html"} {
             set filename [dict get $result file]
             set fullpath [dict get $result path]
             set anchor_id [format "file-%08x" [lint_project_hash32 $fullpath]]
-            puts $f "<li><a href=\"#$anchor_id\">$filename</a></li>"
+            puts $f "<li><a href=\"#$anchor_id\">[lint_project_escape_html $filename]</a></li>"
         }
         puts $f "</ul>"
     }
@@ -2159,9 +2174,9 @@ if {$opts(format) eq "html"} {
                 set source_link $source_viewer_map($fullpath)
             }
             if {$source_link ne ""} {
-                puts $f "<li><a href=\"#$anchor_id\">$filename</a> (<a href=\"$source_link\">view source</a>)</li>"
+                puts $f "<li><a href=\"#$anchor_id\">[lint_project_escape_html $filename]</a> (<a href=\"$source_link\">view source</a>)</li>"
             } else {
-                puts $f "<li><a href=\"#$anchor_id\">$filename</a></li>"
+                puts $f "<li><a href=\"#$anchor_id\">[lint_project_escape_html $filename]</a></li>"
             }
         }
         puts $f "</ul>"
