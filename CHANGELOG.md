@@ -78,6 +78,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (BREAKING)
 
+- The `"scope"` of a naming rule is validated (#44). A scope that no symbol
+  can have, such as `"sigal"` or `"Process"`, or a `"scope"` that is not a
+  string, used to load and then match nothing without a message; it now
+  exits **2** with one `invalid policy <file>: rule "<id>": unknown scope
+  "<scope>" (valid scopes: ...)` line, like the other policy mistakes of
+  #16. Checked on user-defined and built-in naming rules, and in
+  `"overrides"` entries. The valid scopes are those of the symbols the
+  engine builds (`::aurig::lint::symbol_scopes`): `architecture`,
+  `constant`, `entity`, `function`, `generate`, `generic`, `instance`,
+  `library`, `package`, `port`, `port_buffer`, `port_in`, `port_inout`,
+  `port_out`, `procedure`, `process`, `signal`, `subtype`, `type`,
+  `variable`. A policy with a misspelled scope that loaded before is now
+  rejected.
+
 - Policy files are validated before linting, by the single-file CLI (also
   with `-export_rules`) and by the project runner. An invalid policy now
   exits **2**, instead of being dropped in whole or in part without a

@@ -384,6 +384,8 @@ proc ::aurig::lint::policy_problem_line {policy_file problem} {
 #   - a rule id that is not in metadata is a user-defined rule and needs a
 #     "type" that has a handler and is used by at least one metadata rule;
 #     a user-defined "naming" rule needs "scope" and "pattern";
+#   - the "scope" of a naming rule (built-in or user-defined, also in an
+#     override) is one of symbol_scopes (#44);
 #   - a built-in rule keeps its metadata "type";
 #   - the options a rule supports are the same for every rule of a type: the
 #     union of the metadata keys of all rules of that type, plus type,
@@ -450,6 +452,15 @@ proc ::aurig::lint::validate_policy {policy metadata} {
     }
     set usable_types [lsort $usable_types]
 
+    # Naming rules, whose "scope" is checked: built-in ones here,
+    # user-defined ones as they are validated below.
+    set naming_rules {}
+    dict for {rule_id rule_meta} $builtin_rules {
+        if {[dict exists $rule_meta type] && [dict get $rule_meta type] eq "naming"} {
+            lappend naming_rules $rule_id
+        }
+    }
+
     # Supported options of every rule an override may name (the built-in
     # rules and the policy's user-defined rules), sorted, or "" when the
     # rule's type cannot be determined.
@@ -502,6 +513,7 @@ proc ::aurig::lint::validate_policy {policy metadata} {
             set allowed [lsort -unique [concat $common_keys [dict get $keys_by_type $given_type]]]
             dict set allowed_by_rule $rule_id $allowed
             if {$given_type eq "naming"} {
+                lappend naming_rules $rule_id
                 foreach required {scope pattern} {
                     if {![dict exists $entry $required]} {
                         lappend problems "$where: user-defined naming rule requires \"$required\""
@@ -511,11 +523,14 @@ proc ::aurig::lint::validate_policy {policy metadata} {
         }
 
         lappend problems {*}[_policy_entry_problems $where $entry $allowed]
+        if {$rule_id in $naming_rules} {
+            lappend problems {*}[_naming_scope_problems $where $entry]
+        }
     }
 
     if {[dict exists $top overrides]} {
         lappend problems {*}[_validate_policy_overrides \
-            [dict get $top overrides] $allowed_by_rule]
+            [dict get $top overrides] $allowed_by_rule $naming_rules]
     }
 
     return $problems
@@ -548,6 +563,29 @@ proc ::aurig::lint::_policy_entry_problems {where entry allowed} {
     return $problems
 }
 
+# Scope problem of a naming rule entry (top level or override): a "scope"
+# that is not a string or not one of symbol_scopes would match no symbol.
+#
+# Arguments:
+#   where : Prefix naming the entry, e.g. rule "x" or overrides[0] rule "x"
+#   entry : Typed members of the entry (an object's member dict)
+#
+# Returns: List of problem strings
+proc ::aurig::lint::_naming_scope_problems {where entry} {
+    if {![dict exists $entry scope]} {
+        return {}
+    }
+    lassign [dict get $entry scope] kind scope
+    if {$kind ne "string"} {
+        return [list "$where: \"scope\" is not a string (found $kind)"]
+    }
+    set valid [symbol_scopes]
+    if {$scope ni $valid} {
+        return [list "$where: unknown scope \"[_policy_quote $scope]\" (valid scopes: [join $valid {, }])"]
+    }
+    return {}
+}
+
 # Validate the policy's "overrides" value.
 #
 # Rules:
@@ -559,16 +597,18 @@ proc ::aurig::lint::_policy_entry_problems {where entry allowed} {
 #   - "rules" is an object of rule entries, each an object; a rule id must be
 #     a built-in rule or a rule of the top-level "rules"; "type" is not
 #     allowed (an override cannot turn a rule into another kind of rule);
-#     options and severity are checked as for the top-level entry.
+#     options, severity and the scope of a naming rule are checked as for
+#     the top-level entry.
 # Entries are named by their 0-based position: overrides[0], overrides[1]...
 #
 # Arguments:
 #   typed           : Typed tree of the "overrides" value
 #   allowed_by_rule : Rule id -> supported options ("" when unknown), for
 #                     every rule an override may name
+#   naming_rules    : Ids of the naming rules (built-in and user-defined)
 #
 # Returns: List of problem strings
-proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule} {
+proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule naming_rules} {
     lassign $typed kind items
     if {$kind ne "array"} {
         return [list "\"overrides\" is not a JSON array (found $kind)"]
@@ -646,6 +686,9 @@ proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule} {
                 dict unset entry type
             }
             lappend problems {*}[_policy_entry_problems $rule_where $entry $allowed]
+            if {$rule_id in $naming_rules} {
+                lappend problems {*}[_naming_scope_problems $rule_where $entry]
+            }
         }
     }
     return $problems
@@ -905,11 +948,47 @@ proc ::aurig::lint::apply_overrides {config filename project_root} {
 # Symbol List Builder
 #=============================================================================
 
+# The scopes of the symbols build_symbol_list creates. Policy validation
+# takes the valid "scope" values of a naming rule from symbol_scopes, so a
+# new kind of symbol must be added here when it is added to the builder.
+#   unit_scopes        : design units, generics and libraries
+#   port_modes         : the modes the parser accepts; a port symbol has
+#                        scope port_<mode>
+#   label_scopes       : architecture list key -> scope of its labels
+#   declaration_scopes : the "kind" of the declarations the parser reports
+#                        (architecture, package, process and subprogram
+#                        declarative parts); the builder uses it as the scope
+namespace eval ::aurig::lint {
+    variable unit_scopes {entity generic architecture package library}
+    variable port_modes {in out inout buffer}
+    variable label_scopes {
+        processes      process
+        instantiations instance
+        generates      generate
+    }
+    variable declaration_scopes {signal constant variable type subtype function procedure}
+}
+
+# The scopes a symbol can have, sorted. "port" is included: a naming rule
+# with scope "port" matches the ports of every mode.
+#
+# Returns: List of scope names
+proc ::aurig::lint::symbol_scopes {} {
+    variable unit_scopes
+    variable port_modes
+    variable label_scopes
+    variable declaration_scopes
+    set scopes [concat $unit_scopes $declaration_scopes [dict values $label_scopes] port]
+    foreach mode $port_modes {
+        lappend scopes port_$mode
+    }
+    return [lsort -unique $scopes]
+}
+
 # Build normalized symbol list from parser output
 #
 # Each symbol is a dict with:
-#   - scope: entity|architecture|package|port|generic|signal|constant|variable|library|type|
-#            process|instance|generate|etc
+#   - scope: one of symbol_scopes
 #   - name: Symbol name
 #   - line: Line number (from parser)
 #   - col: Column number (computed)
@@ -1103,11 +1182,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             # has no name and gives no symbol. The parser reports the
             # processes and instances inside a generate, at any depth, but
             # only the generates that are not nested in another generate.
-            foreach {list_key label_scope} {
-                processes      process
-                instantiations instance
-                generates      generate
-            } {
+            foreach {list_key label_scope} $::aurig::lint::label_scopes {
                 if {![dict exists $arch $list_key]} { continue }
                 foreach item [dict get $arch $list_key] {
                     set label [dict_get_default $item label ""]
