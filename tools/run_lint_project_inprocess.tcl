@@ -153,12 +153,16 @@ if {!$__help_requested} {
         puts stderr "    - Install tcllib with your system package manager and ensure it is on the"
         puts stderr "      Tcl auto_path. On Debian/Ubuntu: `apt install tcllib`. For other platforms,"
         puts stderr "      see the Requirements section of this project's README."
-        puts stderr "    - On Windows with multiple tclsh.exe on PATH, verify the one being invoked"
-        puts stderr "      has tcllib reachable from its auto_path. Probe by piping these one-liners:"
-        puts stderr "          echo puts \[info nameofexecutable\] | tclsh"
-        puts stderr "          echo puts \[package require $__pkg\] | tclsh"
-        puts stderr "      If this fails on your primary tclsh, point your caller explicitly at the"
-        puts stderr "      interpreter that does have tcllib reachable."
+        # The probe is a script file, not one-liners piped into tclsh: an
+        # error in a command read from stdin does not set the exit code, and
+        # Windows PowerShell 5.1 can prefix piped input with a byte-order mark
+        # (#34). A double-quoted path reads the same in PowerShell and cmd.exe.
+        puts stderr "    - On Windows with multiple tclsh.exe on PATH, check the one being invoked."
+        puts stderr "      Run this probe with it (PowerShell or cmd.exe):"
+        puts stderr "          tclsh \"[file join $aurig_lint_root tools check_tcl.tcl]\""
+        puts stderr "      It prints the interpreter, the Tcl version and the yaml and json versions,"
+        puts stderr "      and exits 1 if a package is missing. If it fails, point your caller"
+        puts stderr "      explicitly at an interpreter that has tcllib."
         if {$__pkg eq "json"} {
             # json is mandatory — explicitly say so; it has no fallback path.
             puts stderr "    - The `json` package is mandatory for project linting; the lint engine's"

@@ -208,6 +208,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The new `${line}` placeholder is the process line in any template. The
   message used when no template is set at all is unchanged.
 
+- `tools/run_lint_project_inprocess.tcl`: the hint printed when tcllib is
+  missing no longer suggests piping one-liners into `tclsh` (#34). In
+  Windows PowerShell 5.1 the piped input can start with a byte-order mark
+  (`invalid command name "puts"`), and in every shell a failed `package
+  require` read from stdin still exits 0. The hint now prints
+  `tclsh "<aurig-lint>/tools/check_tcl.tcl"`, a new probe script that prints
+  the interpreter, the Tcl version and the `yaml` and `json` versions and
+  exits 1 if a package is missing, the same in PowerShell 5.1, PowerShell 7
+  and cmd.exe.
+  The README's "Check the interpreter" step runs the same probe in
+  PowerShell and cmd.exe instead of a hand-written `check_tcl.tcl` and the
+  cmd.exe pipe; it is now step 4, after the clone that provides the probe
+  (Git and the clone move up to steps 2 and 3).
+
 ### Documentation
 
 - `doc/configuration.md`, a configuration guide (#15): where the policy lives

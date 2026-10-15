@@ -164,15 +164,27 @@ test "Missing yaml: stderr mentions the missing package by name" {
     assert_true [string match "*\`yaml\`*" [dict get $r output]]
 }
 
-test "Missing yaml: stderr probe identifies the interpreter" {
-    # The Resolution bullet must offer a probe that names the interpreter it
-    # actually ran in, alongside the `package require` probe: a wrong tclsh on
-    # PATH is the likeliest cause and the package probe alone cannot reveal it.
-    # Match on `nameofexecutable` rather than the whole line, so rewording the
-    # bullet or the probe's shell quoting does not break this.
+# The Resolution bullet must offer a probe whose output and exit code mean
+# something in Windows PowerShell 5.1, PowerShell 7 and cmd.exe (#34). The
+# old hint piped one-liners into `tclsh`: PowerShell 5.1 can prefix piped
+# input with a byte-order mark (`invalid command name "puts"`), and a failed
+# `package require` read from stdin still exits 0 in every shell. The hint
+# now runs `tclsh` on the probe script shipped in tools/, by absolute path
+# in double quotes, which every one of those shells passes through as is.
+set probe [file join $root_dir tools check_tcl.tcl]
+
+test "Missing yaml: hint runs tclsh on the shipped probe script" {
+    global r probe
+    set expected "tclsh \"$probe\""
+    # A literal search: the checkout path may hold glob characters ([, ], *, ?).
+    assert_true [expr {[string first "\n          $expected\n" [dict get $r output]] >= 0}] \
+        "Expected the line '$expected'; output:\n[dict get $r output]"
+}
+
+test "Missing yaml: hint no longer suggests piping into tclsh" {
     global r
-    assert_true [string match "*nameofexecutable*" [dict get $r output]] \
-        "Expected the interpreter-identifying probe; output:\n[dict get $r output]"
+    assert_true [expr {![string match "*| tclsh*" [dict get $r output]]}] \
+        "Expected no stdin probe; output:\n[dict get $r output]"
 }
 
 # =============================================================================
@@ -201,6 +213,87 @@ test "Missing json: stderr mentions the missing package by name" {
 test "Missing json hard-error message states json is mandatory" {
     global r
     assert_true [string match "*json*mandatory*" [dict get $r output]]
+}
+
+# =============================================================================
+# Suite 4: the probe script the hint points to (#34)
+#
+# With tcllib present it prints the interpreter, the Tcl version and the
+# yaml and json versions, and exits 0. Without tcllib it names the missing
+# package and exits 1. The missing case runs the script in a child
+# interpreter whose auto_path holds only the Tcl library (so tcllib cannot
+# be found) and whose `exit` is aliased to record the code instead of ending
+# this test.
+# =============================================================================
+puts ""
+puts "Suite 4: tools/check_tcl.tcl probe"
+puts "----------------------------------"
+
+test "Probe script exists" {
+    global probe
+    assert_true [file isfile $probe] "Expected $probe"
+}
+
+set probe_rc 0
+if {[catch {exec $tclsh $probe 2>@1} probe_out opts]} {
+    set probe_rc -1
+    set ec [dict get $opts -errorcode]
+    if {[lindex $ec 0] eq "CHILDSTATUS"} { set probe_rc [lindex $ec 2] }
+}
+test "Probe with tcllib: rc == 0" {
+    global probe_rc probe_out
+    assert_eq $probe_rc 0 "output:\n$probe_out"
+}
+test "Probe with tcllib: prints interpreter, Tcl, yaml and json versions" {
+    global probe_out tclsh
+    set expected [join [list \
+        "interpreter: $tclsh" \
+        "Tcl: [info patchlevel]" \
+        "yaml: [package require yaml]" \
+        "json: [package require json]"] \n]
+    assert_eq $probe_out $expected
+}
+
+proc probe_exit {code} {
+    set ::probe_child_rc $code
+    return -code error PROBE_EXIT
+}
+set child [interp create]
+$child eval [list set ::auto_path [list [$child eval {info library}]]]
+interp alias $child exit {} probe_exit
+set ::probe_child_rc 0
+set probe_child_out ""
+$child eval {
+    set ::probe_out_buffer ""
+    rename puts __real_puts
+    proc puts {args} { append ::probe_out_buffer [lindex $args end] \n }
+}
+catch {$child eval [list source $probe]}
+set probe_child_out [$child eval {set ::probe_out_buffer}]
+interp delete $child
+test "Probe without tcllib: rc == 1" {
+    global probe_child_rc probe_child_out
+    assert_eq $probe_child_rc 1 "output:\n$probe_child_out"
+}
+test "Probe without tcllib: names yaml and json as missing" {
+    global probe_child_out
+    assert_true [regexp {(?n)^yaml: MISSING \(can't find package yaml\)$} $probe_child_out] \
+        "output:\n$probe_child_out"
+    assert_true [regexp {(?n)^json: MISSING \(can't find package json\)$} $probe_child_out] \
+        "output:\n$probe_child_out"
+}
+
+# The README's "Check the interpreter" step runs the same probe, as a file,
+# and no longer pipes commands into tclsh.
+set fp [open [file join $root_dir README.md] r]
+set readme [read $fp]
+close $fp
+test "README check step runs tools/check_tcl.tcl and pipes nothing into tclsh" {
+    global readme
+    assert_true [string match {*tclsh "C:/aurig/aurig-lint/tools/check_tcl.tcl"*} $readme] \
+        "Expected the probe command in README.md"
+    assert_true [expr {![regexp {\| tclsh} $readme]}] \
+        "Expected no '| tclsh' in README.md"
 }
 
 # =============================================================================
