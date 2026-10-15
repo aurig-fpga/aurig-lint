@@ -6,10 +6,11 @@
 #
 # tools/run_lint_project_inprocess.tcl told readers to see
 # doc/user/linter.md, a file this repository never had, and lint/lint.tcl
-# cited doc/reference/lint_rules.md (the file is rules_reference.md). This
-# test scans the runner and the engine for paths that start with `doc/` and
-# checks that each one exists in the checkout, and that the runner still
-# cites the README for its exit codes.
+# cited doc/reference/lint_rules.md (the file is rules_reference.md) and
+# test/lint/test_require_meaningful_comments.tcl, a test this repository
+# does not have. This test scans the runner and the engine for paths that
+# start with `doc/` or `test/` and checks that each one exists in the
+# checkout, and that the runner still cites the README for its exit codes.
 #=============================================================================
 
 set script_anchor [file dirname [file normalize [info script]]]
@@ -31,7 +32,7 @@ foreach src $sources {
     set n 0
     foreach line $lines {
         incr n
-        foreach path [regexp -all -inline {\mdoc/[A-Za-z0-9_./-]*[A-Za-z0-9_]} $line] {
+        foreach path [regexp -all -inline {\m(?:doc|test)/[A-Za-z0-9_./-]*[A-Za-z0-9_]} $line] {
             incr refs
             if {[file exists [file join $repo_root $path]]} {
                 puts "PASS: $rel:$n: $path exists"
@@ -43,7 +44,7 @@ foreach src $sources {
         }
     }
 }
-puts "scanned [llength $sources] files, $refs doc/ references"
+puts "scanned [llength $sources] files, $refs doc/ and test/ references"
 
 # The exit-code block points at the README section that documents the exit
 # codes; the section must still exist under that name.

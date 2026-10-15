@@ -199,7 +199,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `-fail_on` differs from the single-file CLI no longer cites the missing
   file.
   `lint/lint.tcl` cited `doc/reference/lint_rules.md`, which does not exist
-  either; it now cites `doc/reference/rules_reference.md`. In
+  either; it now cites `doc/reference/rules_reference.md`. Two of its
+  comments also cited a test and a fixture this repository does not have
+  (`test/lint/test_require_meaningful_comments.tcl`,
+  `test/lint/fixtures/bit_types_violations.vhd`); the citations are gone. In
   `doc/configuration.md`, the `-export_rules` example shows the current line
   numbers of `effective.json` (32 and 34; `enum_literal_naming` moved them).
 
