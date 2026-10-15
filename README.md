@@ -61,92 +61,13 @@ examples use `C:\aurig` as the working folder; substitute your own.
 No Windows distribution is endorsed. The options and their tradeoffs are
 listed in aurig-core's README under
 [Getting a Tcl on Windows](https://github.com/aurig-fpga/aurig-core#getting-a-tcl-on-windows).
-Whichever you choose, the check in step 2 is the criterion. FPGA vendor tools
+Whichever you choose, the check in step 4 is the criterion. FPGA vendor tools
 ship their own Tcl and may put it on `PATH`; see
 [Another Tcl first on `PATH`](https://github.com/aurig-fpga/aurig-core#another-tcl-first-on-path).
 
-### 2. Check the interpreter
+### 2. Get Git
 
-Find which `tclsh` runs. The first line is the one that is used:
-
-```powershell
-# PowerShell
-Get-Command tclsh -All | ForEach-Object Source
-```
-
-```bat
-:: cmd.exe
-where tclsh
-```
-
-```text
-C:\ActiveTcl\bin\tclsh.exe
-```
-
-Then confirm that this interpreter has tcllib. In PowerShell, write the check
-to a file and run it:
-
-```powershell
-Set-Content check_tcl.tcl 'puts [info nameofexecutable]', 'puts [info patchlevel]', 'puts [package require yaml]', 'puts [package require json]'
-tclsh check_tcl.tcl
-```
-
-In cmd.exe, pipe one line at a time:
-
-```bat
-echo puts [info nameofexecutable] | tclsh
-echo puts [info patchlevel] | tclsh
-echo puts [package require yaml] | tclsh
-echo puts [package require json] | tclsh
-```
-
-Either way the output is the interpreter, its version, and the `yaml` and
-`json` versions:
-
-```text
-C:/ActiveTcl/bin/tclsh.exe
-8.6.14
-0.4.1
-1.3.4
-```
-
-The second line must start with `8.6`. Without tcllib, the `yaml` line fails
-with `can't find package yaml`. `tclsh check_tcl.tcl` then exits 1. A `tclsh`
-reading commands from a pipe does not: an error in a command read from stdin,
-such as a failed `package require`, does not produce a non-zero exit code. In
-cmd.exe, read the output, not the exit code.
-
-In Windows PowerShell 5.1, do not pipe into `tclsh`; use the file form above.
-Whether the pipe works depends on the session's output encoding: in a fresh
-session, where `$OutputEncoding` is ASCII, it does, but when `$OutputEncoding`
-(or `[Console]::InputEncoding`) is UTF-8, PowerShell prefixes the input with a
-byte-order mark and `tclsh` answers `invalid command name` for the first line.
-
-**Git Bash** puts Git for Windows' own `tclsh` first on `PATH`, ahead of the
-Windows `PATH`. That Tcl has no tcllib:
-
-```sh
-type -a tclsh
-```
-
-```text
-tclsh is /mingw64/bin/tclsh
-tclsh is /mingw64/bin/tclsh
-tclsh is /c/ActiveTcl/bin/tclsh
-tclsh is /c/ActiveTcl/bin/tclsh
-```
-
-With it, the lint CLI exits 2 with `Error: missing required Tcl package 'json'
-(provided by tcllib)`. In Git Bash, call your Tcl by its full path:
-
-```sh
-export TCLLIBPATH=C:/aurig/aurig-core
-/c/ActiveTcl/bin/tclsh.exe C:/aurig/aurig-lint/lint/lint_cli.tcl -input C:/aurig/aurig-lint/test/lint/fixtures/naming_violations.vhd
-```
-
-### 3. Get Git
-
-Windows does not include `git`, which step 4 uses. No Git client is endorsed;
+Windows does not include `git`, which step 3 uses. No Git client is endorsed;
 any that puts `git` on `PATH` works, for example
 [Git for Windows](https://gitforwindows.org/). After installing, open a new
 PowerShell or cmd.exe window so that it picks up the updated `PATH`, and check:
@@ -159,7 +80,7 @@ git --version
 git version 2.49.0.windows.1
 ```
 
-### 4. Clone both repositories side by side
+### 3. Clone both repositories side by side
 
 ```powershell
 # PowerShell
@@ -184,6 +105,78 @@ C:\aurig\
 ```
 
 This is the sibling layout CI uses.
+
+### 4. Check the interpreter
+
+Find which `tclsh` runs. The first line is the one that is used:
+
+```powershell
+# PowerShell
+Get-Command tclsh -All | ForEach-Object Source
+```
+
+```bat
+:: cmd.exe
+where tclsh
+```
+
+```text
+C:\ActiveTcl\bin\tclsh.exe
+```
+
+Then run aurig-lint's interpreter probe with it. The command is the same in
+PowerShell and cmd.exe:
+
+```bat
+tclsh "C:/aurig/aurig-lint/tools/check_tcl.tcl"
+```
+
+```text
+interpreter: C:/ActiveTcl/bin/tclsh.exe
+Tcl: 8.6.14
+yaml: 0.4.1
+json: 1.3.4
+```
+
+The exit code is 0, and the `Tcl` line must start with `8.6`. Without tcllib
+the probe names the missing packages and exits 1. For example, with Git for
+Windows' own `tclsh` first on `PATH`:
+
+```text
+interpreter: C:/Program Files/Git/mingw64/bin/tclsh.exe
+Tcl: 8.6.13
+yaml: MISSING (can't find package yaml)
+json: MISSING (can't find package json)
+```
+
+This is the probe the project runner prints when tcllib is missing. Run it as
+a file, as above, rather than piping commands into `tclsh`: an error in a
+command read from stdin, such as a failed `package require`, does not produce
+a non-zero exit code, and Windows PowerShell 5.1 can prefix piped input with a
+byte-order mark, which makes `tclsh` answer `invalid command name` for the
+first line.
+
+**Git Bash** puts Git for Windows' own `tclsh` first on `PATH`, ahead of the
+Windows `PATH`. That Tcl has no tcllib:
+
+```sh
+type -a tclsh
+```
+
+```text
+tclsh is /mingw64/bin/tclsh
+tclsh is /mingw64/bin/tclsh
+tclsh is /c/ActiveTcl/bin/tclsh
+tclsh is /c/ActiveTcl/bin/tclsh
+```
+
+With it, the lint CLI exits 2 with `Error: missing required Tcl package 'json'
+(provided by tcllib)`. In Git Bash, call your Tcl by its full path:
+
+```sh
+export TCLLIBPATH=C:/aurig/aurig-core
+/c/ActiveTcl/bin/tclsh.exe C:/aurig/aurig-lint/lint/lint_cli.tcl -input C:/aurig/aurig-lint/test/lint/fixtures/naming_violations.vhd
+```
 
 ### 5. Point TCLLIBPATH at aurig-core
 

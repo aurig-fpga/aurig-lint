@@ -282,6 +282,19 @@ test "Probe without tcllib: names yaml and json as missing" {
         "output:\n$probe_child_out"
 }
 
+# The README's "Check the interpreter" step runs the same probe, as a file,
+# and no longer pipes commands into tclsh.
+set fp [open [file join $root_dir README.md] r]
+set readme [read $fp]
+close $fp
+test "README check step runs tools/check_tcl.tcl and pipes nothing into tclsh" {
+    global readme
+    assert_true [string match {*tclsh "C:/aurig/aurig-lint/tools/check_tcl.tcl"*} $readme] \
+        "Expected the probe command in README.md"
+    assert_true [expr {![regexp {\| tclsh} $readme]}] \
+        "Expected no '| tclsh' in README.md"
+}
+
 # =============================================================================
 # Suite 5: `-help` short-circuit
 #
