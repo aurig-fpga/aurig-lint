@@ -384,6 +384,8 @@ proc ::aurig::lint::policy_problem_line {policy_file problem} {
 #   - a rule id that is not in metadata is a user-defined rule and needs a
 #     "type" that has a handler and is used by at least one metadata rule;
 #     a user-defined "naming" rule needs "scope" and "pattern";
+#   - a user-defined rule id matches ^[a-z][a-z0-9_]*$, the form of the
+#     built-in ids and the only form an in-source pragma can name (#49);
 #   - the "scope" of a naming rule (built-in or user-defined, also in an
 #     override) is one of symbol_scopes (#44);
 #   - a built-in rule keeps its metadata "type";
@@ -486,6 +488,12 @@ proc ::aurig::lint::validate_policy {policy metadata} {
         if {$kind ne "object"} {
             lappend problems "$where: entry is not a JSON object (found $kind)"
             continue
+        }
+
+        # A user-defined rule id must have the form a pragma can name.
+        if {![dict exists $builtin_rules $rule_id] && [dict exists $entry type]
+                && ![regexp {^[a-z][a-z0-9_]*$} $rule_id]} {
+            lappend problems "$where: invalid rule id (a user-defined rule id must match ^\[a-z\]\[a-z0-9_\]*\$, the form a pragma can name)"
         }
 
         # The supported options follow from the rule type. When the type
@@ -1708,13 +1716,16 @@ proc ::aurig::lint::rule::library {symbols parse_result filename rule_id rule_co
         if {$scope eq "library"} {
             set lib_name [dict get $symbol name]
 
+            # Library names are VHDL identifiers, so case does not matter:
+            # IEEE is ieee (#3). The message keeps the name as written.
+
             # Skip 'work' library (implicit)
-            if {$lib_name eq "work"} {
+            if {[string equal -nocase $lib_name "work"]} {
                 continue
             }
 
             # Check if library is in allowed list
-            if {$lib_name ni $allowed_libs} {
+            if {[lsearch -exact -nocase $allowed_libs $lib_name] < 0} {
                 set line [dict get $symbol line]
                 set col [dict get $symbol col]
                 set context_path [dict get $symbol context_path]
@@ -2050,8 +2061,10 @@ proc ::aurig::lint::rule::forbid_nonstandard_arith {symbols parse_result filenam
         # Check if this is a use clause
         # Pattern matches: use library.package
         if {[regexp -nocase {^\s*use\s+([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)} $cleaned_line -> lib_name pkg_name]} {
-            # Check if package name is in forbidden list
-            if {$pkg_name in $forbidden_libs && $pkg_name ni $whitelist} {
+            # Check if package name is in forbidden list. Package names are
+            # VHDL identifiers, so case does not matter (#3).
+            if {[lsearch -exact -nocase $forbidden_libs $pkg_name] >= 0
+                    && [lsearch -exact -nocase $whitelist $pkg_name] < 0} {
                 set col 0
                 if {[regexp {^\s*use\s+} $line match]} {
                     set col [string length $match]
@@ -2903,6 +2916,10 @@ proc ::aurig::lint::rule::forbid_positional_genericmap {symbols parse_result fil
 #   -- aurig-lint: disable-next-line <rule_id>[,<rule_id>...]
 #      Disables rules only for the next line
 #
+# Rule ids match ignoring case (#49): every rule id is lowercase, so the ids
+# are stored in lowercase and filter_suppressed_diagnostics compares the
+# lowercase id of each diagnostic.
+#
 # Arguments:
 #   filename : Source file path
 #
@@ -2947,7 +2964,7 @@ proc ::aurig::lint::parse_suppressions {filename} {
             set rules [split $rules_str ","]
             set rule_list {}
             foreach rule $rules {
-                set rule [string trim $rule]
+                set rule [string tolower [string trim $rule]]
                 if {$rule ne ""} {
                     lappend rule_list $rule
                 }
@@ -2966,7 +2983,7 @@ proc ::aurig::lint::parse_suppressions {filename} {
             # Parse comma-separated rule list
             set rules [split $rules_str ","]
             foreach rule $rules {
-                set rule [string trim $rule]
+                set rule [string tolower [string trim $rule]]
                 if {$rule ne ""} {
                     lappend globally_disabled $rule
                 }
@@ -3005,7 +3022,7 @@ proc ::aurig::lint::filter_suppressed_diagnostics {diagnostics suppressions} {
         set is_suppressed 0
         if {[dict exists $suppressions $line]} {
             set suppressed_rules [dict get $suppressions $line]
-            if {$rule_id in $suppressed_rules} {
+            if {[string tolower $rule_id] in $suppressed_rules} {
                 set is_suppressed 1
             }
         }
@@ -4598,9 +4615,9 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 }
             }
 
-            # Check instantiations
-            if {$instantiations_required && [dict exists $arch instances]} {
-                foreach instance [dict get $arch instances] {
+            # Check instantiations (the parser's key is "instantiations")
+            if {$instantiations_required && [dict exists $arch instantiations]} {
+                foreach instance [dict get $arch instantiations] {
                     set inst_label [expr {[dict exists $instance label] ? [dict get $instance label] : ""}]
                     set inst_line [expr {[dict exists $instance line] ? [dict get $instance line] : 0}]
 

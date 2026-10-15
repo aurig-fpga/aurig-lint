@@ -284,7 +284,11 @@ name. In JSON a backslash is written twice: `"^[a-z]\\w*$"`.
 
 ### User-defined rules
 
-A key that is not a built-in rule id, with a `"type"`, creates a new rule. A
+A key that is not a built-in rule id, with a `"type"`, creates a new rule.
+Its id must be a lowercase letter followed by lowercase letters, digits and
+underscores (`^[a-z][a-z0-9_]*$`), like the built-in ids, so that a comment
+in the source can name it (section 5): `function_naming` is accepted,
+`FunctionNaming` and `function-naming` are rejected (section 3). A
 user-defined `"naming"` rule needs `"scope"` and `"pattern"`; it is enabled,
 with severity `warning`, unless you say otherwise. The scopes are `entity`,
 `architecture`, `package`, `library`, `signal`, `constant`, `variable`,
@@ -307,7 +311,11 @@ that should violate it and check that it fires.
 prefix/suffix convention of its own (`s_` signals, `g_` generics, `_i`/`_o`
 ports, …). It is off by default. When you enable it, its built-in pattern
 applies to every scope you do not override in `"patterns"`; give a scope `""`
-to leave that scope unchecked. It runs **in addition to** the per-scope rules,
+to leave that scope unchecked. Its scopes are `architecture`, `generic`,
+`port_in`, `port_out`, `port_inout`, `signal`, `variable`, `constant`,
+`type`, `function`, `procedure`, `process`, `instance` and `generate`; it
+does not check `entity`, `package`, `library`, `subtype` or `port_buffer`
+names, and a `"patterns"` key for any other scope is ignored. It runs **in addition to** the per-scope rules,
 not instead of them:
 
 `pack/policy.json`:
@@ -471,9 +479,10 @@ Exit code 2.
 
 Also rejected: a `"rules"` or rule entry that is not a JSON object; a
 `"type"` on a built-in rule that differs from its own; a user-defined naming
-rule without `"scope"` or `"pattern"`; a naming rule whose `"scope"` is not
-one of the scopes listed under "User-defined rules"; and the override
-mistakes in section 4.
+rule without `"scope"` or `"pattern"`; a user-defined rule whose id is not
+lowercase letters, digits and underscores starting with a letter; a naming
+rule whose `"scope"` is not one of the scopes listed under "User-defined
+rules"; and the override mistakes in section 4.
 Option *values* are not checked: a pattern that never matches, or a number
 where a list belongs, is accepted.
 
@@ -690,7 +699,14 @@ Summary:
 
 Exit code 0. Only `CtrlReg`, before both comments, is reported; without the
 comments, `StatusReg`, `IrqMask` and `reset_value` would be reported too. Use
-the rule id as printed in brackets at the end of each diagnostic. There is no
+the rule id as printed in brackets at the end of each diagnostic. A comment
+can name any rule, built-in or user-defined, because every rule id is made of
+lowercase letters, digits and underscores and starts with a letter: the
+policy rejects a user-defined rule with any other id (section 3). The rule
+ids in a comment match ignoring case, like VHDL names: `disable
+Signal_Naming` or `DISABLE SIGNAL_NAMING` switches off `signal_naming`. The
+`aurig-lint:` marker and the words `disable` and `disable-next-line` may also
+be written in any case. There is no
 `enable` comment; to turn a rule off for whole files, use an override instead.
 
 ## 6. Checking the effective configuration

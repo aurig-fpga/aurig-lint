@@ -132,6 +132,121 @@ check_true "html: output names known rule '$known_rule'" \
     {[string first $known_rule $html_text] >= 0}
 
 # ----------------------------------------------------------------------------
+# ANCHORS (#45): every table-of-contents link of the Markdown resolves on
+# GitHub. GitHub gives each heading an anchor: the heading text in
+# lowercase, without the characters other than letters, digits, spaces,
+# hyphens and underscores, with each space replaced by a hyphen; a repeated
+# anchor gets -1, -2... Underscores are kept, so the anchor of
+# "## entity_naming" is #entity_naming. Before the fix the TOC linked to
+# #entity-naming. Checked on the generated file and on the committed
+# doc/reference/rules_reference.md.
+# ----------------------------------------------------------------------------
+puts ""
+puts "=== Anchors: TOC links match GitHub heading anchors ==="
+
+# GitHub heading anchors of a Markdown text (headings in code blocks
+# excluded).
+proc github_anchors {text} {
+    set anchors {}
+    set seen [dict create]
+    set in_fence 0
+    foreach line [split $text \n] {
+        if {[string match "```*" $line]} {
+            set in_fence [expr {!$in_fence}]
+            continue
+        }
+        if {$in_fence || ![regexp {^#{1,6} +(.*?) *$} $line -> heading]} {
+            continue
+        }
+        set slug [string tolower $heading]
+        regsub -all {[^a-z0-9 _-]} $slug {} slug
+        set slug [string map {" " -} $slug]
+        if {[dict exists $seen $slug]} {
+            set n [dict get $seen $slug]
+            dict incr seen $slug
+            set slug $slug-$n
+        } else {
+            dict set seen $slug 1
+        }
+        lappend anchors $slug
+    }
+    return $anchors
+}
+
+# Table-of-contents entries of the Markdown: list of {text anchor}.
+proc toc_links {text} {
+    set links {}
+    set in_toc 0
+    foreach line [split $text \n] {
+        if {$line eq "## Table of Contents"} {
+            set in_toc 1
+            continue
+        }
+        if {$in_toc && [string match "## *" $line]} {
+            break
+        }
+        if {$in_toc && [regexp {^- \[([^]]*)\]\(#([^)]*)\)$} $line -> name anchor]} {
+            lappend links [list $name $anchor]
+        }
+    }
+    return $links
+}
+
+# Names of the TOC entries, sorted, duplicates kept.
+proc toc_names {text} {
+    return [lsort [lmap link [toc_links $text] {lindex $link 0}]]
+}
+
+# The TOC lists every rule exactly once: its sorted names are the sorted rule
+# ids of the metadata (a count alone misses a duplicate plus an omission).
+set rule_ids [lsort [dict keys [dict get $md_dict rules]]]
+
+# [mutation] A TOC built from the rule ids with the first entry duplicated
+# and the second removed: the entry count is right, the names are not.
+set mutated "## Table of Contents\n\n"
+foreach rule_id [lreplace [linsert $rule_ids 0 [lindex $rule_ids 0]] 2 2] {
+    append mutated "- \[$rule_id\](#$rule_id)\n"
+}
+append mutated "\n---\n"
+check_eq "\[mutation\] one entry duplicated, one removed: same count" \
+    [llength $rule_ids] [llength [toc_links $mutated]]
+check_true "\[mutation\] one entry duplicated, one removed: detected" \
+    {[toc_names $mutated] ne $rule_ids}
+
+foreach {label path} [list "generated" $md_out \
+        "committed" [file join $repo_root doc reference rules_reference.md]] {
+    set text [read_text $path]
+    set anchors [github_anchors $text]
+    set links [toc_links $text]
+    check_eq "anchors, $label: the TOC lists every rule exactly once" $rule_ids [toc_names $text]
+    set unresolved {}
+    set misformatted {}
+    foreach link $links {
+        lassign $link name anchor
+        if {$anchor ni $anchors} {
+            lappend unresolved $anchor
+        }
+        # A rule id is lowercase letters, digits and underscores, so its
+        # anchor is the id itself.
+        if {$anchor ne $name} {
+            lappend misformatted "$name -> #$anchor"
+        }
+    }
+    check_eq "anchors, $label: every TOC link resolves to a heading" {} $unresolved
+    check_eq "anchors, $label: each anchor is the rule id (underscores kept)" {} $misformatted
+}
+
+# [control] The HTML reference links to ids it defines.
+set html_ids [regexp -all -inline {id="([^"]*)"} $html_text]
+set html_unresolved {}
+foreach {- href} [regexp -all -inline {href="#([^"]*)"} $html_text] {
+    if {[lsearch -exact $html_ids "id=\"$href\""] < 0} {
+        lappend html_unresolved $href
+    }
+}
+check_eq "\[control\] anchors, html: every sidebar link has its id" {} $html_unresolved
+
+# ----------------------------------------------------------------------------
 # BOM: a UTF-8 metadata file with a leading byte order mark (Notepad, Windows
 # PowerShell 5.1) generates the same Markdown as the original, as the CLI and
 # the runner accept it. Only the "Last updated" timestamp line may differ.

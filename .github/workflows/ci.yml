@@ -55,10 +55,14 @@ jobs:
             test/test_lint_cli_source_safety.tcl
             test/test_lint_enum_literal_naming.tcl
             test/test_lint_label_naming.tcl
+            test/test_lint_instantiation_comments.tcl
+            test/test_lint_library_case.tcl
             test/test_lint_policy_overrides.tcl
             test/test_lint_policy_validation.tcl
+            test/test_lint_policy_rule_id.tcl
             test/test_lint_policy_naming_scope.tcl
             test/test_lint_pragma_suppression.tcl
+            test/test_lint_pragma_case.tcl
             test/test_lint_process_diagnostic_lines.tcl
             test/test_lint_require_process_label.tcl
             test/test_lint_reset_message.tcl
