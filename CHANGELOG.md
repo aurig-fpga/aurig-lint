@@ -192,6 +192,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   process and instance labels, testbench/BFM overrides, a user-defined
   function naming rule). Every example was run and its output is shown. The
   README's "Policy file" section is now a short introduction that links to it.
+- `tools/run_lint_project_inprocess.tcl` no longer refers readers to
+  `doc/user/linter.md`, a file this repository does not have (#37). The
+  comment above the exit-code block now points to the README's "Whole
+  project" section, which documents the exit codes. The comment on how
+  `-fail_on` differs from the single-file CLI no longer cites the missing
+  file.
+
 - README: a Windows walkthrough from an empty machine to a first lint run
   (interpreter check, clone layout, `TCLLIBPATH` in PowerShell and cmd.exe,
   paths with spaces, persistent setting, Git Bash's own `tclsh`); the project

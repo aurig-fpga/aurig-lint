@@ -67,6 +67,7 @@ jobs:
             test/test_run_lint_project_policy_once.tcl
             test/test_lint_project_required_packages.tcl
             test/test_generate_rules_reference.tcl
+            test/test_doc_references_exist.tcl
           )
           for t in "${tests[@]}"; do
             echo "==================== $t ===================="

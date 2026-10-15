@@ -519,8 +519,7 @@ proc lint_project_escape_md_cell {text} {
 # reports actually render keeps rc and report content consistent.
 # This narrows the project-runner's -fail_on semantics relative to
 # the single-file CLI's, because the single-file CLI has no
-# OK-vs-LINT_ISSUES classifier; the divergence is documented in
-# doc/user/linter.md.
+# OK-vs-LINT_ISSUES classifier.
 #-----------------------------------------------------------------------------
 proc lint_project_should_fail {fail_on_level results} {
     if {$fail_on_level eq "none"} {
@@ -2642,7 +2641,8 @@ puts "========================================"
 # -fail_on warning (any warning or error → exit 1). The new default
 # is -fail_on error to match lint/lint_cli.tcl. Callers that relied
 # on the warning-also-fails behaviour should pass -fail_on warning
-# explicitly. See doc/user/linter.md.
+# explicitly.
+# Exit codes are documented in README.md, section "Whole project".
 #-----------------------------------------------------------------------------
 if {$tool_error_count > 0} {
     exit 2
