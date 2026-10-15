@@ -55,6 +55,7 @@ jobs:
             test/test_lint_cli_source_safety.tcl
             test/test_lint_enum_literal_naming.tcl
             test/test_lint_label_naming.tcl
+            test/test_lint_instantiation_comments.tcl
             test/test_lint_policy_overrides.tcl
             test/test_lint_policy_validation.tcl
             test/test_lint_pragma_suppression.tcl
