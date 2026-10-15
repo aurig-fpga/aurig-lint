@@ -4500,9 +4500,9 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 }
             }
 
-            # Check instantiations
-            if {$instantiations_required && [dict exists $arch instances]} {
-                foreach instance [dict get $arch instances] {
+            # Check instantiations (the parser's key is "instantiations")
+            if {$instantiations_required && [dict exists $arch instantiations]} {
+                foreach instance [dict get $arch instantiations] {
                     set inst_label [expr {[dict exists $instance label] ? [dict get $instance label] : ""}]
                     set inst_line [expr {[dict exists $instance line] ? [dict get $instance line] : 0}]
 

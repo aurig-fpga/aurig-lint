@@ -194,6 +194,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `require_meaningful_comments` with `"instantiations_required": true`
+  reports an instantiation without a comment on one of the two lines above
+  it (#20). The rule read the instantiations from a parse-result key that
+  does not exist (`instances` instead of `instantiations`), so the option had
+  no effect. A policy that enables the option now gets these diagnostics,
+  one per undocumented instantiation, on the line of its label.
+
 - `allowed_libraries` compares library names ignoring case, as VHDL does
   (#3). `library IEEE;` was reported as not in the allowed list although
   `ieee` is in it, and so were `STD` and `WORK`; a policy listing `"IEEE"`
@@ -254,6 +261,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tool-error HTML page now declares `charset="UTF-8"` too.
 
 ### Documentation
+
+- The table of contents of `doc/reference/rules_reference.md` links to the
+  rule sections again (#45). `doc/tools/generate_rules_reference.tcl` wrote
+  anchors with hyphens (`#entity-naming`), while GitHub keeps the
+  underscores of a heading in its anchor (`#entity_naming`), so every entry
+  pointed nowhere. The generator now writes GitHub's anchor of each heading,
+  and `rules_reference.md` and `rules_reference.html` are regenerated (the
+  HTML only changes its timestamp; its own links already matched its ids).
 
 - `doc/configuration.md`, a configuration guide (#15): where the policy lives
   and how the CLI and the runner find it, rule options and how they merge with
