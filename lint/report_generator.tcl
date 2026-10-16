@@ -47,6 +47,23 @@ proc ::aurig::lint::report::html_escape {text} {
     string map {& &amp; < &lt; > &gt; \" &quot; ' &#39;} $text
 }
 
+# Id of a file's section in the HTML report: the path with every character
+# outside A-Z a-z 0-9 written as -XX (each of its UTF-8 bytes in hex). The
+# mapping is injective, so different paths get different ids (src/a.b.vhd
+# and src/a_b.vhd used to share one), and the id needs no escaping in an id
+# or href attribute.
+proc ::aurig::lint::report::file_anchor {file} {
+    set anchor ""
+    foreach byte [split [encoding convertto utf-8 $file] ""] {
+        if {[string match {[A-Za-z0-9]} $byte]} {
+            append anchor $byte
+        } else {
+            append anchor [format -%02X [scan $byte %c]]
+        }
+    }
+    return $anchor
+}
+
 # Group diagnostics by file
 proc ::aurig::lint::report::group_by_file {diagnostics} {
     set by_file [dict create]
@@ -276,7 +293,7 @@ proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
         foreach file [lsort [dict keys $by_file]] {
             set file_diags [dict get $by_file $file]
             set count [llength $file_diags]
-            set anchor [string map {/ _ \\ _ : _ . _} $file]
+            set anchor [file_anchor $file]
             append html "      <li><a href=\"#$anchor\">[html_escape [file tail $file]]<span class=\"count\">$count</span></a></li>\n"
         }
         append html "    </ul>\n"
@@ -295,7 +312,7 @@ proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
         foreach file [lsort [dict keys $by_file]] {
             set file_diags [dict get $by_file $file]
             set count [llength $file_diags]
-            set anchor [string map {/ _ \\ _ : _ . _} $file]
+            set anchor [file_anchor $file]
 
             append html "    <h2 id=\"$anchor\">[html_escape $file] <span style=\"font-size: 14px; color: #95a5a6;\">($count issue(s))</span></h2>\n"
 

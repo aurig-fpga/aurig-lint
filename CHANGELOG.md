@@ -239,6 +239,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exempt `use ieee.std_logic_arith.all;`. `same_file_units`, the other rule
   that compares package names, already ignored case.
 
+- The HTML reports load nothing from the network (#2). The project runner's
+  `index.html` imported the Oswald and Roboto fonts from Google Fonts, and
+  its source viewer pages (`sources/*.html`) loaded CodeMirror's scripts and
+  stylesheets from cdnjs and Oswald from Google Fonts; opened without
+  network access, the index fell back to other fonts and the source viewer
+  showed the bare source in a small text box, without line numbers,
+  highlighted diagnostic lines or the jump to a diagnostic's line. The pages
+  now use system font stacks (`system-ui, "Segoe UI", Roboto, Helvetica,
+  Arial, sans-serif` and `Consolas, "SF Mono", Menlo, monospace`), and the
+  source viewer is plain HTML written by the runner: numbered lines with ids
+  `L<n>`, so the report's `#L<n>` links and `:target` highlighting work
+  without JavaScript; each line with diagnostics coloured by the most severe
+  one; VHDL
+  comments, literals and reserved words coloured. Links to
+  `https://www.logimentor.com` remain links. The single-file CLI and runner
+  reports, the `-export_rules` HTML and `rules_reference.html` already
+  loaded nothing; a test now checks every HTML page the tools write.
+  File names in the HTML reports are escaped everywhere, and the links to
+  the source viewer pages percent-encode the page's file name: a file named
+  `a&copy;.vhd` or `e#f.vhd` used to give links to missing pages (the
+  `&copy;` was decoded to (c), the `#` ended the path), and its name was
+  shown decoded in the runner's "Files with Lint Issues" list. The
+  single-file reports' section ids keep only `A-Z a-z 0-9` (every other
+  byte becomes `-XX`), so a `<` or a quote in a file name no longer breaks
+  the page, and paths that differ only by `.` and `_` (`src/a.b.vhd`,
+  `src/a_b.vhd`) get different ids.
+
 - `tools/run_lint_project_inprocess.tcl -format md` no longer crashes with
   `invalid command name "OK"` and exit 1 (#48). The `[OK] No files with lint
   issues.` and `[OK] No tool errors.` lines were in double quotes, so Tcl ran

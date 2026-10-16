@@ -490,6 +490,21 @@ proc lint_project_escape_html {text} {
     return [string map $map $text]
 }
 
+# Percent-encode one path segment (a file name) for a URL in an href or src
+# attribute: every UTF-8 byte other than A-Z a-z 0-9 - . _ ~ becomes %XX, so
+# "&", "#", "?", spaces and quotes in a file name stay part of the name.
+proc lint_project_url_encode {segment} {
+    set out ""
+    foreach byte [split [encoding convertto utf-8 $segment] ""] {
+        if {[string match {[A-Za-z0-9._~-]} $byte]} {
+            append out $byte
+        } else {
+            append out [format %%%02X [scan $byte %c]]
+        }
+    }
+    return $out
+}
+
 # Escape a value for a single Markdown table cell. An unescaped `|`
 # closes the cell early and spawns ghost columns, so any user-derived
 # value placed in a cell (filename, exclude source, pattern) must run
@@ -819,7 +834,58 @@ proc lint_project_source_filename {fullpath project_root} {
 }
 
 #-----------------------------------------------------------------------------
+# Fonts of the HTML pages. The reports load nothing from the network (#2), so
+# they use the fonts of the system: CSS custom properties --font-sans and
+# --font-mono, defined once per page.
+#-----------------------------------------------------------------------------
+proc lint_project_font_css {} {
+    return {:root { --font-sans: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; --font-mono: Consolas, "SF Mono", Menlo, monospace; }}
+}
+
+# VHDL reserved words (IEEE 1076-2008), coloured in the source viewer.
+set ::lint_project_vhdl_keywords [dict create]
+foreach kw {
+    abs access after alias all and architecture array assert assume
+    assume_guarantee attribute begin block body buffer bus case component
+    configuration constant context cover default disconnect downto else
+    elsif end entity exit fairness file for force function generate generic
+    group guarded if impure in inertial inout is label library linkage
+    literal loop map mod nand new next nor not null of on open or others out
+    package parameter port postponed procedure process property protected
+    pure range record register reject release rem report restrict
+    restrict_guarantee return rol ror select sequence severity shared signal
+    sla sll sra srl strong subtype then to transport type unaffected units
+    until use variable vmode vprop vunit wait when while with xnor xor
+} {
+    dict set ::lint_project_vhdl_keywords $kw 1
+}
+
+# One source line as HTML: escaped, with comments, string and character
+# literals and reserved words in spans (classes c, s, k) for colouring.
+proc lint_project_highlight_vhdl {line} {
+    set html ""
+    foreach token [regexp -all -inline -- {--.*|"(?:[^"]|"")*"?|'.'|[A-Za-z][A-Za-z0-9_]*|[^-"'A-Za-z]+|.} $line] {
+        set text [lint_project_escape_html $token]
+        if {[string match "--*" $token]} {
+            append html "<span class=\"c\">$text</span>"
+        } elseif {[string length $token] > 1 && [string index $token 0] in {\" '}} {
+            append html "<span class=\"s\">$text</span>"
+        } elseif {[dict exists $::lint_project_vhdl_keywords [string tolower $token]]} {
+            append html "<span class=\"k\">$text</span>"
+        } else {
+            append html $text
+        }
+    }
+    return $html
+}
+
+#-----------------------------------------------------------------------------
 # Generate Source Viewer HTML (Documenter-style with line jump support)
+#
+# Each source line is an element with id L<n>, so the report's "#L<n>" links
+# scroll to it and :target highlights it, without JavaScript. Lines with a
+# diagnostic carry the class sev-<severity> of the most severe one (error >
+# warning > info). The page loads nothing from the network (#2).
 #-----------------------------------------------------------------------------
 proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
     # Read source file
@@ -831,51 +897,60 @@ proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
     fconfigure $fp -encoding utf-8
     set sourceCode [read $fp]
     close $fp
-
-    # Escape HTML special characters for CodeMirror textarea
-    set sourceCode [string map {& &amp; < &lt; > &gt; ' &#39;} $sourceCode]
-    set sourceCode [string map [list \" &quot;] $sourceCode]
+    if {[string index $sourceCode end] eq "\n"} {
+        set sourceCode [string range $sourceCode 0 end-1]
+    }
 
     # Build line-based diagnostic lookup for highlighting
+    # The most severe diagnostic of a line decides its class (error >
+    # warning > info), whatever order the diagnostics come in.
+    set rank {info 1 warning 2 error 3}
     array set diagLines {}
     foreach diag $diagnostics {
         set line [dict get $diag line]
         set sev [dict get $diag severity]
-        if {![info exists diagLines($line)] || $sev eq "error"} {
+        set sev_rank [expr {[dict exists $rank $sev] ? [dict get $rank $sev] : 0}]
+        if {![info exists diagLines($line)]
+                || $sev_rank > [dict get $rank $diagLines($line)]} {
             set diagLines($line) $sev
         }
     }
 
-    # Generate HTML with CodeMirror and line jump support
     set out [open $outFile w]
     fconfigure $out -translation lf -encoding utf-8
 
     puts $out "<!DOCTYPE html>"
-    puts $out "<html><head><meta charset=\"utf-8\"><title>$fileName - Source Code</title>"
-    puts $out "<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css\">"
-    puts $out "<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/eclipse.min.css\">"
-    puts $out "<style>@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200..700&display=swap');"
-    puts $out "body{font-family:'Oswald',serif;margin:0;padding:0;color:#2f2a25;background:#f5f5f5}"
+    puts $out "<html><head><meta charset=\"utf-8\"><title>[lint_project_escape_html $fileName] - Source Code</title>"
+    puts $out "<style>[lint_project_font_css]"
+    puts $out "body{font-family:var(--font-sans);margin:0;padding:0;color:#2f2a25;background:#f5f5f5}"
+    puts $out "code{font-family:var(--font-mono)}"
     puts $out ".header{background:#fff;border-bottom:2px solid #942c13;padding:15px 20px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}"
     puts $out ".header h1{margin:0;font-size:1.5em;color:#2f2a25}"
     puts $out ".header .nav{margin-top:10px}"
     puts $out ".header a{color:#942c13;text-decoration:none;margin-right:15px;font-weight:500}"
     puts $out ".header a:hover{text-decoration:underline}"
     puts $out ".code-container{margin:20px;background:#fff;border:1px solid #ddd;border-radius:4px;box-shadow:0 2px 4px rgba(0,0,0,0.05)}"
-    puts $out ".CodeMirror{height:auto;min-height:600px;font-size:14px;line-height:1.5}"
-    puts $out ".file-info{padding:10px 15px;background:#f9f9f9;border-bottom:1px solid #ddd;font-family:'Roboto',sans-serif;font-size:0.9em;color:#666}"
+    puts $out ".file-info{padding:10px 15px;background:#f9f9f9;border-bottom:1px solid #ddd;font-size:0.9em;color:#666}"
+    puts $out ".code{overflow-x:auto;padding:4px 0;font-family:var(--font-mono);font-size:14px;line-height:1.5}"
+    puts $out ".lines{display:inline-block;min-width:100%}"
+    puts $out ".line{white-space:pre;tab-size:4;padding-right:16px;scroll-margin-top:40vh}"
+    puts $out ".ln{display:inline-block;width:4em;padding-right:10px;margin-right:12px;text-align:right;color:#999;border-right:1px solid #ddd;text-decoration:none;user-select:none}"
+    puts $out ".ln:hover{color:#942c13}"
+    puts $out ".sev-error{background:#f8d7da}"
+    puts $out ".sev-warning{background:#fff3cd}"
+    puts $out ".sev-info{background:#d1ecf1}"
+    puts $out ".line:target{background:#ffe08a;box-shadow:inset 4px 0 0 #942c13}"
+    puts $out ".k{color:#7f0055;font-weight:bold}"
+    puts $out ".c{color:#3f7f5f}"
+    puts $out ".s{color:#2a00ff}"
     puts $out ".footer{margin-top:20px;padding:20px;text-align:center;color:#666;font-size:0.9em;border-top:2px solid #ddd}"
     puts $out ".footer img{max-width:200px;margin-bottom:10px}"
     puts $out ".footer a{color:#942c13;font-weight:500;text-decoration:none}"
     puts $out ".footer a:hover{text-decoration:underline}"
-    puts $out ".highlight-line{background:#fff3cd !important}"
-    puts $out ".highlight-error{background:#f8d7da !important}"
-    puts $out ".highlight-warning{background:#fff3cd !important}"
-    puts $out ".highlight-info{background:#d1ecf1 !important}"
     puts $out "</style>"
     puts $out "</head><body>"
     puts $out "<div class='header'>"
-    puts $out "<h1>$fileName</h1>"
+    puts $out "<h1>[lint_project_escape_html $fileName]</h1>"
     puts $out "<div class='nav'>"
     puts $out "<a href='../index.html'>&#x1F3E0; Lint Report</a>"
     puts $out "<a href='javascript:history.back()'>&larr; Back</a>"
@@ -884,7 +959,17 @@ proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
     puts $out "<div class='code-container'>"
     # Display relative path in file info, not absolute path
     puts $out "<div class='file-info'>File: <code>[lint_project_escape_html $fileName]</code></div>"
-    puts $out "<textarea id='code'>$sourceCode</textarea>"
+    puts $out "<div class='code'><div class='lines'>"
+    set n 0
+    foreach line [split $sourceCode \n] {
+        incr n
+        set cls "line"
+        if {[info exists diagLines($n)]} {
+            append cls " sev-$diagLines($n)"
+        }
+        puts $out "<div class=\"$cls\" id=\"L$n\"><a class=\"ln\" href=\"#L$n\">$n</a>[lint_project_highlight_vhdl $line]</div>"
+    }
+    puts $out "</div></div>"
     puts $out "</div>"
 
     # Footer with logo (only when the asset was actually copied to assets/)
@@ -895,62 +980,6 @@ proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
     puts $out "Generated by <strong>AURIG Lint</strong> &mdash; <a href=\"https://www.logimentor.com\">LogiMentor</a><br>"
     puts $out "on [clock format [clock seconds] -format {%B %d, %Y}]"
     puts $out " at [clock format [clock seconds] -format {%H:%M:%S}]</div>"
-
-    puts $out "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js\"></script>"
-    puts $out "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/vhdl/vhdl.min.js\"></script>"
-    puts $out "<script>"
-    puts $out "var editor = CodeMirror.fromTextArea(document.getElementById('code'), {"
-    puts $out "  mode: 'vhdl',"
-    puts $out "  theme: 'eclipse',"
-    puts $out "  lineNumbers: true,"
-    puts $out "  readOnly: true,"
-    puts $out "  lineWrapping: false,"
-    puts $out "  viewportMargin: Infinity"
-    puts $out "});"
-
-    # Diagnostic lines to highlight (from Tcl array)
-    puts $out "var diagLines = \{"
-    foreach line [array names diagLines] {
-        puts $out "  $line: '$diagLines($line)',"
-    }
-    puts $out "\};"
-
-    # Mark diagnostic lines
-    puts $out "for (var ln in diagLines) {"
-    puts $out "  var lineNum = parseInt(ln) - 1;"
-    puts $out "  var cls = 'highlight-' + diagLines\[ln\];"
-    puts $out "  editor.addLineClass(lineNum, 'background', cls);"
-    puts $out "}"
-
-    # Line jump support via URL hash #L<line>
-    puts $out "function jumpToLine(lineNum) {"
-    puts $out "  if (lineNum > 0) {"
-    puts $out "    var ln = lineNum - 1;"
-    puts $out "    editor.scrollIntoView({line: ln, ch: 0}, 200);"
-    puts $out "    editor.addLineClass(ln, 'background', 'highlight-line');"
-    puts $out "    setTimeout(function() { editor.setCursor(ln, 0); }, 100);"
-    puts $out "  }"
-    puts $out "}"
-
-    puts $out "function parseLineFromHash() {"
-    puts $out "  var hash = window.location.hash;"
-    puts $out "  if (hash && hash.match(/^#L\\d+\$/)) {"
-    puts $out "    return parseInt(hash.substring(2));"
-    puts $out "  }"
-    puts $out "  return 0;"
-    puts $out "}"
-
-    puts $out "window.onload = function() {"
-    puts $out "  var line = parseLineFromHash();"
-    puts $out "  if (line > 0) jumpToLine(line);"
-    puts $out "};"
-
-    puts $out "window.onhashchange = function() {"
-    puts $out "  var line = parseLineFromHash();"
-    puts $out "  if (line > 0) jumpToLine(line);"
-    puts $out "};"
-
-    puts $out "</script>"
     puts $out "</body></html>"
 
     close $out
@@ -1746,8 +1775,8 @@ if {$opts(format) eq "html"} {
         set source_html "${safe_name}.html"
         set source_path [file join $sources_dir $source_html]
 
-        # Store mapping
-        set source_viewer_map($fullpath) "sources/$source_html"
+        # Store mapping: the link to the page, its file name percent-encoded
+        set source_viewer_map($fullpath) "sources/[lint_project_url_encode $source_html]"
 
         # Generate source viewer with diagnostic highlights
         lint_project_emit_source_viewer $fullpath $source_path $filename $diagnostics
@@ -1766,19 +1795,18 @@ if {$opts(format) eq "html"} {
     puts $f "<html><head>"
     puts $f "<meta charset=\"UTF-8\">"
     puts $f "<title>Project Lint Report</title>"
-    puts $f "<style>@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200..700&display=swap');"
-    puts $f "@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');"
-    puts $f "body { font-family: 'Oswald', serif; max-width: 1200px; margin: 40px auto; padding: 20px; background: #f5f5f5; color: #2f2a25; }"
+    puts $f "<style>[lint_project_font_css]"
+    puts $f "body { font-family: var(--font-sans); max-width: 1200px; margin: 40px auto; padding: 20px; background: #f5f5f5; color: #2f2a25; }"
     puts $f "h1 { color: #2f2a25; border-bottom: 3px solid #942c13; padding-bottom: 10px; }"
     puts $f "h2 { color: #2f2a25; margin-top: 30px; }"
-    puts $f "p, td, th { font-family: 'Roboto', sans-serif; }"
+    puts $f "code, pre { font-family: var(--font-mono); }"
     puts $f ".summary { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }"
     puts $f ".summary table { width: 100%; border-collapse: collapse; }"
     puts $f ".summary td { padding: 8px; border-bottom: 1px solid #ddd; }"
     puts $f ".summary td:first-child { font-weight: bold; width: 240px; }"
     puts $f ".file-list { list-style: none; padding: 0; }"
     puts $f ".file-item { background: white; margin: 10px 0; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }"
-    puts $f ".file-item h3 { margin: 0 0 10px 0; color: #34495e; display: flex; align-items: center; gap: 10px; font-family: 'Oswald', serif; }"
+    puts $f ".file-item h3 { margin: 0 0 10px 0; color: #34495e; display: flex; align-items: center; gap: 10px; font-family: var(--font-sans); }"
     puts $f ".file-item.status-ok h3 { border-left: 4px solid #27ae60; padding-left: 10px; }"
     puts $f ".file-item.status-lint_issues h3 { border-left: 4px solid #f39c12; padding-left: 10px; }"
     puts $f ".file-item.status-tool_error h3 { border-left: 4px solid #e74c3c; padding-left: 10px; }"
@@ -1789,7 +1817,7 @@ if {$opts(format) eq "html"} {
     puts $f ".badge-lint { background: #f39c12; color: white; }"
     puts $f ".badge-error { background: #e74c3c; color: white; }"
     puts $f ".badge-skip { background: #7f8c8d; color: white; }"
-    puts $f ".skipped-note { background: #ecf0f1; padding: 12px 15px; border-radius: 4px; border-left: 4px solid #7f8c8d; margin: 10px 0; color: #555; font-family: 'Roboto', sans-serif; }"
+    puts $f ".skipped-note { background: #ecf0f1; padding: 12px 15px; border-radius: 4px; border-left: 4px solid #7f8c8d; margin: 10px 0; color: #555; font-family: var(--font-sans); }"
     puts $f ".skipped-note code { background: #f5f5f5; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }"
     puts $f ".diagnostics { background: #ecf0f1; padding: 15px; border-radius: 4px; border-left: 4px solid #f39c12; margin: 10px 0; }"
     puts $f ".diag-error { color: #e74c3c; font-weight: bold; }"
@@ -1800,7 +1828,7 @@ if {$opts(format) eq "html"} {
     puts $f ".success { color: #27ae60; }"
     puts $f ".issues { color: #e74c3c; }"
     puts $f ".quick-links { background: white; padding: 15px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }"
-    puts $f ".quick-links a { display: inline-block; margin-right: 15px; padding: 8px 16px; background: #942c13; color: white; text-decoration: none; border-radius: 4px; font-family: 'Oswald', serif; }"
+    puts $f ".quick-links a { display: inline-block; margin-right: 15px; padding: 8px 16px; background: #942c13; color: white; text-decoration: none; border-radius: 4px; font-family: var(--font-sans); }"
     puts $f ".quick-links a:hover { background: #7a2410; }"
     puts $f ".diag-table { width: 100%; border-collapse: collapse; margin: 10px 0; }"
     puts $f ".diag-table th, .diag-table td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }"
@@ -1823,13 +1851,13 @@ if {$opts(format) eq "html"} {
     puts $f ".preview-table { margin: 10px 0; opacity: 0.8; }"
     puts $f ".preview-note { font-style: italic; color: #7f8c8d; font-size: 0.9em; margin-top: 5px; }"
     puts $f ".expand-controls { margin: 15px 0; padding: 10px; background: #ecf0f1; border-radius: 4px; }"
-    puts $f ".expand-controls button { padding: 6px 14px; margin-right: 10px; border: none; border-radius: 4px; cursor: pointer; font-family: 'Oswald', serif; }"
+    puts $f ".expand-controls button { padding: 6px 14px; margin-right: 10px; border: none; border-radius: 4px; cursor: pointer; font-family: var(--font-sans); }"
     puts $f ".expand-controls button:hover { opacity: 0.9; }"
     puts $f ".btn-expand { background: #3498db; color: white; }"
     puts $f ".btn-collapse { background: #95a5a6; color: white; }"
     # View toggle (By File / By Rule) styles
     puts $f ".view-toggle { display: flex; gap: 0; margin: 20px 0; }"
-    puts $f ".view-toggle button { padding: 10px 24px; border: 2px solid #942c13; background: white; color: #942c13; cursor: pointer; font-family: 'Oswald', serif; font-size: 1em; transition: all 0.2s; }"
+    puts $f ".view-toggle button { padding: 10px 24px; border: 2px solid #942c13; background: white; color: #942c13; cursor: pointer; font-family: var(--font-sans); font-size: 1em; transition: all 0.2s; }"
     puts $f ".view-toggle button:first-child { border-radius: 4px 0 0 4px; }"
     puts $f ".view-toggle button:last-child { border-radius: 0 4px 4px 0; border-left: none; }"
     puts $f ".view-toggle button.active { background: #942c13; color: white; }"
@@ -1840,14 +1868,14 @@ if {$opts(format) eq "html"} {
     puts $f ".rule-summary { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }"
     puts $f ".rule-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 15px; }"
     puts $f ".rule-card { background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #942c13; }"
-    puts $f ".rule-card h4 { margin: 0 0 8px 0; font-family: 'Oswald', serif; color: #2f2a25; }"
+    puts $f ".rule-card h4 { margin: 0 0 8px 0; font-family: var(--font-sans); color: #2f2a25; }"
     puts $f ".rule-card .rule-count { font-size: 1.5em; font-weight: bold; color: #942c13; }"
     puts $f ".rule-card .rule-breakdown { font-size: 0.85em; color: #7f8c8d; margin-top: 5px; }"
     puts $f ".rule-card a { color: #942c13; text-decoration: none; }"
     puts $f ".rule-card a:hover { text-decoration: underline; }"
     # Rule detail sections
     puts $f ".rule-detail { background: white; margin: 20px 0; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }"
-    puts $f ".rule-detail h3 { margin: 0 0 15px 0; color: #2f2a25; border-bottom: 2px solid #942c13; padding-bottom: 10px; font-family: 'Oswald', serif; }"
+    puts $f ".rule-detail h3 { margin: 0 0 15px 0; color: #2f2a25; border-bottom: 2px solid #942c13; padding-bottom: 10px; font-family: var(--font-sans); }"
     puts $f ".rule-detail .rule-total { color: #7f8c8d; font-weight: normal; font-size: 0.9em; margin-left: 10px; }"
     puts $f "</style>"
     # JavaScript for collapse/expand and view toggle functionality
@@ -2104,7 +2132,7 @@ if {$opts(format) eq "html"} {
             set fullpath [dict get $result path]
             set anchor_id [format "file-%08x" [lint_project_hash32 $fullpath]]
             set diag_count [dict get $result diag_count]
-            puts $f "<li><a href=\"#$anchor_id\">$filename</a> ($diag_count diagnostics)</li>"
+            puts $f "<li><a href=\"#$anchor_id\">[lint_project_escape_html $filename]</a> ($diag_count diagnostics)</li>"
         }
         puts $f "</ul>"
     }
@@ -2125,7 +2153,7 @@ if {$opts(format) eq "html"} {
             set filename [dict get $result file]
             set fullpath [dict get $result path]
             set anchor_id [format "file-%08x" [lint_project_hash32 $fullpath]]
-            puts $f "<li><a href=\"#$anchor_id\">$filename</a></li>"
+            puts $f "<li><a href=\"#$anchor_id\">[lint_project_escape_html $filename]</a></li>"
         }
         puts $f "</ul>"
     }
@@ -2151,9 +2179,9 @@ if {$opts(format) eq "html"} {
                 set source_link $source_viewer_map($fullpath)
             }
             if {$source_link ne ""} {
-                puts $f "<li><a href=\"#$anchor_id\">$filename</a> (<a href=\"$source_link\">view source</a>)</li>"
+                puts $f "<li><a href=\"#$anchor_id\">[lint_project_escape_html $filename]</a> (<a href=\"$source_link\">view source</a>)</li>"
             } else {
-                puts $f "<li><a href=\"#$anchor_id\">$filename</a></li>"
+                puts $f "<li><a href=\"#$anchor_id\">[lint_project_escape_html $filename]</a></li>"
             }
         }
         puts $f "</ul>"
