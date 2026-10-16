@@ -884,8 +884,8 @@ proc lint_project_highlight_vhdl {line} {
 #
 # Each source line is an element with id L<n>, so the report's "#L<n>" links
 # scroll to it and :target highlights it, without JavaScript. Lines with a
-# diagnostic carry the class sev-<severity> of the most severe one (error
-# wins). The page loads nothing from the network (#2).
+# diagnostic carry the class sev-<severity> of the most severe one (error >
+# warning > info). The page loads nothing from the network (#2).
 #-----------------------------------------------------------------------------
 proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
     # Read source file
@@ -902,11 +902,16 @@ proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
     }
 
     # Build line-based diagnostic lookup for highlighting
+    # The most severe diagnostic of a line decides its class (error >
+    # warning > info), whatever order the diagnostics come in.
+    set rank {info 1 warning 2 error 3}
     array set diagLines {}
     foreach diag $diagnostics {
         set line [dict get $diag line]
         set sev [dict get $diag severity]
-        if {![info exists diagLines($line)] || $sev eq "error"} {
+        set sev_rank [expr {[dict exists $rank $sev] ? [dict get $rank $sev] : 0}]
+        if {![info exists diagLines($line)]
+                || $sev_rank > [dict get $rank $diagLines($line)]} {
             set diagLines($line) $sev
         }
     }

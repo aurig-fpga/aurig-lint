@@ -250,7 +250,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Arial, sans-serif` and `Consolas, "SF Mono", Menlo, monospace`), and the
   source viewer is plain HTML written by the runner: numbered lines with ids
   `L<n>`, so the report's `#L<n>` links and `:target` highlighting work
-  without JavaScript; lines with a diagnostic coloured by severity; VHDL
+  without JavaScript; each line with diagnostics coloured by the most severe
+  one; VHDL
   comments, literals and reserved words coloured. Links to
   `https://www.logimentor.com` remain links. The single-file CLI and runner
   reports, the `-export_rules` HTML and `rules_reference.html` already

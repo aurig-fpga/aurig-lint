@@ -31,6 +31,15 @@
 # without JavaScript, and lines with a diagnostic carry its severity as a
 # class. The [viewer] checks pin that.
 #
+# [severity] A source line with several diagnostics is coloured by the most
+# severe one (error > warning > info), whatever order they arrive in. Two
+# user-defined naming rules report the same signal, one as info and one as
+# warning; the project is linted twice with the severities swapped, so both
+# orders occur (the order is read from the report's table). Before the fix
+# the first diagnostic decided unless a later one was an error: info then
+# warning gave sev-info. Warning then info already gave sev-warning; that
+# check is a pin.
+#
 # Checks labelled [control] hold before and after the fix. The remote
 # resource checks of the runner's index.html and source viewer pages and the
 # [viewer] checks fail on the code before the fix; the remote resource checks
@@ -339,6 +348,57 @@ foreach {- target id} $links {
     }
 }
 check_eq "\[viewer\] every #L<n> link of the index has its line element" {} $dangling
+
+# ----------------------------------------------------------------------------
+# [severity] The most severe diagnostic colours the line, in either order
+# ----------------------------------------------------------------------------
+set sev_proj [file join $sandbox sev_proj]
+write_file [file join $sev_proj config project.yaml] \
+{schema_version: "1.0"
+project_name: severity_fixture
+project_root: ".."
+top: sev
+
+file_sets:
+  rtl:
+    - lib: work
+      vhdl_std: "2008"
+      src:
+        - src/*.vhd
+}
+# The signal is on line 4.
+write_file [file join $sev_proj src sev.vhd] \
+{entity sev is
+end entity sev;
+architecture rtl of sev is
+  signal data_sig : bit;
+begin
+end architecture rtl;
+}
+set orders {}
+foreach {case first second} {a info warning b warning info} {
+    set policy [file join $sandbox sev_policy_$case.json]
+    write_file $policy "{\"rules\": {\"sig_check_one\": {\"type\": \"naming\", \"scope\": \"signal\", \"pattern\": \"^never_\", \"severity\": \"$first\"}, \"sig_check_two\": {\"type\": \"naming\", \"scope\": \"signal\", \"pattern\": \"^never_\", \"severity\": \"$second\"}}}"
+    set sev_out [file join $out sev_$case]
+    lassign [run_tool $runner -project_root $sev_proj -policy $policy -outdir $sev_out -format html] rc o
+    # Order of the severities of line 4 in the report's full table.
+    set index_text [read_utf8 [file join $sev_out index.html]]
+    set details [string range $index_text [string first "Lint Diagnostics (" $index_text] end]
+    set order {}
+    foreach {- sev} [regexp -all -inline {<tr><td>4</td><td class="diag-[a-z]+">([a-z]+)</td>} $details] {
+        lappend order $sev
+    }
+    lappend orders $order
+    set viewer [lindex [glob -nocomplain -directory [file join $sev_out sources] *.html] 0]
+    set line_class ""
+    if {$viewer ne ""} {
+        regexp {<div class="([^"]*)" id="L4">} [read_utf8 $viewer] -> line_class
+    }
+    check_eq "\[severity\] [join $order { then }] on line 4: line class is sev-warning" \
+        "line sev-warning" $line_class
+}
+check_eq "\[control\] severity: both orders occurred" \
+    {{info warning} {warning info}} [lsort $orders]
 
 # ----------------------------------------------------------------------------
 # Cleanup and summary
