@@ -260,9 +260,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `a&copy;.vhd` or `e#f.vhd` used to give links to missing pages (the
   `&copy;` was decoded to (c), the `#` ended the path), and its name was
   shown decoded in the runner's "Files with Lint Issues" list. The
-  single-file reports' section ids keep only `A-Z a-z 0-9 _ -` (other
-  characters become `-XX`), so a `<` or a quote in a file name no longer
-  breaks the page.
+  single-file reports' section ids keep only `A-Z a-z 0-9` (every other
+  byte becomes `-XX`), so a `<` or a quote in a file name no longer breaks
+  the page, and paths that differ only by `.` and `_` (`src/a.b.vhd`,
+  `src/a_b.vhd`) get different ids.
 
 - `tools/run_lint_project_inprocess.tcl -format md` no longer crashes with
   `invalid command name "OK"` and exit 1 (#48). The `[OK] No files with lint

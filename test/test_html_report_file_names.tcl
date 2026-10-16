@@ -18,7 +18,14 @@
 # "<" or a quote in the name broke the tag.
 #
 # Now every file name or path in the HTML is escaped, the file name in a
-# link is percent-encoded, and section ids use only A-Z a-z 0-9 _ -. The project has files named "a&copy;.vhd",
+# link is percent-encoded, and section ids use only A-Z a-z 0-9 and -XX.
+#
+# [distinct ids] The section ids of the single-file report mapped "/", "\",
+# ":" and "." to "_" and kept "_", so src/a.b.vhd and src/a_b.vhd got the
+# same id and the sidebar link of one went to the other's section. An id now
+# keeps only A-Z a-z 0-9 and writes every other UTF-8 byte as -XX, so
+# different paths give different ids. Checked with the report generator
+# called directly on diagnostics of both files; fails before the fix. The project has files named "a&copy;.vhd",
 # "b<c>.vhd" (when the file system stores it as given), "c d.vhd",
 # "e#f.vhd" and "plain.vhd", each with a diagnostic. The pages are parsed
 # with tcllib's htmlparse, not searched as text:
@@ -127,14 +134,15 @@ proc parse_attributes {params} {
     return $attrs
 }
 
-# Parse an HTML text: dict with "tags" (list of {name attributes}) and
-# "text" (decoded text content, the text nodes joined by newlines).
+# Parse an HTML text: dict with "tags" (list of {name attributes text}, text
+# being the decoded text right after the opening tag) and "text" (decoded
+# text content, the text nodes joined by newlines).
 proc parse_html {html} {
     set ::parsed_tags {}
     set ::parsed_text {}
     ::htmlparse::parse -cmd [list apply {{tag slash params text} {
         if {$slash eq "" && $tag ne "hmstart"} {
-            lappend ::parsed_tags [list [string tolower $tag] [parse_attributes $params]]
+            lappend ::parsed_tags [list [string tolower $tag] [parse_attributes $params] [decode_refs $text]]
         }
         lappend ::parsed_text [decode_refs $text]
     }}] $html
@@ -204,7 +212,7 @@ proc dangling_links {page} {
 # [parser] The parsing used below
 # ----------------------------------------------------------------------------
 set sample [parse_html {<p class="x">a&amp;copy;.vhd &lt;b&gt;</p><a href="sources/x%20y.html#L3">v</a>}]
-check_eq "\[parser\] attribute decoded" {a {href sources/x%20y.html#L3}} \
+check_eq "\[parser\] attribute and text decoded" {a {href sources/x%20y.html#L3} v} \
     [lindex [dict get $sample tags] end]
 check_true "\[parser\] text decoded" {[string first {a&copy;.vhd <b>} [dict get $sample text]] >= 0}
 check_eq "\[parser\] percent-decoding" "a b#c&d\u00a9.html" [percent_decode {a%20b%23c%26d%C2%A9.html}]
@@ -330,6 +338,55 @@ foreach name $names {
         }
     }
 }
+
+# ----------------------------------------------------------------------------
+# [distinct ids] Paths that differ only by "." and "_" get their own sections
+# ----------------------------------------------------------------------------
+set ::auto_path [linsert $::auto_path 0 $repo_root]
+package require aurig::lint::report
+set ids_dir [file join $sandbox distinct_ids]
+set id_files [list [file join $ids_dir src a.b.vhd] [file join $ids_dir src a_b.vhd]]
+set id_diags {}
+foreach path $id_files {
+    write_file $path "entity e is\nend entity e;\n"
+    lappend id_diags [dict create rule_id signal_naming severity warning \
+        message "in [file tail $path]" file $path line 1 col 0 \
+        symbol_kind signal symbol_name e context_path ""]
+}
+set id_page [::aurig::lint::report::format_html $id_diags [lindex $id_files 0] \
+    [file join $ids_dir out]]
+set id_doc [parse_html [read_utf8 $id_page]]
+
+# Sections: id -> the file path its heading shows.
+set sections [dict create]
+set section_ids {}
+set tags [dict get $id_doc tags]
+foreach tag $tags {
+    lassign $tag name attrs text
+    if {$name eq "h2" && [dict exists $attrs id]} {
+        lappend section_ids [dict get $attrs id]
+        dict set sections [dict get $attrs id] [string trim $text]
+    }
+}
+check_eq "\[distinct ids\] two sections" 2 [llength $section_ids]
+check_eq "\[distinct ids\] the two section ids differ" 2 [llength [lsort -unique $section_ids]]
+
+# Each sidebar link reaches the section of its own file.
+set reached {}
+foreach tag $tags {
+    lassign $tag name attrs
+    if {$name ne "a" || ![dict exists $attrs href]} { continue }
+    set href [dict get $attrs href]
+    if {![string match #* $href]} { continue }
+    set id [percent_decode [string range $href 1 end]]
+    set target ""
+    if {[dict exists $sections $id]} {
+        set target [file tail [dict get $sections $id]]
+    }
+    lappend reached $target
+}
+check_eq "\[distinct ids\] each sidebar link reaches its own file's section" \
+    {a.b.vhd a_b.vhd} [lsort $reached]
 
 # ----------------------------------------------------------------------------
 # Cleanup and summary

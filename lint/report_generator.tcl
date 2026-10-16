@@ -47,14 +47,15 @@ proc ::aurig::lint::report::html_escape {text} {
     string map {& &amp; < &lt; > &gt; \" &quot; ' &#39;} $text
 }
 
-# Id of a file's section in the HTML report: the path with "/", "\\", ":"
-# and "." replaced by "_", and every other character outside A-Z a-z 0-9 _ -
-# written as -XX (its UTF-8 bytes in hex), so the id needs no escaping in an
-# id or href attribute and "#", "&" or quotes in a file name cannot break it.
+# Id of a file's section in the HTML report: the path with every character
+# outside A-Z a-z 0-9 written as -XX (each of its UTF-8 bytes in hex). The
+# mapping is injective, so different paths get different ids (src/a.b.vhd
+# and src/a_b.vhd used to share one), and the id needs no escaping in an id
+# or href attribute.
 proc ::aurig::lint::report::file_anchor {file} {
     set anchor ""
-    foreach byte [split [encoding convertto utf-8 [string map {/ _ \\ _ : _ . _} $file]] ""] {
-        if {[string match {[A-Za-z0-9_-]} $byte]} {
+    foreach byte [split [encoding convertto utf-8 $file] ""] {
+        if {[string match {[A-Za-z0-9]} $byte]} {
             append anchor $byte
         } else {
             append anchor [format -%02X [scan $byte %c]]
