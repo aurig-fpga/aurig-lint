@@ -22,8 +22,7 @@
 # boundary at the bottom of the file turns that code into the one process exit
 # (`exit [main ...]`), so there is no scattered `exit` and no script-scope
 # mutable state. The engine is loaded via `package require aurig::lint`
-# (which transitively pulls the parser stack) rather than by sourcing the whole
-# umbrella.
+# (which transitively pulls the parser stack from aurig::core).
 #=============================================================================
 
 # Repository-root anchors, captured at source time. [info script] MUST be read at

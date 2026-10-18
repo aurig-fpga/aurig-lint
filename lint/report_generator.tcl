@@ -4,14 +4,14 @@
 # VHDL Lint Report Generator
 # Generates enhanced reports with code excerpts in multiple formats
 
-# json is declared at SOURCE time here (not at an entry point, unlike the lint
-# ENGINE in lint.tcl) on purpose: aurig::lint::report is a json-needing LEAF that the
-# umbrella never loads -- only lint_cli.tcl sources it at runtime, and a bare
-# `package require aurig::lint::report` exists solely to use these report procs, all of
-# which need json. Declaring it upfront is the honest contract: requiring
-# aurig::lint::report on a tcllib-free interpreter fails fast and clearly. (The engine
-# differs: the umbrella loads lint.tcl for parser/project consumers that must
-# work without tcllib, so its json require lives at run/load_baseline instead.)
+# json is declared at SOURCE time here (not in the procs that need it, unlike
+# the lint ENGINE in lint.tcl) on purpose: aurig::lint::report is a json-needing
+# LEAF -- lint_cli.tcl and the tools/ runners source it at runtime, and a bare
+# `package require aurig::lint::report` exists solely to use these report procs,
+# all of which need json. Declaring it upfront is the honest contract: requiring
+# aurig::lint::report on a tcllib-free interpreter fails fast and clearly. (The
+# engine differs: `package require aurig::lint` alone does not need tcllib, so
+# its json requires live in the procs that parse JSON.)
 package require json
 
 namespace eval ::aurig::lint::report {
