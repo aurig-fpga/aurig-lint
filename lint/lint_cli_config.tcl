@@ -8,16 +8,6 @@
 # procs are defined at global scope to preserve the existing
 # `find_config_upward` API used by `lint_cli.tcl`.
 
-proc _lint_cli_reset_invocation_dir_cache {} {
-    # Reset hook for tests. The CLI normally runs once per process, so
-    # the cache is set up once and stays for the lifetime of the
-    # interpreter; the regression test exercises the resolver from
-    # both clean-cwd and corrupted-cwd states inside the same process
-    # and needs a way to discard the previous result between phases.
-    unset -nocomplain ::_lint_cli_invocation_dir
-    unset -nocomplain ::_lint_cli_invocation_dir_warned
-}
-
 proc _lint_cli_resolve_invocation_dir {} {
     # Return the user's invocation directory for project config
     # discovery, mitigating known cwd-corruption modes some launch

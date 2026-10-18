@@ -50,13 +50,6 @@ proc check_true {label cond} {
     }
 }
 
-proc write_file {path content} {
-    set fp [open $path w]
-    fconfigure $fp -translation lf
-    puts $fp $content
-    close $fp
-}
-
 set runner [file join $repo_root tools run_lint_project_inprocess.tcl]
 
 # ----------------------------------------------------------------------------

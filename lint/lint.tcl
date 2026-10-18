@@ -45,9 +45,6 @@ package require aurig::core
 namespace eval ::aurig::lint {
     variable version 0.1.0
 
-    # Always use manual JSON for baseline writing (json::write can cause tclIndex issues)
-    variable json_write_available 0
-
     # Loaded rules configuration
     variable rules_config {}
 
@@ -1601,10 +1598,6 @@ proc ::aurig::lint::rule::naming {symbols parse_result filename rule_id rule_con
                 # Skip - name contains semicolon or whitespace (invalid identifier)
                 continue
             }
-            if {[regexp -nocase {^is\s+} $name]} {
-                # Skip - name starts with "is " (from attribute statement parsing)
-                continue
-            }
 
             # LINT-RULES-DEBT-029: entity-suffix binding check for
             # architecture scope. When an entity_suffix_bindings dict is
@@ -2302,10 +2295,6 @@ proc ::aurig::lint::rule::naming_conventions_pack {symbols parse_result filename
         # Valid VHDL identifiers contain only letters, digits, and underscores.
         if {[regexp {[;\s]} $name]} {
             # Skip - name contains semicolon or whitespace (invalid identifier)
-            continue
-        }
-        if {[regexp -nocase {^is\s+} $name]} {
-            # Skip - name starts with "is " (from attribute statement parsing)
             continue
         }
 
@@ -3416,35 +3405,26 @@ proc ::aurig::lint::save_baseline {baseline_file diagnostics {base_dir ""}} {
         created_at [clock format [clock seconds] -format "%Y-%m-%d %H:%M:%S"] \
         fingerprints $fingerprints]
 
-    # Write to file
+    # Write to file (JSON built by hand)
     set file_handle [open $baseline_file w]
 
-    if {$::aurig::lint::json_write_available} {
-        # Use json::write if available
-        puts $file_handle [json::write::object \
-            schema_version [dict get $baseline_data schema_version] \
-            created_at [json::write::string [dict get $baseline_data created_at]] \
-            fingerprints [json::write::array {*}[lmap fp $fingerprints {json::write::string $fp}]]]
-    } else {
-        # Manual JSON construction
-        puts $file_handle "\{"
-        puts $file_handle "  \"schema_version\": [dict get $baseline_data schema_version],"
-        puts $file_handle "  \"created_at\": \"[dict get $baseline_data created_at]\","
-        puts $file_handle "  \"fingerprints\": \["
-        set fp_count [llength $fingerprints]
-        set fp_idx 0
-        foreach fp $fingerprints {
-            set escaped_fp [string map {\" \\\" \\ \\\\ \n \\n \r \\r \t \\t} $fp]
-            if {$fp_idx < $fp_count - 1} {
-                puts $file_handle "    \"$escaped_fp\","
-            } else {
-                puts $file_handle "    \"$escaped_fp\""
-            }
-            incr fp_idx
+    puts $file_handle "\{"
+    puts $file_handle "  \"schema_version\": [dict get $baseline_data schema_version],"
+    puts $file_handle "  \"created_at\": \"[dict get $baseline_data created_at]\","
+    puts $file_handle "  \"fingerprints\": \["
+    set fp_count [llength $fingerprints]
+    set fp_idx 0
+    foreach fp $fingerprints {
+        set escaped_fp [string map {\" \\\" \\ \\\\ \n \\n \r \\r \t \\t} $fp]
+        if {$fp_idx < $fp_count - 1} {
+            puts $file_handle "    \"$escaped_fp\","
+        } else {
+            puts $file_handle "    \"$escaped_fp\""
         }
-        puts $file_handle "  \]"
-        puts $file_handle "\}"
+        incr fp_idx
     }
+    puts $file_handle "  \]"
+    puts $file_handle "\}"
 
     close $file_handle
 }
