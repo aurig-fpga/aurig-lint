@@ -10,7 +10,8 @@
 # Assertions:
 #   1. The runner's exit code is exactly the one its status maps to:
 #      0 OK, 1 LINT_ISSUES, 2 TOOL_ERROR
-#   2. Status is OK or LINT_ISSUES for a valid file, never TOOL_ERROR
+#   2. Status is OK or LINT_ISSUES for a valid file and policy, never
+#      TOOL_ERROR; a malformed policy gives TOOL_ERROR
 #   3. Report file is generated
 # A missing fixture is a failure, not a skip.
 #=============================================================================
@@ -218,6 +219,34 @@ set stderr_text [dict get $run stderr]
 
 test_assert {$exit_code == 2} "Exit code is 2 (tool error) for an invalid file (got: $exit_code)"
 test_assert {[string match "*does not exist*" $stderr_text] || [string match "*not found*" $stderr_text]} "Error message mentions file not found"
+
+#-----------------------------------------------------------------------------
+# Test 5: Valid file, malformed policy (engine error -> final TOOL_ERROR exit)
+#-----------------------------------------------------------------------------
+# Test 4 exits during argument checks; this reaches the engine, which throws
+# on the bad policy, so the run ends in the exit-code switch's TOOL_ERROR arm.
+puts ""
+puts "========================================"
+puts "TEST 5: Malformed policy JSON"
+puts "========================================"
+
+set test5_file [file join $fixtures_dir "no_violations.vhd"]
+set test5_outdir [file join $test_outdir "test5"]
+set test5_policy [file join $test_outdir "malformed_policy.json"]
+set f [open $test5_policy w]
+puts $f "\{\"rules\": \{\"signal_naming\": \{\"enabled\": true,\}"
+close $f
+
+test_assert {[file exists $test5_file]} "Fixture exists: $test5_file"
+if {[file exists $test5_file]} {
+    set run [run_single test5 -file $test5_file -policy $test5_policy -format html -outdir $test5_outdir]
+    show_run $run 1
+    set exit_code [dict get $run exit_code]
+    set status_line [dict get $run status]
+
+    test_assert {$exit_code == 2} "Exit code is 2 (TOOL_ERROR) for a malformed policy (got: $exit_code)"
+    test_assert {$status_line eq "TOOL_ERROR"} "Status is TOOL_ERROR (got: $status_line)"
+}
 
 #-----------------------------------------------------------------------------
 # Summary
