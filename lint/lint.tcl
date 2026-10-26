@@ -3631,6 +3631,13 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
                 continue
             }
 
+            # A process with a wait statement (wait for, wait until, wait on
+            # or a bare wait;) is not combinational logic, skip latch
+            # detection (#57)
+            if {[regexp -nocase {\mwait\M\s*(for\M|until\M|on\M|;)} $body]} {
+                continue
+            }
+
             # Check if process has any conditionals
             if {![regexp -nocase {\m(if|case)\M} $body]} {
                 # No conditionals, no risk of latches

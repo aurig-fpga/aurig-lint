@@ -222,6 +222,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `forbid_latch_inference` does not analyse a process that contains a wait
+  statement (`wait for`, `wait until`, `wait on` or `wait;`), as it does not
+  analyse a clocked process (#57). Such a process is not combinational
+  logic, but a testbench clock generator driven by `wait for` was reported
+  as a latch, and so was a process starting with `wait until clk = '1';`.
+
 - `require_meaningful_comments` with `"instantiations_required": true`
   reports an instantiation without a comment on one of the two lines above
   it (#20). The rule read the instantiations from a parse-result key that
