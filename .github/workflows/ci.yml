@@ -79,6 +79,7 @@ jobs:
             test/test_report_encoding.tcl
             test/test_html_reports_offline.tcl
             test/test_html_report_file_names.tcl
+            test/smoke/test_run_lint_single_file.tcl
           )
           for t in "${tests[@]}"; do
             echo "==================== $t ===================="

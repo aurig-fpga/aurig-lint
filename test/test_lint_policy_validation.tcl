@@ -77,28 +77,7 @@ set repo_root [file dirname $script_anchor]
 
 set ::pass_count 0
 set ::fail_count 0
-
-proc check_eq {label expected actual} {
-    if {$expected eq $actual} {
-        puts "PASS: $label"
-        incr ::pass_count
-    } else {
-        puts "FAIL: $label"
-        puts "  expected: <$expected>"
-        puts "  actual:   <$actual>"
-        incr ::fail_count
-    }
-}
-
-proc check_true {label cond} {
-    if {[uplevel 1 [list expr $cond]]} {
-        puts "PASS: $label"
-        incr ::pass_count
-    } else {
-        puts "FAIL: $label"
-        incr ::fail_count
-    }
-}
+source [file join $script_anchor helpers.tcl]
 
 # Write text as exact UTF-8 bytes, prefixed by $prefix_bytes (a byte
 # string such as a BOM).
@@ -107,31 +86,6 @@ proc write_utf8_bytes {path content {prefix_bytes ""}} {
     set fp [open $path wb]
     puts -nonewline $fp $prefix_bytes[encoding convertto utf-8 $content]
     close $fp
-}
-
-proc write_file {path content} {
-    file mkdir [file dirname $path]
-    set fp [open $path w]
-    fconfigure $fp -translation lf
-    puts -nonewline $fp $content
-    close $fp
-}
-
-# Run a script as a subprocess with stdout+stderr merged; return
-# [list rc output]. Tcl exec raises on non-zero exit; recover the real
-# CHILDSTATUS rc from the catch options dict.
-proc run_tool {script args} {
-    set rc 0
-    if {[catch {exec [info nameofexecutable] $script {*}$args 2>@1} out opts]} {
-        set rc -1
-        if {[dict exists $opts -errorcode]} {
-            set ec [dict get $opts -errorcode]
-            if {[lindex $ec 0] eq "CHILDSTATUS"} {
-                set rc [lindex $ec 2]
-            }
-        }
-    }
-    return [list $rc $out]
 }
 
 set cli    [file join $repo_root lint lint_cli.tcl]

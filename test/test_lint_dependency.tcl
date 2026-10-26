@@ -15,7 +15,8 @@
 #             a real diagnostics structure (a signal_naming warning).
 #
 #   NEGATIVE  auto_path = [aurig-lint root] + parent auto_path with every
-#             aurig-core entry stripped: `package require
+#             entry that provides aurig::core stripped (found by what the
+#             entry holds, whatever the checkout's folder name): `package require
 #             aurig::lint` must FAIL with a can't-find-package error naming
 #             aurig::core -- proving the dependency is external and unbundled.
 #
@@ -43,22 +44,49 @@ proc ok {label cond} {
     }
 }
 
+# Does this auto_path entry provide aurig::core? Asked of a child interpreter
+# whose auto_path is the entry alone: a failed require makes the package
+# loader read every pkgIndex.tcl the entry exposes (its own and those one
+# directory down), after which aurig::core is known if one of them declares
+# it. The answer depends on what the entry holds, not on its folder name.
+# tclPkgUnknown is loaded while the default auto_path still reaches the Tcl
+# library, and made the only handler, so Tcl modules are not consulted.
+proc provides_core {dir} {
+    set probe [interp create]
+    $probe eval {
+        auto_load tclPkgUnknown
+        package unknown tclPkgUnknown
+    }
+    $probe eval [list set ::auto_path [list $dir]]
+    $probe eval {catch {package require aurig::lint::no_such_package}}
+    set found [expr {[llength [$probe eval {package versions aurig::core}]] > 0}]
+    interp delete $probe
+    return $found
+}
+
 # ---------------------------------------------------------------------------
 # Two views of the parent auto_path:
 #   with_core  : parent path verbatim (minus the lint root, which we prepend) --
 #                carries aurig-core (via TCLLIBPATH) and tcllib for the engine.
-#   strip_core : parent path with every aurig-core entry removed --
+#   strip_core : parent path without the entries that provide aurig::core --
 #                tcllib stays reachable; core is gone.
 # ---------------------------------------------------------------------------
 set with_core {}
 set strip_core {}
+set core_providers {}
 foreach p $::auto_path {
     set np [file normalize $p]
     if {$np eq $lint_root_n} continue
     lappend with_core $p
-    if {[string match -nocase *aurig-core* $np]} continue
+    if {[provides_core $p]} {
+        lappend core_providers $p
+        continue
+    }
     lappend strip_core $p
 }
+
+ok "SETUP: an auto_path entry provides aurig::core (found: $core_providers)" \
+    {[llength $core_providers] > 0}
 
 # ---------------------------------------------------------------------------
 # POSITIVE leg

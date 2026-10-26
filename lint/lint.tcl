@@ -31,22 +31,19 @@
 package require Tcl 8.6
 
 # Explicit dependency on the parser stack. The engine calls
-# ::aurig::core::analyze::vhdlscan; requiring the core package guarantees it is
-# loaded without relying on the umbrella (init.tcl) sourcing analyze/* first.
+# ::aurig::core::analyze::vhdlscan, which the aurig::core package (an
+# external dependency, found on ::auto_path) loads.
 package require aurig::core
 
 # json is a hard dependency of the lint ENGINE: rule metadata, user policy, and
-# baseline files are parsed via ::json::json2dict. It is declared at the engine
-# entry points (run / load_baseline) rather than here at source time, so a
-# tcllib-less interpreter that only loads the umbrella for the parser /
-# project-file features is not forced to carry tcllib. Linting itself fails
-# fast with a clear "can't find package json" the moment it is invoked.
+# baseline files are parsed via ::json::json2dict. It is declared in the procs
+# that parse them (run, load_metadata, load_policy, load_baseline) rather than
+# here at source time, so `package require aurig::lint` itself does not need
+# tcllib. Linting fails fast with a clear "can't find package json" the moment
+# it is invoked.
 
 namespace eval ::aurig::lint {
     variable version 0.1.0
-
-    # Always use manual JSON for baseline writing (json::write can cause tclIndex issues)
-    variable json_write_available 0
 
     # Loaded rules configuration
     variable rules_config {}
@@ -1258,10 +1255,9 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
             # Extract declarations at package level. Mirrors the
             # architecture-side walk above (no filtering): emits one
             # symbol per kind the parser exposes in pkg.declarations —
-            # constant, signal, function, procedure, plus variable
-            # (VHDL "shared variable" is legal at package level) — with
-            # context_path=pkg:<pkg_name>. Type declarations are out of
-            # scope here; tracked under LINT-PARSER-DEBT-022.
+            # constant, signal, function, procedure, type, subtype, plus
+            # variable (VHDL "shared variable" is legal at package level)
+            # — with context_path=pkg:<pkg_name>.
             if {[dict exists $pkg declarations]} {
                 foreach decl [dict get $pkg declarations] {
                     set decl_kind [dict_get_default $decl kind ""]
@@ -1316,7 +1312,7 @@ proc ::aurig::lint::build_symbol_list {parse_result filename} {
     # of a function or procedure sitting in a package body surface as
     # `scope=variable` / `scope=constant` symbols with
     # `context_path = pkg_body:<pkg_name>/{function|procedure}:<name>`,
-    # mirroring the architecture-side walk at L347 above.
+    # mirroring the walk of architecture declarations above.
     if {[dict exists $parse_result package_bodies]} {
         foreach pkg_body [dict get $parse_result package_bodies] {
             set pb_name [dict get $pkg_body name]
@@ -1599,10 +1595,6 @@ proc ::aurig::lint::rule::naming {symbols parse_result filename rule_id rule_con
             # Valid VHDL identifiers contain only letters, digits, and underscores.
             if {[regexp {[;\s]} $name]} {
                 # Skip - name contains semicolon or whitespace (invalid identifier)
-                continue
-            }
-            if {[regexp -nocase {^is\s+} $name]} {
-                # Skip - name starts with "is " (from attribute statement parsing)
                 continue
             }
 
@@ -2302,10 +2294,6 @@ proc ::aurig::lint::rule::naming_conventions_pack {symbols parse_result filename
         # Valid VHDL identifiers contain only letters, digits, and underscores.
         if {[regexp {[;\s]} $name]} {
             # Skip - name contains semicolon or whitespace (invalid identifier)
-            continue
-        }
-        if {[regexp -nocase {^is\s+} $name]} {
-            # Skip - name starts with "is " (from attribute statement parsing)
             continue
         }
 
@@ -3416,35 +3404,26 @@ proc ::aurig::lint::save_baseline {baseline_file diagnostics {base_dir ""}} {
         created_at [clock format [clock seconds] -format "%Y-%m-%d %H:%M:%S"] \
         fingerprints $fingerprints]
 
-    # Write to file
+    # Write to file (JSON built by hand)
     set file_handle [open $baseline_file w]
 
-    if {$::aurig::lint::json_write_available} {
-        # Use json::write if available
-        puts $file_handle [json::write::object \
-            schema_version [dict get $baseline_data schema_version] \
-            created_at [json::write::string [dict get $baseline_data created_at]] \
-            fingerprints [json::write::array {*}[lmap fp $fingerprints {json::write::string $fp}]]]
-    } else {
-        # Manual JSON construction
-        puts $file_handle "\{"
-        puts $file_handle "  \"schema_version\": [dict get $baseline_data schema_version],"
-        puts $file_handle "  \"created_at\": \"[dict get $baseline_data created_at]\","
-        puts $file_handle "  \"fingerprints\": \["
-        set fp_count [llength $fingerprints]
-        set fp_idx 0
-        foreach fp $fingerprints {
-            set escaped_fp [string map {\" \\\" \\ \\\\ \n \\n \r \\r \t \\t} $fp]
-            if {$fp_idx < $fp_count - 1} {
-                puts $file_handle "    \"$escaped_fp\","
-            } else {
-                puts $file_handle "    \"$escaped_fp\""
-            }
-            incr fp_idx
+    puts $file_handle "\{"
+    puts $file_handle "  \"schema_version\": [dict get $baseline_data schema_version],"
+    puts $file_handle "  \"created_at\": \"[dict get $baseline_data created_at]\","
+    puts $file_handle "  \"fingerprints\": \["
+    set fp_count [llength $fingerprints]
+    set fp_idx 0
+    foreach fp $fingerprints {
+        set escaped_fp [string map {\" \\\" \\ \\\\ \n \\n \r \\r \t \\t} $fp]
+        if {$fp_idx < $fp_count - 1} {
+            puts $file_handle "    \"$escaped_fp\","
+        } else {
+            puts $file_handle "    \"$escaped_fp\""
         }
-        puts $file_handle "  \]"
-        puts $file_handle "\}"
+        incr fp_idx
     }
+    puts $file_handle "  \]"
+    puts $file_handle "\}"
 
     close $file_handle
 }

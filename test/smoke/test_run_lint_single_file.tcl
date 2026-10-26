@@ -8,9 +8,12 @@
 # Purpose: Verify that the single-file lint runner works correctly.
 #
 # Assertions:
-#   1. Script exits cleanly (exit code 0 or 1, NOT 2)
-#   2. Status is OK or LINT_ISSUES, NOT TOOL_ERROR
+#   1. The runner's exit code is exactly the one its status maps to:
+#      0 OK, 1 LINT_ISSUES, 2 TOOL_ERROR
+#   2. Status is OK or LINT_ISSUES for a valid file and policy, never
+#      TOOL_ERROR; a malformed policy gives TOOL_ERROR
 #   3. Report file is generated
+# A missing fixture is a failure, not a skip.
 #=============================================================================
 
 # aurig-lint carve: self-anchor (test/smoke/ -> grandparent is the repo root).
@@ -21,6 +24,7 @@ set script_dir [file dirname [file normalize [info script]]]
 set root_dir [file dirname [file dirname $script_dir]]
 set tools_dir [file join $root_dir tools]
 set fixtures_dir [file join $root_dir test lint fixtures]
+set run_script [file join $tools_dir run_lint_single_file.tcl]
 
 # Test output directory
 set test_outdir [file join $script_dir ".test_single_file_output"]
@@ -29,6 +33,7 @@ set test_outdir [file join $script_dir ".test_single_file_output"]
 if {[file exists $test_outdir]} {
     file delete -force $test_outdir
 }
+file mkdir $test_outdir
 
 #-----------------------------------------------------------------------------
 # Test Helper Procs
@@ -44,10 +49,10 @@ proc test_assert {condition description} {
     set result [uplevel 1 [list expr $condition]]
     if {$result} {
         incr pass_count
-        puts "  \u2713 $description"
+        puts "  ✓ $description"
     } else {
         incr fail_count
-        puts "  \u2717 FAIL: $description"
+        puts "  ✗ FAIL: $description"
     }
 }
 
@@ -67,40 +72,28 @@ proc test_summary {} {
     }
 }
 
-#-----------------------------------------------------------------------------
-# Test 1: Run on a fixture file that should produce lint diagnostics
-#-----------------------------------------------------------------------------
-puts "========================================"
-puts "TEST 1: Lint a file with expected violations"
-puts "========================================"
-
-set test1_file [file join $fixtures_dir "ports_missing_comments.vhd"]
-set test1_outdir [file join $test_outdir "test1"]
-
-if {![file exists $test1_file]} {
-    puts "SKIP: Test fixture not found: $test1_file"
-    puts "Trying alternate fixture..."
-    set test1_file [file join $fixtures_dir "naming_violations.vhd"]
-}
-
-if {[file exists $test1_file]} {
-    puts "Using fixture: $test1_file"
-
-    # Run the single-file linter
-    set run_script [file join $tools_dir run_lint_single_file.tcl]
-    set cmd [list [info nameofexecutable] $run_script -file $test1_file -format html -outdir $test1_outdir]
-
+# Run the single-file runner with the given arguments. Returns a dict with
+# exit_code (the child's own exit code, taken from CHILDSTATUS; -1 if it did
+# not exit normally), stdout, stderr and status (the "Status:" line, or "").
+proc run_single {name args} {
+    set cmd [list [info nameofexecutable] $::run_script {*}$args]
     puts "Command: $cmd"
     puts ""
 
-    # Execute and capture result
-    set stdout_temp [file join $test_outdir ".test1_stdout.tmp"]
-    set stderr_temp [file join $test_outdir ".test1_stderr.tmp"]
-    file mkdir $test_outdir
+    set stdout_temp [file join $::test_outdir ".${name}_stdout.tmp"]
+    set stderr_temp [file join $::test_outdir ".${name}_stderr.tmp"]
 
-    set exit_code [catch {exec {*}$cmd > $stdout_temp 2> $stderr_temp} exec_result]
+    set exit_code 0
+    if {[catch {exec {*}$cmd > $stdout_temp 2> $stderr_temp} exec_result opts]} {
+        set exit_code -1
+        set ec [dict get $opts -errorcode]
+        if {[lindex $ec 0] eq "CHILDSTATUS"} {
+            set exit_code [lindex $ec 2]
+        } else {
+            puts "exec failed: $exec_result"
+        }
+    }
 
-    # Read output
     set stdout_text ""
     set stderr_text ""
     if {[file exists $stdout_temp]} {
@@ -114,45 +107,54 @@ if {[file exists $test1_file]} {
         close $f
     }
 
-    puts "Exit code: $exit_code"
-    puts "Stdout:"
-    puts $stdout_text
-    if {$stderr_text ne ""} {
-        puts "Stderr:"
-        puts $stderr_text
-    }
-    puts ""
-
-    # Check assertions
-    # Exit code: catch returns 1 if command returned non-zero, but we need to parse output
-    # to determine if it was TOOL_ERROR (exit 2) vs LINT_ISSUES (exit 1)
-
-    # Look for Status: in output
-    set status_line ""
+    set status ""
     foreach line [split $stdout_text \n] {
         if {[string match "Status:*" $line]} {
-            set status_line [string trim [string range $line 7 end]]
+            set status [string trim [string range $line 7 end]]
             break
         }
     }
 
-    # Check for report file
-    set report_exists [file exists [file join $test1_outdir "index.html"]]
+    return [dict create exit_code $exit_code stdout $stdout_text \
+        stderr $stderr_text status $status]
+}
 
-    test_assert {$status_line ne "TOOL_ERROR"} "Status is not TOOL_ERROR (got: $status_line)"
-    test_assert {$status_line in {OK LINT_ISSUES}} "Status is OK or LINT_ISSUES (got: $status_line)"
-    test_assert {$report_exists} "Report file exists at $test1_outdir/index.html"
-
-    # If TOOL_ERROR, show details
-    if {$status_line eq "TOOL_ERROR"} {
-        puts ""
-        puts "TOOL ERROR DETECTED - Full output:"
-        puts "=================================="
-        puts $stdout_text
-        puts $stderr_text
+proc show_run {run {truncate 0}} {
+    puts "Exit code: [dict get $run exit_code]"
+    if {$truncate} {
+        puts "Stdout (truncated):"
+        puts [string range [dict get $run stdout] 0 500]
+    } else {
+        puts "Stdout:"
+        puts [dict get $run stdout]
     }
-} else {
-    puts "SKIP: No test fixture found"
+    if {[dict get $run stderr] ne ""} {
+        puts "Stderr:"
+        puts [dict get $run stderr]
+    }
+    puts ""
+}
+
+#-----------------------------------------------------------------------------
+# Test 1: Run on a fixture file that should produce lint diagnostics
+#-----------------------------------------------------------------------------
+puts "========================================"
+puts "TEST 1: Lint a file with expected violations"
+puts "========================================"
+
+set test1_file [file join $fixtures_dir "naming_violations.vhd"]
+set test1_outdir [file join $test_outdir "test1"]
+
+test_assert {[file exists $test1_file]} "Fixture exists: $test1_file"
+if {[file exists $test1_file]} {
+    set run [run_single test1 -file $test1_file -format html -outdir $test1_outdir]
+    show_run $run
+    set exit_code [dict get $run exit_code]
+    set status_line [dict get $run status]
+
+    test_assert {$exit_code == 1} "Exit code is 1 (LINT_ISSUES) (got: $exit_code)"
+    test_assert {$status_line eq "LINT_ISSUES"} "Status is LINT_ISSUES (got: $status_line)"
+    test_assert {[file exists [file join $test1_outdir index.html]]} "Report file exists at $test1_outdir/index.html"
 }
 
 #-----------------------------------------------------------------------------
@@ -166,47 +168,17 @@ puts "========================================"
 set test2_file [file join $fixtures_dir "no_violations.vhd"]
 set test2_outdir [file join $test_outdir "test2"]
 
+test_assert {[file exists $test2_file]} "Fixture exists: $test2_file"
 if {[file exists $test2_file]} {
-    puts "Using fixture: $test2_file"
+    set run [run_single test2 -file $test2_file -format html -outdir $test2_outdir]
+    show_run $run
+    set exit_code [dict get $run exit_code]
+    set status_line [dict get $run status]
 
-    set run_script [file join $tools_dir run_lint_single_file.tcl]
-    set cmd [list [info nameofexecutable] $run_script -file $test2_file -format html -outdir $test2_outdir]
-
-    puts "Command: $cmd"
-    puts ""
-
-    set stdout_temp [file join $test_outdir ".test2_stdout.tmp"]
-    set stderr_temp [file join $test_outdir ".test2_stderr.tmp"]
-
-    set exit_code [catch {exec {*}$cmd > $stdout_temp 2> $stderr_temp} exec_result]
-
-    set stdout_text ""
-    if {[file exists $stdout_temp]} {
-        set f [open $stdout_temp r]
-        set stdout_text [read $f]
-        close $f
-    }
-
-    puts "Exit code: $exit_code"
-    puts "Stdout:"
-    puts $stdout_text
-    puts ""
-
-    # Parse status
-    set status_line ""
-    foreach line [split $stdout_text \n] {
-        if {[string match "Status:*" $line]} {
-            set status_line [string trim [string range $line 7 end]]
-            break
-        }
-    }
-
-    set report_exists [file exists [file join $test2_outdir "index.html"]]
-
-    test_assert {$status_line ne "TOOL_ERROR"} "Status is not TOOL_ERROR (got: $status_line)"
-    test_assert {$report_exists} "Report file exists at $test2_outdir/index.html"
-} else {
-    puts "SKIP: no_violations.vhd not found"
+    test_assert {$exit_code == 0} "Exit code is 0 (OK) (got: $exit_code)"
+    test_assert {$status_line eq "OK"} "Status is OK (got: $status_line)"
+    test_assert {[string match "*Diagnostics count: 0*" [dict get $run stdout]]} "No diagnostics reported"
+    test_assert {[file exists [file join $test2_outdir index.html]]} "Report file exists at $test2_outdir/index.html"
 }
 
 #-----------------------------------------------------------------------------
@@ -217,52 +189,19 @@ puts "========================================"
 puts "TEST 3: Markdown output format"
 puts "========================================"
 
-set test3_file [file join $fixtures_dir "ports_missing_comments.vhd"]
-if {![file exists $test3_file]} {
-    set test3_file [file join $fixtures_dir "naming_violations.vhd"]
-}
+set test3_file [file join $fixtures_dir "naming_violations.vhd"]
 set test3_outdir [file join $test_outdir "test3"]
 
+test_assert {[file exists $test3_file]} "Fixture exists: $test3_file"
 if {[file exists $test3_file]} {
-    puts "Using fixture: $test3_file"
+    set run [run_single test3 -file $test3_file -format md -outdir $test3_outdir]
+    show_run $run 1
+    set exit_code [dict get $run exit_code]
+    set status_line [dict get $run status]
 
-    set run_script [file join $tools_dir run_lint_single_file.tcl]
-    set cmd [list [info nameofexecutable] $run_script -file $test3_file -format md -outdir $test3_outdir]
-
-    puts "Command: $cmd"
-    puts ""
-
-    set stdout_temp [file join $test_outdir ".test3_stdout.tmp"]
-    set stderr_temp [file join $test_outdir ".test3_stderr.tmp"]
-
-    set exit_code [catch {exec {*}$cmd > $stdout_temp 2> $stderr_temp} exec_result]
-
-    set stdout_text ""
-    if {[file exists $stdout_temp]} {
-        set f [open $stdout_temp r]
-        set stdout_text [read $f]
-        close $f
-    }
-
-    puts "Stdout (truncated):"
-    puts [string range $stdout_text 0 500]
-    puts ""
-
-    # Parse status
-    set status_line ""
-    foreach line [split $stdout_text \n] {
-        if {[string match "Status:*" $line]} {
-            set status_line [string trim [string range $line 7 end]]
-            break
-        }
-    }
-
-    set md_report_exists [file exists [file join $test3_outdir "lint_report.md"]]
-
-    test_assert {$status_line ne "TOOL_ERROR"} "Status is not TOOL_ERROR (got: $status_line)"
-    test_assert {$md_report_exists} "Markdown report exists at $test3_outdir/lint_report.md"
-} else {
-    puts "SKIP: Test fixture not found"
+    test_assert {$exit_code == 1} "Exit code is 1 (LINT_ISSUES) (got: $exit_code)"
+    test_assert {$status_line eq "LINT_ISSUES"} "Status is LINT_ISSUES (got: $status_line)"
+    test_assert {[file exists [file join $test3_outdir lint_report.md]]} "Markdown report exists at $test3_outdir/lint_report.md"
 }
 
 #-----------------------------------------------------------------------------
@@ -274,26 +213,40 @@ puts "TEST 4: Invalid file path handling"
 puts "========================================"
 
 set test4_outdir [file join $test_outdir "test4"]
-set run_script [file join $tools_dir run_lint_single_file.tcl]
-set cmd [list [info nameofexecutable] $run_script -file "nonexistent_file_xyz.vhd" -format html -outdir $test4_outdir]
+set run [run_single test4 -file "nonexistent_file_xyz.vhd" -format html -outdir $test4_outdir]
+set exit_code [dict get $run exit_code]
+set stderr_text [dict get $run stderr]
 
-puts "Command: $cmd"
-
-set stdout_temp [file join $test_outdir ".test4_stdout.tmp"]
-set stderr_temp [file join $test_outdir ".test4_stderr.tmp"]
-
-set exit_code [catch {exec {*}$cmd > $stdout_temp 2> $stderr_temp} exec_result]
-
-set stderr_text ""
-if {[file exists $stderr_temp]} {
-    set f [open $stderr_temp r]
-    set stderr_text [read $f]
-    close $f
-}
-
-# Should exit with error (catch returns 1), and stderr should mention file not found
-test_assert {$exit_code == 1} "Script returns non-zero for invalid file"
+test_assert {$exit_code == 2} "Exit code is 2 (tool error) for an invalid file (got: $exit_code)"
 test_assert {[string match "*does not exist*" $stderr_text] || [string match "*not found*" $stderr_text]} "Error message mentions file not found"
+
+#-----------------------------------------------------------------------------
+# Test 5: Valid file, malformed policy (engine error -> final TOOL_ERROR exit)
+#-----------------------------------------------------------------------------
+# Test 4 exits during argument checks; this reaches the engine, which throws
+# on the bad policy, so the run ends in the exit-code switch's TOOL_ERROR arm.
+puts ""
+puts "========================================"
+puts "TEST 5: Malformed policy JSON"
+puts "========================================"
+
+set test5_file [file join $fixtures_dir "no_violations.vhd"]
+set test5_outdir [file join $test_outdir "test5"]
+set test5_policy [file join $test_outdir "malformed_policy.json"]
+set f [open $test5_policy w]
+puts $f "\{\"rules\": \{\"signal_naming\": \{\"enabled\": true,\}"
+close $f
+
+test_assert {[file exists $test5_file]} "Fixture exists: $test5_file"
+if {[file exists $test5_file]} {
+    set run [run_single test5 -file $test5_file -policy $test5_policy -format html -outdir $test5_outdir]
+    show_run $run 1
+    set exit_code [dict get $run exit_code]
+    set status_line [dict get $run status]
+
+    test_assert {$exit_code == 2} "Exit code is 2 (TOOL_ERROR) for a malformed policy (got: $exit_code)"
+    test_assert {$status_line eq "TOOL_ERROR"} "Status is TOOL_ERROR (got: $status_line)"
+}
 
 #-----------------------------------------------------------------------------
 # Summary
