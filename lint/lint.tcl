@@ -56,6 +56,24 @@ namespace eval ::aurig::lint {
     variable file_cache
     array set file_cache {}
 
+    # Options with a fixed set of values: rule type -> option -> allowed
+    # values. The policy validator checks a policy against this list
+    # (_policy_entry_problems) and the handlers read these options through
+    # rule::_option_value, so both use the same values.
+    variable option_values {
+        keyword_case {
+            case {lowercase uppercase}
+        }
+        require_reset_in_clocked_process {
+            reset_policy {either sync async}
+        }
+        require_meaningful_comments {
+            header_keywords_mode   {any all}
+            ports_comment_style    {inline block either}
+            generics_comment_style {inline block either}
+        }
+    }
+
     namespace export run
 }
 
@@ -392,6 +410,8 @@ proc ::aurig::lint::policy_problem_line {policy_file problem} {
 #     on architecture_naming but read by every naming rule with scope
 #     "architecture");
 #   - "severity" must be the string error, warning or info;
+#   - an option with a fixed set of values (option_values) must be one of
+#     them, as a string (also in an override);
 #   - "overrides" is checked by _validate_policy_overrides;
 #   - keys starting with "_" are comments and are ignored at the top level,
 #     inside "rules", inside a rule entry and inside an override entry.
@@ -473,6 +493,15 @@ proc ::aurig::lint::validate_policy {policy metadata} {
         dict set allowed_by_rule $rule_id [lsort -unique [concat $common_keys $allowed]]
     }
 
+    # Type of every rule an override may name, for the options with a fixed
+    # set of values: built-in rules here, user-defined ones below.
+    set type_by_rule [dict create]
+    dict for {rule_id rule_meta} $builtin_rules {
+        if {[dict exists $rule_meta type]} {
+            dict set type_by_rule $rule_id [dict get $rule_meta type]
+        }
+    }
+
     dict for {rule_id typed_entry} $policy_rules {
         if {[string index $rule_id 0] eq "_"} {
             continue
@@ -517,6 +546,7 @@ proc ::aurig::lint::validate_policy {policy metadata} {
         } else {
             set allowed [lsort -unique [concat $common_keys [dict get $keys_by_type $given_type]]]
             dict set allowed_by_rule $rule_id $allowed
+            dict set type_by_rule $rule_id $given_type
             if {$given_type eq "naming"} {
                 lappend naming_rules $rule_id
                 foreach required {scope pattern} {
@@ -527,7 +557,8 @@ proc ::aurig::lint::validate_policy {policy metadata} {
             }
         }
 
-        lappend problems {*}[_policy_entry_problems $where $entry $allowed]
+        set rule_type [expr {[dict exists $type_by_rule $rule_id] ? [dict get $type_by_rule $rule_id] : ""}]
+        lappend problems {*}[_policy_entry_problems $where $entry $allowed $rule_type]
         if {$rule_id in $naming_rules} {
             lappend problems {*}[_naming_scope_problems $where $entry]
         }
@@ -535,21 +566,51 @@ proc ::aurig::lint::validate_policy {policy metadata} {
 
     if {[dict exists $top overrides]} {
         lappend problems {*}[_validate_policy_overrides \
-            [dict get $top overrides] $allowed_by_rule $naming_rules]
+            [dict get $top overrides] $allowed_by_rule $naming_rules $type_by_rule]
     }
 
     return $problems
 }
 
-# Option and severity problems of one rule entry (top level or override).
+# Options with a fixed set of values of a rule type (from option_values).
 #
 # Arguments:
-#   where   : Prefix naming the entry, e.g. rule "x" or overrides[0] rule "x"
-#   entry   : Typed members of the entry (an object's member dict)
-#   allowed : Sorted list of supported options, or "" to skip that check
+#   rule_type : Rule type, e.g. keyword_case
+#
+# Returns: Dict option -> list of allowed values, empty when the type has no
+#          such option
+proc ::aurig::lint::option_values {rule_type} {
+    variable option_values
+    if {[dict exists $option_values $rule_type]} {
+        return [dict get $option_values $rule_type]
+    }
+    return {}
+}
+
+# A typed policy value as written in a problem line: a string quoted with
+# _policy_quote, a number, boolean or null as is, "an array" or "an object".
+proc ::aurig::lint::_policy_value_text {kind value} {
+    switch -exact -- $kind {
+        string  { return "\"[_policy_quote $value]\"" }
+        null    { return null }
+        array   { return "an array" }
+        object  { return "an object" }
+        default { return $value }
+    }
+}
+
+# Option, severity and option-value problems of one rule entry (top level or
+# override).
+#
+# Arguments:
+#   where     : Prefix naming the entry, e.g. rule "x" or overrides[0] rule "x"
+#   entry     : Typed members of the entry (an object's member dict)
+#   allowed   : Sorted list of supported options, or "" to skip that check
+#   rule_type : Rule type, for the options with a fixed set of values
+#               (option_values); "" skips that check
 #
 # Returns: List of problem strings
-proc ::aurig::lint::_policy_entry_problems {where entry allowed} {
+proc ::aurig::lint::_policy_entry_problems {where entry allowed {rule_type ""}} {
     set problems {}
     if {$allowed ne ""} {
         foreach key [dict keys $entry] {
@@ -563,6 +624,15 @@ proc ::aurig::lint::_policy_entry_problems {where entry allowed} {
         lassign [dict get $entry severity] kind severity
         if {$kind ne "string" || $severity ni {error warning info}} {
             lappend problems "$where: invalid severity \"[_policy_quote $severity]\" (must be the string error, warning or info)"
+        }
+    }
+    dict for {option values} [option_values $rule_type] {
+        if {![dict exists $entry $option]} {
+            continue
+        }
+        lassign [dict get $entry $option] kind value
+        if {$kind ne "string" || $value ni $values} {
+            lappend problems "$where: invalid value [_policy_value_text $kind $value] for option \"$option\" (allowed: [join $values {, }])"
         }
     }
     return $problems
@@ -602,8 +672,8 @@ proc ::aurig::lint::_naming_scope_problems {where entry} {
 #   - "rules" is an object of rule entries, each an object; a rule id must be
 #     a built-in rule or a rule of the top-level "rules"; "type" is not
 #     allowed (an override cannot turn a rule into another kind of rule);
-#     options, severity and the scope of a naming rule are checked as for
-#     the top-level entry.
+#     options, severity, option values and the scope of a naming rule are
+#     checked as for the top-level entry.
 # Entries are named by their 0-based position: overrides[0], overrides[1]...
 #
 # Arguments:
@@ -611,9 +681,11 @@ proc ::aurig::lint::_naming_scope_problems {where entry} {
 #   allowed_by_rule : Rule id -> supported options ("" when unknown), for
 #                     every rule an override may name
 #   naming_rules    : Ids of the naming rules (built-in and user-defined)
+#   type_by_rule    : Rule id -> rule type, for the options with a fixed set
+#                     of values
 #
 # Returns: List of problem strings
-proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule naming_rules} {
+proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule naming_rules type_by_rule} {
     lassign $typed kind items
     if {$kind ne "array"} {
         return [list "\"overrides\" is not a JSON array (found $kind)"]
@@ -690,7 +762,8 @@ proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule naming_rul
                 lappend problems "$rule_where: \"type\" is not allowed in an override (a rule's type comes from metadata or the top-level \"rules\")"
                 dict unset entry type
             }
-            lappend problems {*}[_policy_entry_problems $rule_where $entry $allowed]
+            set rule_type [expr {[dict exists $type_by_rule $rule_id] ? [dict get $type_by_rule $rule_id] : ""}]
+            lappend problems {*}[_policy_entry_problems $rule_where $entry $allowed $rule_type]
             if {$rule_id in $naming_rules} {
                 lappend problems {*}[_naming_scope_problems $rule_where $entry]
             }
@@ -1442,6 +1515,35 @@ proc ::aurig::lint::dispatch_rules {symbols parse_result filename} {
 }
 
 #=============================================================================
+# Rule Handlers - shared option access
+#=============================================================================
+
+# Value of an option with a fixed set of values (::aurig::lint::option_values),
+# or the default when the rule configuration does not set it. The policy
+# validator rejects any other value; a configuration that bypasses it
+# (::aurig::lint::run -rules_config) gets an error, never a fallback.
+#
+# Arguments:
+#   rule_type   : Rule type, e.g. keyword_case
+#   rule_id     : Rule identifier, for the error message
+#   rule_config : Rule configuration dict
+#   option      : Option name
+#   default     : Value when the option is not set
+#
+# Returns: The option value
+proc ::aurig::lint::rule::_option_value {rule_type rule_id rule_config option default} {
+    set value $default
+    if {[dict exists $rule_config $option]} {
+        set value [dict get $rule_config $option]
+    }
+    set values [dict get [::aurig::lint::option_values $rule_type] $option]
+    if {$value ni $values} {
+        error "rule \"$rule_id\": invalid value \"$value\" for option \"$option\" (allowed: [join $values {, }])"
+    }
+    return $value
+}
+
+#=============================================================================
 # Rule Handlers - Naming
 #=============================================================================
 
@@ -1758,10 +1860,7 @@ proc ::aurig::lint::rule::keyword_case {symbols parse_result filename rule_id ru
     set diagnostics {}
 
     # Get expected case (default: lowercase)
-    set expected_case "lowercase"
-    if {[dict exists $rule_config case]} {
-        set expected_case [dict get $rule_config case]
-    }
+    set expected_case [_option_value keyword_case $rule_id $rule_config case lowercase]
 
     # Get severity (default: info)
     set severity "info"
@@ -3705,10 +3804,7 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     }
 
     # Get reset policy: sync, async, or either (default)
-    set reset_policy "either"
-    if {[dict exists $rule_config reset_policy]} {
-        set reset_policy [dict get $rule_config reset_policy]
-    }
+    set reset_policy [_option_value require_reset_in_clocked_process $rule_id $rule_config reset_policy either]
 
     # Check if this file is a testbench (rule doesn't apply to testbenches)
     set testbench_patterns {}
@@ -3936,7 +4032,6 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
                         either  { set reset_words "a synchronous or asynchronous reset" }
                         sync    { set reset_words "a synchronous reset" }
                         async   { set reset_words "an asynchronous reset" }
-                        default { set reset_words "$reset_policy reset" }
                     }
                     # An unlabelled process has no name to quote: the
                     # quoted '${process}' becomes "at line N" rather than ''.
@@ -4301,8 +4396,9 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
     set header_keywords [expr {[dict exists $rule_config header_keywords] ? [dict get $rule_config header_keywords] : {}}]
     set ports_required [expr {[dict exists $rule_config ports_required] ? [dict get $rule_config ports_required] : true}]
     set generics_required [expr {[dict exists $rule_config generics_required] ? [dict get $rule_config generics_required] : true}]
-    set ports_comment_style [expr {[dict exists $rule_config ports_comment_style] ? [dict get $rule_config ports_comment_style] : "either"}]
-    set generics_comment_style [expr {[dict exists $rule_config generics_comment_style] ? [dict get $rule_config generics_comment_style] : "either"}]
+    set keywords_mode [_option_value require_meaningful_comments $rule_id $rule_config header_keywords_mode any]
+    set ports_comment_style [_option_value require_meaningful_comments $rule_id $rule_config ports_comment_style either]
+    set generics_comment_style [_option_value require_meaningful_comments $rule_id $rule_config generics_comment_style either]
     set signals_required [expr {[dict exists $rule_config signals_required] ? [dict get $rule_config signals_required] : false}]
     set constants_required [expr {[dict exists $rule_config constants_required] ? [dict get $rule_config constants_required] : false}]
     set major_signal_regex [expr {[dict exists $rule_config major_signal_regex] ? [dict get $rule_config major_signal_regex] : {clk|rst|reset|enable|valid|ready|data|addr|ctrl}}]
@@ -4378,19 +4474,6 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 if {[string first [string tolower $keyword] $header_text_lc] >= 0} {
                     lappend found_keywords $keyword
                 }
-            }
-            set keywords_mode "any"
-            if {[dict exists $rule_config header_keywords_mode]} {
-                set requested [dict get $rule_config header_keywords_mode]
-                if {$requested in {any all}} {
-                    set keywords_mode $requested
-                }
-                # Silently fall back to "any" for unrecognised values
-                # rather than erroring — policy files are user-edited
-                # and we'd rather degrade to the safe default than
-                # block the whole lint sweep on a typo. The schema
-                # is documented in lint/metadata.json and
-                # doc/reference/rules_reference.md.
             }
             if {$keywords_mode eq "all"} {
                 set missing {}

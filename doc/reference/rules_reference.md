@@ -2,7 +2,7 @@
 
 This document is auto-generated from `lint/metadata.json`.
 
-**Last updated:** 2026-10-15 15:16:17
+**Last updated:** 2026-10-26 15:59:25
 
 ---
 
@@ -870,7 +870,7 @@ This document is auto-generated from `lint/metadata.json`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `case` | string | `lowercase` | Configuration option |
+| `case` | string | `lowercase` | Expected keyword case: `lowercase` or `uppercase`; any other value is rejected (exit 2) |
 | `enabled` | boolean | `false` | Whether rule is active |
 | `message` | string | `Keyword '${keyword}' should be ${expected}` | Custom message template |
 | `severity` | string | `info` | Diagnostic severity level |
@@ -1302,15 +1302,15 @@ This document is auto-generated from `lint/metadata.json`.
 | `constants_required` | boolean | `false` | Require constant documentation |
 | `enabled` | boolean | `false` | Whether rule is active |
 | `file_header_required` | boolean | `true` | Require file header block |
-| `generics_comment_style` | string | `either` | Generic comment style |
+| `generics_comment_style` | string | `either` | Generic comment style: `inline` (on the declaration line), `block` (above it) or `either`; any other value is rejected (exit 2) |
 | `generics_required` | boolean | `true` | Require generic documentation |
 | `header_keywords` | array | `[]` | Required header keywords |
-| `header_keywords_mode` | string | `any` | Header-keywords match mode: "any" (default — at least one keyword present) or "all" (every listed keyword must appear) |
+| `header_keywords_mode` | string | `any` | Header-keywords match mode: "any" (default — at least one keyword present) or "all" (every listed keyword must appear); any other value is rejected (exit 2) |
 | `header_min_lines` | integer | `3` | Minimum header lines |
 | `instantiations_required` | boolean | `false` | Require instantiation documentation |
 | `major_signal_regex` | string | `clk|rst|reset|enable|valid|ready|data|addr|ctrl` | Pattern for major signals |
 | `message` | string | `(empty)` | Custom message template |
-| `ports_comment_style` | string | `either` | Port comment style (inline/block/either) |
+| `ports_comment_style` | string | `either` | Port comment style: `inline` (on the declaration line), `block` (above it) or `either`; any other value is rejected (exit 2) |
 | `ports_required` | boolean | `true` | Require port documentation |
 | `processes_required` | boolean | `false` | Require process documentation |
 | `severity` | string | `warning` | Diagnostic severity level |
@@ -1413,7 +1413,7 @@ This document is auto-generated from `lint/metadata.json`.
 | `excluded_architectures` | array | `["bfm"]` | Architecture names that bypass the rule (case-insensitive, replaces — does not extend — the default) |
 | `excluded_processes` | array | `[]` | Process labels that bypass the rule (case-insensitive); use for reset synchronizers and similar by-design no-reset processes |
 | `message` | string | `Clocked process '${process}' missing ${reset}` | Custom message template |
-| `reset_policy` | string | `either` | Reset style requirement: `either`, `sync` or `async`. In `message`, `${reset}` is the requirement in words (`a synchronous or asynchronous reset`, `a synchronous reset`, `an asynchronous reset`), `${policy}` the raw value, `${process}` the process label and `${line}` the process line. For a process without a label, a quoted `'${process}'` becomes `at line N` |
+| `reset_policy` | string | `either` | Reset style requirement: `either`, `sync` or `async`; any other value is rejected (exit 2). In `message`, `${reset}` is the requirement in words (`a synchronous or asynchronous reset`, `a synchronous reset`, `an asynchronous reset`), `${policy}` the raw value, `${process}` the process label and `${line}` the process line. For a process without a label, a quoted `'${process}'` becomes `at line N` |
 | `severity` | string | `warning` | Diagnostic severity level |
 | `testbench_patterns` | array | `["tb_*.vhd", "*_tb.vhd", "*_testbench.vhd"]` | Testbench file patterns |
 | `type` | string | `require_reset_in_clocked_process` | Rule handler type |

@@ -375,7 +375,8 @@ proc get_option_description {key} {
         "severity" { return "Diagnostic severity level" }
         "message" { return "Custom message template" }
         "patterns" { return "Naming patterns configuration" }
-        "reset_policy" { return "Reset style requirement: `either`, `sync` or `async`. In `message`, `\${reset}` is the requirement in words (`a synchronous or asynchronous reset`, `a synchronous reset`, `an asynchronous reset`), `\${policy}` the raw value, `\${process}` the process label and `\${line}` the process line. For a process without a label, a quoted `'\${process}'` becomes `at line N`" }
+        "case" { return "Expected keyword case: `lowercase` or `uppercase`; any other value is rejected (exit 2)" }
+        "reset_policy" { return "Reset style requirement: `either`, `sync` or `async`; any other value is rejected (exit 2). In `message`, `\${reset}` is the requirement in words (`a synchronous or asynchronous reset`, `a synchronous reset`, `an asynchronous reset`), `\${policy}` the raw value, `\${process}` the process label and `\${line}` the process line. For a process without a label, a quoted `'\${process}'` becomes `at line N`" }
         "testbench_patterns" { return "Testbench file patterns" }
         "bfm_patterns" { return "BFM (bus-functional model) file-name glob patterns that bypass the rule (case-sensitive, replaces — does not extend — the default; aligned with the testbench_patterns semantics on the same rule); use for files matching the _bfm.vhd suffix/pattern whose architecture name does not match excluded_architectures. A project using mixed-case filenames (e.g. Dac_BFM.vhd) must list each variant explicitly" }
         "excluded_architectures" { return "Architecture names that bypass the rule (case-insensitive, replaces — does not extend — the default)" }
@@ -383,7 +384,7 @@ proc get_option_description {key} {
         "binding_message" { return "Diagnostic message template for `entity_suffix_bindings` violations. Variables: `\${name}` (architecture name), `\${entity}` (parent entity name), `\${suffix}` (the matched suffix), `\${allowed}` (comma-separated allowed list)" }
         "excluded_processes" { return "Process labels that bypass the rule (case-insensitive); use for reset synchronizers and similar by-design no-reset processes" }
         "whitelist" { return "Identifiers / types / libraries explicitly allowed even when the rule would otherwise flag them" }
-        "header_keywords_mode" { return "Header-keywords match mode: \"any\" (default — at least one keyword present) or \"all\" (every listed keyword must appear)" }
+        "header_keywords_mode" { return "Header-keywords match mode: \"any\" (default — at least one keyword present) or \"all\" (every listed keyword must appear); any other value is rejected (exit 2)" }
         "allow_patterns" { return "Patterns to allow/ignore" }
         "type_pattern" { return "Regexp on the enumerated type name: when not empty, only the types whose name matches are checked (e.g. `_state_t\$`); empty checks every enumerated type" }
         "ignore_variables" { return "Skip variable checking" }
@@ -392,8 +393,8 @@ proc get_option_description {key} {
         "header_keywords" { return "Required header keywords" }
         "ports_required" { return "Require port documentation" }
         "generics_required" { return "Require generic documentation" }
-        "ports_comment_style" { return "Port comment style (inline/block/either)" }
-        "generics_comment_style" { return "Generic comment style" }
+        "ports_comment_style" { return "Port comment style: `inline` (on the declaration line), `block` (above it) or `either`; any other value is rejected (exit 2)" }
+        "generics_comment_style" { return "Generic comment style: `inline` (on the declaration line), `block` (above it) or `either`; any other value is rejected (exit 2)" }
         "signals_required" { return "Require signal documentation" }
         "constants_required" { return "Require constant documentation" }
         "major_signal_regex" { return "Pattern for major signals" }
