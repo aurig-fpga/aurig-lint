@@ -3745,13 +3745,13 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     # The architecture-name `excluded_architectures` check below
     # complements this for the case where the architecture is
     # named `bfm`, but a BFM file commonly uses a generic
-    # architecture name like `beh` (caught against
-    # eo_cpu/src/Dac_bfm.vhd:64 — architecture `beh`, reset
-    # signal `dacSync_n_i`, no `rst`/`reset` keyword in the name;
-    # neither testbench nor excluded_architectures would match
-    # before this opt existed). Default `["*_bfm.vhd"]` catches
+    # architecture name like `beh` (for example a `*_bfm.vhd` file
+    # with architecture `beh` and a reset signal such as
+    # `clear_n_i`, without `rst`/`reset` in the name: neither the
+    # testbench patterns nor excluded_architectures would match
+    # it without this option). Default `["*_bfm.vhd"]` catches
     # the canonical suffix; a project using mixed case (e.g.
-    # `Dac_BFM.vhd`) must list each variant explicitly. An
+    # `Bus_BFM.vhd`) must list each variant explicitly. An
     # explicit empty list re-enables the rule on BFM files.
     set bfm_patterns {*_bfm.vhd}
     if {[dict exists $rule_config bfm_patterns]} {
@@ -3789,9 +3789,9 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     # need its own synchronizer). Default empty (no per-process
     # exclusion), so the rule's existing behaviour stays unchanged
     # for every project that does not opt in. Match is
-    # case-insensitive on the process label. Caught against
-    # eo_cpu/src/GenReset.vhd:59 (GenReset_proc — reset synchronizer
-    # documented as such in the file header).
+    # case-insensitive on the process label. Typical case: a
+    # reset-synchronizer process, documented as such in its file
+    # header, that has no reset of its own by design.
     set excluded_processes {}
     if {[dict exists $rule_config excluded_processes]} {
         set excluded_processes [dict get $rule_config excluded_processes]
@@ -3864,7 +3864,7 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
             # (it would think the process already has a reset and
             # not fire the diagnostic). The naive `\m(rst|reset)` form does
             # NOT match compound camelCase reset identifiers like
-            # `emiReset_i` or `cpuRst_n_i` because Tcl ARE's `\m`
+            # `busReset_i` or `coreRst_n_i` because Tcl ARE's `\m`
             # treats `_` and letters as word chars.
             #
             # Tcl ARE has no lookbehind, so the lowercase variant
@@ -3889,7 +3889,7 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
             # because it would also case-fold the rst/reset
             # identifier-segment matcher above (which intentionally
             # distinguishes lowercase from capital to tell
-            # `emiReset_i` from `burst_cnt`'s embedded `rst`
+            # `busReset_i` from `burst_cnt`'s embedded `rst`
             # substring). Tcl ARE has no embedded flag toggle
             # `(?i:...)` / `(?-i:...)`, so encode case-insensitivity
             # explicitly via char classes (`[Ii][Ff]`, etc.).
@@ -4757,11 +4757,11 @@ proc ::aurig::lint::check_comment_presence {file_lines line_num comment_style} {
             # next-port-missed-its-own-comment pattern (the second
             # port is independently wrong and should fire its own
             # diagnostic — but NOT mask the documentation of portX).
-            # Caught against eo_cpu/src/CalibrateDetection.vhd:50
-            # (true section header above 12 ports) vs. a per-port
-            # comment in a fixture of the earlier test suite, not in
-            # this repository, that the prior single-port lookahead
-            # was treating as a section header.
+            # The two cases it tells apart: a true section header
+            # above a group of a dozen ports, and a per-port comment
+            # (in a fixture of the earlier test suite, not in this
+            # repository) that the prior single-port lookahead was
+            # treating as a section header.
             # Walk forward through non-blank lines below the current
             # declaration, stopping when we either see a comment
             # (next port has its own doc), a non-port-like line
