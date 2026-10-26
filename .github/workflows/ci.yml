@@ -98,7 +98,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        method: [choco, msi, msys2, gittcl-tarball]
+        method: [choco, msi, msys2, gittcl-tarball, msys2tcl-tarball]
     defaults:
       run:
         shell: pwsh
@@ -138,17 +138,26 @@ jobs:
           Get-ChildItem 'C:\msys64\ucrt64\bin' -Filter 'tclsh*.exe' | ForEach-Object Name
           $t = Get-ChildItem 'C:\msys64\ucrt64\bin' -Filter 'tclsh*.exe' | Select-Object -First 1
           "TCLSH=$($t.FullName)" >> $env:GITHUB_ENV
-      - name: Install (gittcl-tarball)
-        if: matrix.method == 'gittcl-tarball'
+      - name: Install (gittcl-tarball / msys2tcl-tarball)
+        if: endsWith(matrix.method, '-tarball')
         run: |
-          $tgz = "$env:RUNNER_TEMP\tcllib.tar.gz"
+          Get-Command tclsh -All -ErrorAction SilentlyContinue | ForEach-Object Source
+          Get-ChildItem 'C:\Program Files\Git' -Recurse -Filter 'tclsh*.exe' -ErrorAction SilentlyContinue | ForEach-Object FullName
+          if ('${{ matrix.method }}' -eq 'msys2tcl-tarball') {
+            C:\msys64\usr\bin\pacman.exe -Sy --noconfirm --needed mingw-w64-ucrt-x86_64-tcl
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            $tclsh = 'C:\msys64\ucrt64\bin\tclsh.exe'
+          } else {
+            $t = Get-ChildItem 'C:\Program Files\Git' -Recurse -Filter 'tclsh*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $t) { 'no tclsh in Git for Windows'; exit 1 }
+            $tclsh = $t.FullName
+          }          $tgz = "$env:RUNNER_TEMP\tcllib.tar.gz"
           curl.exe -sSfL --retry 3 -o $tgz https://core.tcl-lang.org/tcllib/uv/tcllib-2.0.tar.gz
           if ($LASTEXITCODE -ne 0) { exit 1 }
           $h = (Get-FileHash $tgz -Algorithm SHA256).Hash
           if ($h -ne '590263DE0832AC801255501D003441A85FB180B8BA96265D50C4A9F92FDE2534') { "checksum mismatch: $h"; exit 1 }
           tar -xzf $tgz -C $env:RUNNER_TEMP
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          $tclsh = 'C:\Program Files\Git\mingw64\bin\tclsh.exe'
           & $tclsh "$env:RUNNER_TEMP\tcllib-2.0\installer.tcl" -no-wait -no-gui -no-html -no-nroff -no-examples -no-apps
           if ($LASTEXITCODE -ne 0) { exit 1 }
           "TCLSH=$tclsh" >> $env:GITHUB_ENV
