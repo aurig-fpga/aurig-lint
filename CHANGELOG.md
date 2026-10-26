@@ -222,6 +222,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `forbid_latch_inference` counts signal assignments only. It took every
+  name followed by `<=` for an assigned signal, so the left operand of a
+  `<=` comparison was one too: a port `cnt` in `if cnt <= 3 then`, in an
+  `elsif` or `case` guard or on the right side of an assignment
+  (`ok <= cnt <= 3;`, `q <= '1' when cnt <= 3 else '0';`), was reported as
+  a signal that may infer a latch. A comparison also counted as an
+  assignment of the compared signal, which could hide a real latch. An
+  assignment is now a name and `<=` at the start of a statement.
+
 - `require_meaningful_comments` with `"instantiations_required": true`
   reports an instantiation without a comment on one of the two lines above
   it (#20). The rule read the instantiations from a parse-result key that
