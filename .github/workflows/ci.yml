@@ -57,6 +57,7 @@ jobs:
             test/test_lint_label_naming.tcl
             test/test_lint_instantiation_comments.tcl
             test/test_lint_library_case.tcl
+            test/test_lint_latch_ignore_variables.tcl
             test/test_lint_policy_overrides.tcl
             test/test_lint_policy_validation.tcl
             test/test_lint_policy_rule_id.tcl
@@ -160,6 +161,7 @@ jobs:
             'test/test_lint_label_naming.tcl'
             'test/test_lint_instantiation_comments.tcl'
             'test/test_lint_library_case.tcl'
+            'test/test_lint_latch_ignore_variables.tcl'
             'test/test_lint_policy_overrides.tcl'
             'test/test_lint_policy_validation.tcl'
             'test/test_lint_policy_rule_id.tcl'
