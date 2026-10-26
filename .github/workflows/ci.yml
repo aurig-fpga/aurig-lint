@@ -98,6 +98,9 @@ jobs:
   # Windows' own Tcl, which has no tcllib.
   test-windows:
     runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     defaults:
       run:
         shell: pwsh
@@ -119,7 +122,7 @@ jobs:
       - name: Install Tcl 8.6 + tcllib
         run: |
           $msi = "$env:RUNNER_TEMP\tcl-8.6.16-installer-1.16.0-x64.msi"
-          curl.exe -sSfL --retry 3 -o $msi https://sourceforge.net/projects/magicsplat/files/magicsplat-tcl/tcl-8.6.16-installer-1.16.0-x64.msi/download
+          curl.exe -sSfL --proto '=https' --proto-redir '=https' --retry 3 --connect-timeout 30 --max-time 180 -o $msi https://sourceforge.net/projects/magicsplat/files/magicsplat-tcl/tcl-8.6.16-installer-1.16.0-x64.msi/download
           if ($LASTEXITCODE -ne 0) { "ERROR: download failed (exit $LASTEXITCODE)"; exit 1 }
           $sha256 = (Get-FileHash $msi -Algorithm SHA256).Hash
           if ($sha256 -ne '754A5FC471FDAE655DD0CEC1FD5613B2302512ADADCDE28E17B516B0F5AED17A') {
