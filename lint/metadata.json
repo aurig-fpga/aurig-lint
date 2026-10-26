@@ -299,6 +299,7 @@
       "major_signal_regex": "clk|rst|reset|enable|valid|ready|data|addr|ctrl",
       "processes_required": false,
       "instantiations_required": false,
+      "testbench_patterns": ["tb_*.vhd", "*_tb.vhd", "*_testbench.vhd"],
       "skip_testbenches": true,
       "message": ""
     }

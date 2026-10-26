@@ -376,8 +376,8 @@ proc get_option_description {key} {
         "message" { return "Custom message template" }
         "patterns" { return "Naming patterns configuration" }
         "reset_policy" { return "Reset style requirement: `either`, `sync` or `async`. In `message`, `\${reset}` is the requirement in words (`a synchronous or asynchronous reset`, `a synchronous reset`, `an asynchronous reset`), `\${policy}` the raw value, `\${process}` the process label and `\${line}` the process line. For a process without a label, a quoted `'\${process}'` becomes `at line N`" }
-        "testbench_patterns" { return "Testbench file patterns" }
-        "bfm_patterns" { return "BFM (bus-functional model) file-name glob patterns that bypass the rule (case-sensitive, replaces — does not extend — the default; aligned with the testbench_patterns semantics on the same rule); use for files matching the _bfm.vhd suffix/pattern whose architecture name does not match excluded_architectures. A project using mixed-case filenames (e.g. Dac_BFM.vhd) must list each variant explicitly" }
+        "testbench_patterns" { return "Testbench file-name glob patterns (Tcl `string match`), matched against the base name ignoring case; the rule skips a file that matches one (`require_meaningful_comments`: while `skip_testbenches` is true). Replaces — does not extend — the default. The same detection in `require_reset_in_clocked_process`, `forbid_wait_statements` and `require_meaningful_comments`" }
+        "bfm_patterns" { return "BFM (bus-functional model) file-name glob patterns that bypass the rule (case-sensitive, unlike testbench_patterns; replaces — does not extend — the default); use for files matching the _bfm.vhd suffix/pattern whose architecture name does not match excluded_architectures. A project using mixed-case filenames (e.g. Dac_BFM.vhd) must list each variant explicitly" }
         "excluded_architectures" { return "Architecture names that bypass the rule (case-insensitive, replaces — does not extend — the default)" }
         "entity_suffix_bindings" { return "Dict mapping entity-name suffix → list of allowed architecture names for entities with that suffix. When set, the binding OVERRIDES the regex `pattern` check for architectures whose parent entity matches one of the configured suffixes (longest match wins). Entities not matching any suffix fall through to the `pattern` check. Use for guidelines that bind e.g. `_tb` entities to `beh` and `_bfm` entities to `bfm` regardless of what the global pattern allows. Default `{}` preserves back-compat (regex-only behaviour)" }
         "binding_message" { return "Diagnostic message template for `entity_suffix_bindings` violations. Variables: `\${name}` (architecture name), `\${entity}` (parent entity name), `\${suffix}` (the matched suffix), `\${allowed}` (comma-separated allowed list)" }
@@ -399,7 +399,7 @@ proc get_option_description {key} {
         "major_signal_regex" { return "Pattern for major signals" }
         "processes_required" { return "Require process documentation" }
         "instantiations_required" { return "Require instantiation documentation" }
-        "skip_testbenches" { return "Skip testbench files" }
+        "skip_testbenches" { return "Skip testbench files (those matching `testbench_patterns`)" }
         default { return "Configuration option" }
     }
 }

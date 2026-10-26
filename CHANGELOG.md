@@ -78,6 +78,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (BREAKING)
 
+- One testbench detection for `require_reset_in_clocked_process`,
+  `forbid_wait_statements` and `require_meaningful_comments` (#21). A file is
+  a testbench when its base name matches one of the rule's
+  `testbench_patterns`, default `tb_*.vhd`, `*_tb.vhd` and `*_testbench.vhd`,
+  ignoring case on every platform; a policy list replaces the default list.
+  Each rule used to decide on its own: `require_reset_in_clocked_process`
+  matched case-sensitively, so `UNIT_TB.VHD` or `Tb_Unit.vhd` was linted
+  as RTL; `require_meaningful_comments` had a fixed case-sensitive list and
+  rejected a `testbench_patterns` option (exit **2**). Files whose name
+  differs from a pattern only in case, linted by those two rules before, are
+  now skipped. `require_meaningful_comments` gains `testbench_patterns`; it
+  skips a testbench while `skip_testbenches` is on, its default.
+  `bfm_patterns` is unchanged and still case-sensitive.
+
 - A user-defined rule id must match `^[a-z][a-z0-9_]*$`, the form of the
   built-in ids (#49). In-source pragmas (`-- aurig-lint: disable` and
   `disable-next-line`) name rules only in that form, so the diagnostics of a

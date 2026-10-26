@@ -3675,6 +3675,31 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
     return $diagnostics
 }
 
+# Testbench detection shared by the rules that skip testbenches:
+# require_reset_in_clocked_process, forbid_wait_statements and
+# require_meaningful_comments (#21). A file is a testbench when its base name
+# matches one of the rule's testbench_patterns (Tcl `string match` globs),
+# ignoring case on every platform. A policy list replaces the default list.
+#
+# Arguments:
+#   filename    : Source file path
+#   rule_config : Rule configuration dict
+#
+# Returns: 1 when the file is a testbench, else 0
+proc ::aurig::lint::rule::_is_testbench {filename rule_config} {
+    set patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
+    if {[dict exists $rule_config testbench_patterns]} {
+        set patterns [dict get $rule_config testbench_patterns]
+    }
+    set basename [file tail $filename]
+    foreach pattern $patterns {
+        if {[string match -nocase $pattern $basename]} {
+            return 1
+        }
+    }
+    return 0
+}
+
 # Rule: require_reset_in_clocked_process
 #
 # Purpose:
@@ -3710,30 +3735,16 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
         set reset_policy [dict get $rule_config reset_policy]
     }
 
-    # Check if this file is a testbench (rule doesn't apply to testbenches)
-    set testbench_patterns {}
-    if {[dict exists $rule_config testbench_patterns]} {
-        set testbench_patterns [dict get $rule_config testbench_patterns]
-    }
-
-    set is_testbench false
-    set basename [file tail $filename]
-    foreach pattern $testbench_patterns {
-        if {[string match $pattern $basename]} {
-            set is_testbench true
-            break
-        }
-    }
-
-    if {$is_testbench} {
-        # Skip testbench files
+    # The rule doesn't apply to testbenches
+    if {[_is_testbench $filename $rule_config]} {
         return $diagnostics
     }
+    set basename [file tail $filename]
 
-    # File-name BFM exclusion list (LINT-RULES-DEBT-023). Mirrors
-    # the `testbench_patterns` check above — same `string match`
-    # form, same case-sensitive semantics (no `-nocase`) — but
-    # targets bus-functional models, which by convention live in
+    # File-name BFM exclusion list (LINT-RULES-DEBT-023). The same
+    # `string match` globs on the base name as `testbench_patterns`,
+    # but case-sensitive (no `-nocase`, unlike `testbench_patterns`),
+    # and it targets bus-functional models, which by convention live in
     # `*_bfm.vhd` files and by definition do not carry a reset.
     # The architecture-name `excluded_architectures` check below
     # complements this for the case where the architecture is
@@ -3968,24 +3979,8 @@ proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename 
         set severity [dict get $rule_config severity]
     }
 
-    # Get testbench patterns (default: tb_*.vhd, *_tb.vhd)
-    set tb_patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
-    if {[dict exists $rule_config testbench_patterns]} {
-        set tb_patterns [dict get $rule_config testbench_patterns]
-    }
-
-    # Check if this file matches testbench patterns
-    set basename [file tail $filename]
-    set is_testbench false
-    foreach pattern $tb_patterns {
-        if {[string match -nocase $pattern $basename]} {
-            set is_testbench true
-            break
-        }
-    }
-
-    # Skip testbench files if configured
-    if {$is_testbench} {
+    # Skip testbench files
+    if {[_is_testbench $filename $rule_config]} {
         return $diagnostics
     }
 
@@ -4264,6 +4259,8 @@ proc ::aurig::lint::rule::forbid_unconstrained_ports {symbols parse_result filen
 #   - major_signal_regex: Pattern for "major" signals (default: clk|rst|enable|valid|ready|data|addr|ctrl)
 #   - processes_required: Require process documentation
 #   - instantiations_required: Require instantiation documentation
+#   - testbench_patterns: File-name globs of testbenches, matched ignoring
+#     case (default tb_*.vhd *_tb.vhd *_testbench.vhd)
 #   - skip_testbenches: Skip checks for testbench files (default true)
 #
 # Limitations:
@@ -4280,18 +4277,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
     # Check if this file is a testbench (skip if configured)
     set skip_testbenches [expr {[dict exists $rule_config skip_testbenches] ? [dict get $rule_config skip_testbenches] : true}]
-
-    set testbench_patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
-    set is_testbench false
-    set basename [file tail $filename]
-    foreach pattern $testbench_patterns {
-        if {[string match $pattern $basename]} {
-            set is_testbench true
-            break
-        }
-    }
-
-    if {$skip_testbenches && $is_testbench} {
+    if {$skip_testbenches && [_is_testbench $filename $rule_config]} {
         return $diagnostics
     }
 
