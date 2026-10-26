@@ -92,93 +92,138 @@ jobs:
           done
           exit $fail
 
-  # TEMPORARY probe: compare Tcl install methods on windows-latest.
-  windows-probe:
+  # The same test list on native Windows, plus a lint from a checkout path
+  # that contains a space. Every step calls the interpreter by its full path
+  # ($env:TCLSH): on windows-latest a bare `tclsh` resolves to Git for
+  # Windows' own Tcl, which has no tcllib.
+  test-windows:
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        method: [choco, msi, msys2, gittcl-tarball, msys2tcl-tarball]
     defaults:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout aurig-lint
+        uses: actions/checkout@v6
         with:
           path: aurig-lint
-      - uses: actions/checkout@v6
+
+      - name: Checkout aurig-core (dependency)
+        uses: actions/checkout@v6
         with:
           repository: aurig-fpga/aurig-core
           path: aurig-core
-      - name: Install (choco)
-        if: matrix.method == 'choco'
+
+      # Magicsplat Tcl 1.16.0 (Tcl 8.6.16, tcllib 2.0), the build the
+      # aurig-core README lists as verified. The MSI is pinned by SHA-256;
+      # a different file fails the job.
+      - name: Install Tcl 8.6 + tcllib
         run: |
-          choco install magicsplat-tcl-tk --version 1.16.0 -y --no-progress
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          $t = Get-ChildItem 'C:\Program Files\Tcl\bin' -Filter 'tclsh*.exe' | Select-Object -First 1
-          Get-ChildItem 'C:\Program Files\Tcl\bin' -Filter '*.exe' | ForEach-Object Name
-          "TCLSH=$($t.FullName)" >> $env:GITHUB_ENV
-      - name: Install (msi)
-        if: matrix.method == 'msi'
-        run: |
-          $msi = "$env:RUNNER_TEMP\tcl.msi"
+          $msi = "$env:RUNNER_TEMP\tcl-8.6.16-installer-1.16.0-x64.msi"
           curl.exe -sSfL --retry 3 -o $msi https://sourceforge.net/projects/magicsplat/files/magicsplat-tcl/tcl-8.6.16-installer-1.16.0-x64.msi/download
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          $h = (Get-FileHash $msi -Algorithm SHA256).Hash
-          if ($h -ne '754A5FC471FDAE655DD0CEC1FD5613B2302512ADADCDE28E17B516B0F5AED17A') { "checksum mismatch: $h"; exit 1 }
-          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$msi`" ALLUSERS=1 APPLICATIONFOLDER=C:\Tcl /qn /norestart /l*v `"$env:RUNNER_TEMP\msi.log`""
-          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\msi.log" -Tail 50; exit 1 }
-          Get-ChildItem 'C:\Tcl\bin' -Filter '*.exe' | ForEach-Object Name
+          if ($LASTEXITCODE -ne 0) { "ERROR: download failed (exit $LASTEXITCODE)"; exit 1 }
+          $sha256 = (Get-FileHash $msi -Algorithm SHA256).Hash
+          if ($sha256 -ne '754A5FC471FDAE655DD0CEC1FD5613B2302512ADADCDE28E17B516B0F5AED17A') {
+            "ERROR: checksum mismatch: $sha256"
+            exit 1
+          }
+          $log = "$env:RUNNER_TEMP\tcl-msi.log"
+          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$msi`" ALLUSERS=1 APPLICATIONFOLDER=C:\Tcl /qn /norestart /l*v `"$log`""
+          if ($p.ExitCode -ne 0) {
+            Get-Content $log -Tail 50
+            "ERROR: msiexec exited $($p.ExitCode)"
+            exit 1
+          }
           "TCLSH=C:\Tcl\bin\tclsh.exe" >> $env:GITHUB_ENV
-      - name: Install (msys2)
-        if: matrix.method == 'msys2'
-        run: |
-          C:\msys64\usr\bin\pacman.exe -Sy --noconfirm --needed mingw-w64-ucrt-x86_64-tcl mingw-w64-ucrt-x86_64-tcllib
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          Get-ChildItem 'C:\msys64\ucrt64\bin' -Filter 'tclsh*.exe' | ForEach-Object Name
-          $t = Get-ChildItem 'C:\msys64\ucrt64\bin' -Filter 'tclsh*.exe' | Select-Object -First 1
-          "TCLSH=$($t.FullName)" >> $env:GITHUB_ENV
-      - name: Install (gittcl-tarball / msys2tcl-tarball)
-        if: endsWith(matrix.method, '-tarball')
-        run: |
-          Get-Command tclsh -All -ErrorAction SilentlyContinue | ForEach-Object Source
-          Get-ChildItem 'C:\Program Files\Git' -Recurse -Filter 'tclsh*.exe' -ErrorAction SilentlyContinue | ForEach-Object FullName
-          if ('${{ matrix.method }}' -eq 'msys2tcl-tarball') {
-            C:\msys64\usr\bin\pacman.exe -Sy --noconfirm --needed mingw-w64-ucrt-x86_64-tcl
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-            $tclsh = 'C:\msys64\ucrt64\bin\tclsh.exe'
-          } else {
-            $t = Get-ChildItem 'C:\Program Files\Git' -Recurse -Filter 'tclsh*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-            if (-not $t) { 'no tclsh in Git for Windows'; exit 1 }
-            $tclsh = $t.FullName
-          }          $tgz = "$env:RUNNER_TEMP\tcllib.tar.gz"
-          curl.exe -sSfL --retry 3 -o $tgz https://core.tcl-lang.org/tcllib/uv/tcllib-2.0.tar.gz
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          $h = (Get-FileHash $tgz -Algorithm SHA256).Hash
-          if ($h -ne '590263DE0832AC801255501D003441A85FB180B8BA96265D50C4A9F92FDE2534') { "checksum mismatch: $h"; exit 1 }
-          tar -xzf $tgz -C $env:RUNNER_TEMP
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          & $tclsh "$env:RUNNER_TEMP\tcllib-2.0\installer.tcl" -no-wait -no-gui -no-html -no-nroff -no-examples -no-apps
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          "TCLSH=$tclsh" >> $env:GITHUB_ENV
-      - name: Probe
+
+      - name: Check the interpreter
         working-directory: aurig-lint
         run: |
-          "TCLSH=$env:TCLSH"
           & $env:TCLSH tools/check_tcl.tcl
           if ($LASTEXITCODE -ne 0) { exit 1 }
-      - name: Tests
+
+      - name: Run cross-repo dependency proof + ported lint tests
         working-directory: aurig-lint
         run: |
+          # KEEP IN SYNC with the list in the `test` job; the check below
+          # fails the job when the two lists differ.
+          $tests = @(
+            'test/test_lint_dependency.tcl'
+            'test/test_lint_cli_fail_on_severity.tcl'
+            'test/test_lint_cli_json_escape.tcl'
+            'test/test_lint_cli_report_formats.tcl'
+            'test/test_lint_cli_source_rc2.tcl'
+            'test/test_lint_cli_source_safety.tcl'
+            'test/test_lint_enum_literal_naming.tcl'
+            'test/test_lint_label_naming.tcl'
+            'test/test_lint_instantiation_comments.tcl'
+            'test/test_lint_library_case.tcl'
+            'test/test_lint_policy_overrides.tcl'
+            'test/test_lint_policy_validation.tcl'
+            'test/test_lint_policy_rule_id.tcl'
+            'test/test_lint_policy_naming_scope.tcl'
+            'test/test_lint_pragma_suppression.tcl'
+            'test/test_lint_pragma_case.tcl'
+            'test/test_lint_process_diagnostic_lines.tcl'
+            'test/test_lint_require_process_label.tcl'
+            'test/test_lint_reset_message.tcl'
+            'test/test_run_lint_project_baseline.tcl'
+            'test/test_run_lint_project_excludes.tcl'
+            'test/test_run_lint_project_fail_on_and_manifest.tcl'
+            'test/test_run_lint_project_md_skipped_escape.tcl'
+            'test/test_run_lint_project_md_report.tcl'
+            'test/test_run_lint_project_policy_once.tcl'
+            'test/test_lint_project_required_packages.tcl'
+            'test/test_generate_rules_reference.tcl'
+            'test/test_doc_references_exist.tcl'
+            'test/test_tcl_minimum_version.tcl'
+            'test/test_report_encoding.tcl'
+            'test/test_html_reports_offline.tcl'
+            'test/test_html_report_file_names.tcl'
+            'test/smoke/test_run_lint_single_file.tcl'
+          )
+          $ubuntu = Select-String -Path .github/workflows/ci.yml -Pattern '^\s+(test/\S+\.tcl)$' |
+            ForEach-Object { $_.Matches[0].Groups[1].Value }
+          if (($tests -join "`n") -ne ($ubuntu -join "`n")) {
+            "ERROR: test list differs from the test job's list"
+            Compare-Object $ubuntu $tests
+            exit 1
+          }
+          # TCLLIBPATH is a Tcl list: forward slashes, or Tcl reads each
+          # backslash as an escape.
           $env:TCLLIBPATH = "$env:GITHUB_WORKSPACE/aurig-core" -replace '\\', '/'
-          $tests = Select-String -Path .github/workflows/ci.yml -Pattern '^\s+(test/\S+\.tcl)$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
-          "$($tests.Count) tests"
           foreach ($t in $tests) {
             "==================== $t ===================="
             & $env:TCLSH $t
-            if ($LASTEXITCODE -ne 0) { "RESULT: FAIL  $t (exit $LASTEXITCODE)"; exit 1 }
+            if ($LASTEXITCODE -ne 0) {
+              "RESULT: FAIL  $t (exit $LASTEXITCODE)"
+              exit 1
+            }
             "RESULT: PASS  $t"
           }
+
+      # Both checkouts copied under a directory with a space, linted with the
+      # braced TCLLIBPATH form from the README. The unbraced form must fail
+      # with exit 2, which shows the space really is in the path.
+      - name: Smoke lint from a path with a space
+        run: |
+          $root = "$env:RUNNER_TEMP\space dir"
+          New-Item -ItemType Directory $root | Out-Null
+          Copy-Item -Recurse "$env:GITHUB_WORKSPACE\aurig-lint" "$root\aurig-lint"
+          Copy-Item -Recurse "$env:GITHUB_WORKSPACE\aurig-core" "$root\aurig-core"
+          Set-Location "$root\aurig-lint"
+          $core = "$root/aurig-core" -replace '\\', '/'
+          $env:TCLLIBPATH = "{$core}"
+          "TCLLIBPATH=$env:TCLLIBPATH"
+          $out = & $env:TCLSH lint/lint_cli.tcl -input test/lint/fixtures/naming_violations.vhd 2>&1
+          $rc = $LASTEXITCODE
+          $out
+          if ($rc -ne 0) { "ERROR: lint exited $rc, expected 0"; exit 1 }
+          if (-not ($out -match '^\s*Warnings: 4$')) { "ERROR: expected 'Warnings: 4' in the summary"; exit 1 }
+          $env:TCLLIBPATH = $core
+          "TCLLIBPATH=$env:TCLLIBPATH (unbraced, must fail)"
+          & $env:TCLSH lint/lint_cli.tcl -input test/lint/fixtures/naming_violations.vhd 2>&1
+          if ($LASTEXITCODE -ne 2) { "ERROR: unbraced TCLLIBPATH exited $LASTEXITCODE, expected 2"; exit 1 }
+          exit 0
 
   # Hygiene + secrets scan. This is the authoritative gitleaks run: local
   # hook installs may fail to build it on restricted networks, CI always
