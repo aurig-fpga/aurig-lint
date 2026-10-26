@@ -4008,8 +4008,9 @@ proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename 
             set proc_line [expr {[dict exists $proc line] ? [dict get $proc line] : 0}]
             set proc_label [expr {[dict exists $proc label] ? [dict get $proc label] : ""}]
 
-            # Search for wait statements
-            if {[regexp -nocase {\mwait\s+(for|until|on)\M} $body match wait_type]} {
+            # Search for wait statements: wait for, wait until, wait on and
+            # the bare "wait;" (suspend forever)
+            if {[regexp -nocase {\mwait\M\s*(for\M|until\M|on\M|;)} $body]} {
                 set msg "Wait statement found in synthesizable code"
                 if {$proc_label ne ""} {
                     append msg " (process '$proc_label')"

@@ -222,6 +222,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `forbid_wait_statements` reports a bare `wait;` (suspend forever), like
+  `wait for`, `wait until` and `wait on`. A process whose only wait
+  statement was `wait;` was not reported.
+
 - `require_meaningful_comments` with `"instantiations_required": true`
   reports an instantiation without a comment on one of the two lines above
   it (#20). The rule read the instantiations from a parse-result key that
