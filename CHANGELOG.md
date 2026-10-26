@@ -90,7 +90,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   differs from a pattern only in case, linted by those two rules before, are
   now skipped. `require_meaningful_comments` gains `testbench_patterns`; it
   skips a testbench while `skip_testbenches` is on, its default.
-  `bfm_patterns` is unchanged and still case-sensitive.
+  `bfm_patterns` of `require_reset_in_clocked_process`, default `*_bfm.vhd`,
+  is matched the same way: it was case-sensitive, so `Uart_BFM.vhd` was
+  linted and a policy pattern had to list every case variant.
 
 - A user-defined rule id must match `^[a-z][a-z0-9_]*$`, the form of the
   built-in ids (#49). In-source pragmas (`-- aurig-lint: disable` and

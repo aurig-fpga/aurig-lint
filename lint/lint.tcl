@@ -3675,11 +3675,30 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
     return $diagnostics
 }
 
+# File-name matching shared by the rules that skip some files (#21): a file
+# matches when its base name matches one of the patterns (Tcl `string match`
+# globs), ignoring case on every platform.
+#
+# Arguments:
+#   filename : Source file path
+#   patterns : List of glob patterns
+#
+# Returns: 1 when the file matches, else 0
+proc ::aurig::lint::rule::_name_matches {filename patterns} {
+    set basename [file tail $filename]
+    foreach pattern $patterns {
+        if {[string match -nocase $pattern $basename]} {
+            return 1
+        }
+    }
+    return 0
+}
+
 # Testbench detection shared by the rules that skip testbenches:
 # require_reset_in_clocked_process, forbid_wait_statements and
-# require_meaningful_comments (#21). A file is a testbench when its base name
-# matches one of the rule's testbench_patterns (Tcl `string match` globs),
-# ignoring case on every platform. A policy list replaces the default list.
+# require_meaningful_comments (#21). A file is a testbench when its name
+# matches one of the rule's testbench_patterns (_name_matches). A policy
+# list replaces the default list.
 #
 # Arguments:
 #   filename    : Source file path
@@ -3691,13 +3710,7 @@ proc ::aurig::lint::rule::_is_testbench {filename rule_config} {
     if {[dict exists $rule_config testbench_patterns]} {
         set patterns [dict get $rule_config testbench_patterns]
     }
-    set basename [file tail $filename]
-    foreach pattern $patterns {
-        if {[string match -nocase $pattern $basename]} {
-            return 1
-        }
-    }
-    return 0
+    return [_name_matches $filename $patterns]
 }
 
 # Rule: require_reset_in_clocked_process
@@ -3739,12 +3752,10 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     if {[_is_testbench $filename $rule_config]} {
         return $diagnostics
     }
-    set basename [file tail $filename]
 
     # File-name BFM exclusion list (LINT-RULES-DEBT-023). The same
-    # `string match` globs on the base name as `testbench_patterns`,
-    # but case-sensitive (no `-nocase`, unlike `testbench_patterns`),
-    # and it targets bus-functional models, which by convention live in
+    # matching as `testbench_patterns` (_name_matches: base name, ignoring
+    # case), but it targets bus-functional models, which by convention live in
     # `*_bfm.vhd` files and by definition do not carry a reset.
     # The architecture-name `excluded_architectures` check below
     # complements this for the case where the architecture is
@@ -3754,21 +3765,13 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     # signal `dacSync_n_i`, no `rst`/`reset` keyword in the name;
     # neither testbench nor excluded_architectures would match
     # before this opt existed). Default `["*_bfm.vhd"]` catches
-    # the canonical suffix; a project using mixed case (e.g.
-    # `Dac_BFM.vhd`) must list each variant explicitly. An
+    # the canonical suffix in any case (`Dac_BFM.vhd` too). An
     # explicit empty list re-enables the rule on BFM files.
     set bfm_patterns {*_bfm.vhd}
     if {[dict exists $rule_config bfm_patterns]} {
         set bfm_patterns [dict get $rule_config bfm_patterns]
     }
-    set is_bfm false
-    foreach pattern $bfm_patterns {
-        if {[string match $pattern $basename]} {
-            set is_bfm true
-            break
-        }
-    }
-    if {$is_bfm} {
+    if {[_name_matches $filename $bfm_patterns]} {
         return $diagnostics
     }
 

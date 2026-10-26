@@ -23,11 +23,16 @@
 # without reset (reset rule) and a process with a wait statement (wait
 # rule).
 #
+# require_reset_in_clocked_process also skips bus-functional models, files
+# matching its bfm_patterns (default *_bfm.vhd). bfm_patterns matched
+# case-sensitively; it now uses the same matching as testbench_patterns.
+#
 # Checks labelled [control] hold before and after the fix. Before the fix
 # the mixed-case checks fail for the reset and comments rules, the reset
 # rule does not match the policy pattern *_SIM.vhd against unit_sim.vhd, and
 # both checks with a policy testbench_patterns fail for the comments rule
-# (the policy is rejected, exit 2).
+# (the policy is rejected, exit 2). Before the bfm_patterns change, the
+# checks on Uart_BFM.vhd and on the policy pattern *_MODEL.vhd fail.
 #=============================================================================
 
 set script_anchor [file dirname [file normalize [info script]]]
@@ -114,11 +119,16 @@ set upper   [fixture upper UNIT_TB.VHD]
 set prefix  [fixture prefix Tb_Unit.vhd]
 set long    [fixture long Unit_TestBench.Vhd]
 set sim     [fixture sim unit_sim.vhd]
+set bfm       [fixture bfm uart_bfm.vhd]
+set bfm_upper [fixture bfm_upper Uart_BFM.vhd]
+set model     [fixture model uart_model.vhd]
 
 set defaults [policy defaults $rules]
 foreach rule_id $rules {
     set sim_pol($rule_id) [policy sim_$rule_id [list $rule_id] {, "testbench_patterns": ["*_SIM.vhd"]}]
 }
+set reset_only [policy reset_only require_reset_in_clocked_process]
+set model_pol  [policy model require_reset_in_clocked_process {, "bfm_patterns": ["*_MODEL.vhd"]}]
 set no_skip  [file join $sandbox no_skip.json]
 write_file $no_skip {{"rules": {"require_meaningful_comments": {"enabled": true, "skip_testbenches": false}}}
 }
@@ -160,6 +170,22 @@ foreach rule_id $rules {
     check_true "$rule_id: policy list replaces the default, unit_tb.vhd reported (got $n)" \
         {[string is integer -strict $n] && $n > 0}
 }
+
+# ----------------------------------------------------------------------------
+# bfm_patterns (require_reset_in_clocked_process): the same matching
+# ----------------------------------------------------------------------------
+set rr require_reset_in_clocked_process
+check_eq "\[control\] $rr: uart_bfm.vhd is a BFM, skipped" \
+    0 [count $bfm $reset_only $rr]
+check_true "\[control\] $rr: uart_model.vhd is not a BFM by default, reported" \
+    {[count $model $reset_only $rr] > 0}
+check_eq "$rr: Uart_BFM.vhd is a BFM, skipped" \
+    0 [count $bfm_upper $reset_only $rr]
+check_eq "$rr: policy bfm pattern *_MODEL.vhd makes uart_model.vhd a BFM" \
+    0 [count $model $model_pol $rr]
+set n [count $bfm $model_pol $rr]
+check_true "\[control\] $rr: policy bfm list replaces the default, uart_bfm.vhd reported (got $n)" \
+    {[string is integer -strict $n] && $n > 0}
 
 catch {file delete -force $sandbox}
 

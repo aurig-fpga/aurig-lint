@@ -656,9 +656,9 @@ Some rules also have file-pattern options of their own.
 of the rule's `testbench_patterns`, by default `tb_*.vhd`, `*_tb.vhd` and
 `*_testbench.vhd`, ignoring case (`UNIT_TB.VHD` is a testbench).
 `require_meaningful_comments` skips them only while `skip_testbenches` is
-on, its default. `require_reset_in_clocked_process` also has `bfm_patterns`,
-matched case-sensitively, and `excluded_architectures`. They still work and
-combine with overrides.
+on, its default. `require_reset_in_clocked_process` also has
+`bfm_patterns`, default `*_bfm.vhd`, matched the same way, and
+`excluded_architectures`. They still work and combine with overrides.
 
 ## 5. Silencing a line in the source
 
