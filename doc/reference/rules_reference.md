@@ -2,7 +2,7 @@
 
 This document is auto-generated from `lint/metadata.json`.
 
-**Last updated:** 2026-10-26 15:45:48
+**Last updated:** 2026-10-26 18:19:31
 
 ---
 
