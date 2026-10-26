@@ -92,6 +92,85 @@ jobs:
           done
           exit $fail
 
+  # TEMPORARY probe: compare Tcl install methods on windows-latest.
+  windows-probe:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [choco, msi, msys2, gittcl-tarball]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: aurig-lint
+      - uses: actions/checkout@v6
+        with:
+          repository: aurig-fpga/aurig-core
+          path: aurig-core
+      - name: Install (choco)
+        if: matrix.method == 'choco'
+        run: |
+          choco install magicsplat-tcl-tk --version 1.16.0 -y --no-progress
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $t = Get-ChildItem 'C:\Program Files\Tcl\bin' -Filter 'tclsh*.exe' | Select-Object -First 1
+          Get-ChildItem 'C:\Program Files\Tcl\bin' -Filter '*.exe' | ForEach-Object Name
+          "TCLSH=$($t.FullName)" >> $env:GITHUB_ENV
+      - name: Install (msi)
+        if: matrix.method == 'msi'
+        run: |
+          $msi = "$env:RUNNER_TEMP\tcl.msi"
+          curl.exe -sSfL --retry 3 -o $msi https://sourceforge.net/projects/magicsplat/files/magicsplat-tcl/tcl-8.6.16-installer-1.16.0-x64.msi/download
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $h = (Get-FileHash $msi -Algorithm SHA256).Hash
+          if ($h -ne '754A5FC471FDAE655DD0CEC1FD5613B2302512ADADCDE28E17B516B0F5AED17A') { "checksum mismatch: $h"; exit 1 }
+          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$msi`" ALLUSERS=1 APPLICATIONFOLDER=C:\Tcl /qn /norestart /l*v `"$env:RUNNER_TEMP\msi.log`""
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\msi.log" -Tail 50; exit 1 }
+          Get-ChildItem 'C:\Tcl\bin' -Filter '*.exe' | ForEach-Object Name
+          "TCLSH=C:\Tcl\bin\tclsh.exe" >> $env:GITHUB_ENV
+      - name: Install (msys2)
+        if: matrix.method == 'msys2'
+        run: |
+          C:\msys64\usr\bin\pacman.exe -Sy --noconfirm --needed mingw-w64-ucrt-x86_64-tcl mingw-w64-ucrt-x86_64-tcllib
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Get-ChildItem 'C:\msys64\ucrt64\bin' -Filter 'tclsh*.exe' | ForEach-Object Name
+          $t = Get-ChildItem 'C:\msys64\ucrt64\bin' -Filter 'tclsh*.exe' | Select-Object -First 1
+          "TCLSH=$($t.FullName)" >> $env:GITHUB_ENV
+      - name: Install (gittcl-tarball)
+        if: matrix.method == 'gittcl-tarball'
+        run: |
+          $tgz = "$env:RUNNER_TEMP\tcllib.tar.gz"
+          curl.exe -sSfL --retry 3 -o $tgz https://core.tcl-lang.org/tcllib/uv/tcllib-2.0.tar.gz
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $h = (Get-FileHash $tgz -Algorithm SHA256).Hash
+          if ($h -ne '590263DE0832AC801255501D003441A85FB180B8BA96265D50C4A9F92FDE2534') { "checksum mismatch: $h"; exit 1 }
+          tar -xzf $tgz -C $env:RUNNER_TEMP
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $tclsh = 'C:\Program Files\Git\mingw64\bin\tclsh.exe'
+          & $tclsh "$env:RUNNER_TEMP\tcllib-2.0\installer.tcl" -no-wait -no-gui -no-html -no-nroff -no-examples -no-apps
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          "TCLSH=$tclsh" >> $env:GITHUB_ENV
+      - name: Probe
+        working-directory: aurig-lint
+        run: |
+          "TCLSH=$env:TCLSH"
+          & $env:TCLSH tools/check_tcl.tcl
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Tests
+        working-directory: aurig-lint
+        run: |
+          $env:TCLLIBPATH = "$env:GITHUB_WORKSPACE/aurig-core" -replace '\\', '/'
+          $tests = Select-String -Path .github/workflows/ci.yml -Pattern '^\s+(test/\S+\.tcl)$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+          "$($tests.Count) tests"
+          foreach ($t in $tests) {
+            "==================== $t ===================="
+            & $env:TCLSH $t
+            if ($LASTEXITCODE -ne 0) { "RESULT: FAIL  $t (exit $LASTEXITCODE)"; exit 1 }
+            "RESULT: PASS  $t"
+          }
+
   # Hygiene + secrets scan. This is the authoritative gitleaks run: local
   # hook installs may fail to build it on restricted networks, CI always
   # builds and runs it. Commit-msg-stage hooks are not exercised by
