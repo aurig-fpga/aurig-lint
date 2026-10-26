@@ -2,7 +2,7 @@
 
 This document is auto-generated from `lint/metadata.json`.
 
-**Last updated:** 2026-10-15 15:16:17
+**Last updated:** 2026-10-26 15:22:14
 
 ---
 
@@ -1309,7 +1309,7 @@ This document is auto-generated from `lint/metadata.json`.
 | `header_min_lines` | integer | `3` | Minimum header lines |
 | `instantiations_required` | boolean | `false` | Require instantiation documentation |
 | `major_signal_regex` | string | `clk|rst|reset|enable|valid|ready|data|addr|ctrl` | Pattern for major signals |
-| `message` | string | `(empty)` | Custom message template |
+| `message` | string | `(empty)` | When not empty, replaces the text of every diagnostic of the rule. Variables: `${kind}` (`header`, `port`, `generic`, `signal`, `constant`, `process` or `instantiation`), `${name}` (the name or label; empty for the header), `${default}` (the built-in text). Empty keeps the built-in texts |
 | `ports_comment_style` | string | `either` | Port comment style (inline/block/either) |
 | `ports_required` | boolean | `true` | Require port documentation |
 | `processes_required` | boolean | `false` | Require process documentation |
