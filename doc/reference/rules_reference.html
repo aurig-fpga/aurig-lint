@@ -70,7 +70,7 @@
             <h1>VHDL Lint Rules Reference</h1>
             <div class="meta-info">
                 <strong>Auto-generated</strong> from <code>lint/metadata.json</code><br>
-                <strong>Last updated:</strong> 2026-10-26 18:19:31
+                <strong>Last updated:</strong> 2026-10-26 18:20:01
             </div>
             <h2 id="allowed-libraries">allowed_libraries</h2>
             <p><strong>Type:</strong> <code>library</code></p>
@@ -1056,7 +1056,7 @@
             <h3>Configuration Options</h3>
             <table>
                 <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
-                <tr><td><code>bfm_patterns</code></td><td>array</td><td><code>["*_bfm.vhd"]</code></td><td>BFM (bus-functional model) file-name glob patterns that bypass the rule (matched against the base name ignoring case, as testbench_patterns; replaces — does not extend — the default); use for files matching the _bfm.vhd suffix/pattern whose architecture name does not match excluded_architectures. The default also matches mixed-case names such as Dac_BFM.vhd</td></tr>
+                <tr><td><code>bfm_patterns</code></td><td>array</td><td><code>["*_bfm.vhd"]</code></td><td>BFM (bus-functional model) file-name glob patterns that bypass the rule (matched against the base name ignoring case, as testbench_patterns; replaces — does not extend — the default); use for files matching the _bfm.vhd suffix/pattern whose architecture name does not match excluded_architectures. The default also matches the suffix in any case, such as _BFM.vhd</td></tr>
                 <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
                 <tr><td><code>excluded_architectures</code></td><td>array</td><td><code>["bfm"]</code></td><td>Architecture names that bypass the rule (case-insensitive, replaces — does not extend — the default)</td></tr>
                 <tr><td><code>excluded_processes</code></td><td>array</td><td><code>[]</code></td><td>Process labels that bypass the rule (case-insensitive); use for reset synchronizers and similar by-design no-reset processes</td></tr>

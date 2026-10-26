@@ -3765,7 +3765,7 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     # `clear_n_i`, without `rst`/`reset` in the name: neither the
     # testbench patterns nor excluded_architectures would match
     # it without this option). Default `["*_bfm.vhd"]` catches
-    # the canonical suffix in any case (`Dac_BFM.vhd` too). An
+    # the canonical suffix in any case (`*_BFM.vhd` too). An
     # explicit empty list re-enables the rule on BFM files.
     set bfm_patterns {*_bfm.vhd}
     if {[dict exists $rule_config bfm_patterns]} {

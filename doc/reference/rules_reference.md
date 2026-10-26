@@ -2,7 +2,7 @@
 
 This document is auto-generated from `lint/metadata.json`.
 
-**Last updated:** 2026-10-26 18:19:31
+**Last updated:** 2026-10-26 18:20:00
 
 ---
 
@@ -1414,7 +1414,7 @@ This document is auto-generated from `lint/metadata.json`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `bfm_patterns` | array | `["*_bfm.vhd"]` | BFM (bus-functional model) file-name glob patterns that bypass the rule (matched against the base name ignoring case, as testbench_patterns; replaces — does not extend — the default); use for files matching the _bfm.vhd suffix/pattern whose architecture name does not match excluded_architectures. The default also matches mixed-case names such as Dac_BFM.vhd |
+| `bfm_patterns` | array | `["*_bfm.vhd"]` | BFM (bus-functional model) file-name glob patterns that bypass the rule (matched against the base name ignoring case, as testbench_patterns; replaces — does not extend — the default); use for files matching the _bfm.vhd suffix/pattern whose architecture name does not match excluded_architectures. The default also matches the suffix in any case, such as _BFM.vhd |
 | `enabled` | boolean | `false` | Whether rule is active |
 | `excluded_architectures` | array | `["bfm"]` | Architecture names that bypass the rule (case-insensitive, replaces — does not extend — the default) |
 | `excluded_processes` | array | `[]` | Process labels that bypass the rule (case-insensitive); use for reset synchronizers and similar by-design no-reset processes |
