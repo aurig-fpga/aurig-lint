@@ -224,7 +224,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `forbid_wait_statements` reports a bare `wait;` (suspend forever), like
   `wait for`, `wait until` and `wait on`. A process whose only wait
-  statement was `wait;` was not reported.
+  statement was `wait;` was not reported. A `wait` inside a string or
+  character literal, as in `report "wait for ack";`, is not a wait statement
+  and is no longer reported.
 
 - `require_meaningful_comments` with `"instantiations_required": true`
   reports an instantiation without a comment on one of the two lines above

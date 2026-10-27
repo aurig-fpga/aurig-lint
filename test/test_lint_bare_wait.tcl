@@ -9,15 +9,24 @@
 # It is now reported like any other wait statement, once per process, on
 # the process line.
 #
+# A "wait" inside a string or character literal is not a wait statement:
+# report "wait;"; is not reported.
+#
 # Fixtures (not testbench names), one process each:
 #   bare.vhd        "wait;"
 #   bare_space.vhd  "wait ;"
 #   for.vhd, until.vhd, on.vhd   the forms reported before
 #   none.vhd        no wait statement; a signal wait_done and a process
 #                   label wait_proc
+#   string.vhd      no wait statement; report "wait;";
+#   char.vhd        no wait statement; "wait;" in a string between two
+#                   character literals '"'
+#   literal.vhd     report "wait;"; then a bare wait;
 #
 # Checks labelled [control] hold before and after the fix. The checks on
-# bare.vhd and bare_space.vhd fail on the code before the fix.
+# bare.vhd, bare_space.vhd and literal.vhd fail on the code before the fix.
+# The checks on string.vhd and char.vhd hold before the fix too; they fail
+# when "wait;" is matched inside a literal.
 #=============================================================================
 
 set script_anchor [file dirname [file normalize [info script]]]
@@ -63,7 +72,10 @@ set fixtures [dict create \
     for        "    clk <= not clk;\n    wait for 5 ns;" \
     until      "    wait until clk = '1';\n    wait_done <= '1';" \
     on         "    wait on clk;\n    wait_done <= clk;" \
-    none       "    wait_done <= clk;"]
+    none       "    wait_done <= clk;" \
+    string     "    report \"wait;\";\n    wait_done <= clk;" \
+    char       "    report \"say \" & '\"' & \"wait;\" & '\"';\n    wait_done <= clk;" \
+    literal    "    report \"wait;\";\n    wait;"]
 dict for {name statements} $fixtures {
     set file($name) [fixture $name $statements]
 }
@@ -113,6 +125,16 @@ foreach name {for until on} {
 }
 check_eq "\[control\] none.vhd: no wait statement, nothing reported" \
     {} [wait_lines $file(none)]
+
+# ----------------------------------------------------------------------------
+# A "wait" in a string or character literal is not a wait statement
+# ----------------------------------------------------------------------------
+foreach name {string char} {
+    check_eq "$name.vhd: wait in a literal, nothing reported" \
+        {} [wait_lines $file($name)]
+}
+check_eq "literal.vhd: bare wait after a literal reported" \
+    [expected $file(literal)] [wait_lines $file(literal)]
 
 catch {file delete -force $sandbox}
 

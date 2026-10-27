@@ -3298,6 +3298,24 @@ proc ::aurig::lint::compare_diagnostics {diag1 diag2} {
     return 0
 }
 
+# Replace the contents of every string literal ("...", with "" for a quote)
+# and character literal ('x') in text with spaces, so a word or ";" inside a
+# literal is not taken for VHDL code. Quotes, lengths and line breaks are
+# kept. A tick after a name, ")" or "]" is an attribute (clk'event) or a
+# qualified expression (t'(...)), not the start of a character literal.
+proc ::aurig::lint::mask_literals {text} {
+    set masked $text
+    foreach range [regexp -all -inline -indices {"(?:[^"\n]|"")*"|[\w)\]]'|'[^\n]'} $text] {
+        lassign $range first last
+        if {[string index $text $first] ni {\" '}} {
+            continue
+        }
+        set masked [string replace $masked [expr {$first + 1}] [expr {$last - 1}] \
+            [string repeat " " [expr {$last - $first - 1}]]]
+    }
+    return $masked
+}
+
 #=============================================================================
 # Baseline Support
 #=============================================================================
@@ -3957,6 +3975,13 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     return $diagnostics
 }
 
+# Helper: true if a process body contains a wait statement: wait for, wait
+# until, wait on or the bare "wait;" (suspend forever). A "wait" in a string
+# or character literal is not one; the parser has removed the comments.
+proc ::aurig::lint::has_wait_statement {body} {
+    return [regexp -nocase {\mwait\M\s*(for\M|until\M|on\M|;)} [mask_literals $body]]
+}
+
 # Rule: forbid_wait_statements
 # Flags wait statements in synthesizable code
 proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename rule_id rule_config} {
@@ -4008,9 +4033,8 @@ proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename 
             set proc_line [expr {[dict exists $proc line] ? [dict get $proc line] : 0}]
             set proc_label [expr {[dict exists $proc label] ? [dict get $proc label] : ""}]
 
-            # Search for wait statements: wait for, wait until, wait on and
-            # the bare "wait;" (suspend forever)
-            if {[regexp -nocase {\mwait\M\s*(for\M|until\M|on\M|;)} $body]} {
+            # Search for wait statements (has_wait_statement)
+            if {[::aurig::lint::has_wait_statement $body]} {
                 set msg "Wait statement found in synthesizable code"
                 if {$proc_label ne ""} {
                     append msg " (process '$proc_label')"
