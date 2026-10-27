@@ -67,6 +67,7 @@ jobs:
             test/test_lint_process_diagnostic_lines.tcl
             test/test_lint_require_process_label.tcl
             test/test_lint_reset_message.tcl
+            test/test_lint_testbench_patterns.tcl
             test/test_run_lint_project_baseline.tcl
             test/test_run_lint_project_excludes.tcl
             test/test_run_lint_project_fail_on_and_manifest.tcl
@@ -171,6 +172,7 @@ jobs:
             'test/test_lint_process_diagnostic_lines.tcl'
             'test/test_lint_require_process_label.tcl'
             'test/test_lint_reset_message.tcl'
+            'test/test_lint_testbench_patterns.tcl'
             'test/test_run_lint_project_baseline.tcl'
             'test/test_run_lint_project_excludes.tcl'
             'test/test_run_lint_project_fail_on_and_manifest.tcl'

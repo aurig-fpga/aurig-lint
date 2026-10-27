@@ -650,11 +650,15 @@ Error: invalid policy bad-override.json: overrides[0] rule "forbid_latch_inferen
 Exit code 2. Options, severities and unknown rule ids are checked as in
 section 3.
 
-Some rules also have file-pattern options of their own:
-`require_meaningful_comments` skips `tb_*.vhd`, `*_tb.vhd` and
-`*_testbench.vhd` (`skip_testbenches`, on by default), and
-`require_reset_in_clocked_process` has `testbench_patterns`, `bfm_patterns`
-and `excluded_architectures`. They still work and combine with overrides.
+Some rules also have file-pattern options of their own.
+`require_reset_in_clocked_process`, `forbid_wait_statements` and
+`require_meaningful_comments` skip testbenches: files whose name matches one
+of the rule's `testbench_patterns`, by default `tb_*.vhd`, `*_tb.vhd` and
+`*_testbench.vhd`, ignoring case (`UNIT_TB.VHD` is a testbench).
+`require_meaningful_comments` skips them only while `skip_testbenches` is
+on, its default. `require_reset_in_clocked_process` also has
+`bfm_patterns`, default `*_bfm.vhd`, matched the same way, and
+`excluded_architectures`. They still work and combine with overrides.
 
 ## 5. Silencing a line in the source
 
@@ -1196,7 +1200,8 @@ tb/uart_bfm.vhd: exit code 0
 
 Without the override entry, `tb_gate.vhd` and `gate_tb.vhd` report the latch
 only, since `require_meaningful_comments` already skips `tb_*.vhd` and
-`*_tb.vhd` (`skip_testbenches`), and `uart_bfm.vhd` reports all five. The
+`*_tb.vhd` (its `testbench_patterns`, with `skip_testbenches` on), and
+`uart_bfm.vhd` reports all five. The
 patterns have no `/`, so the files are found by name in any folder. The
 project runner applies the same overrides.
 
