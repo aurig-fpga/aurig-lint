@@ -227,6 +227,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   analyse a clocked process (#57). Such a process is not combinational
   logic, but a testbench clock generator driven by `wait for` was reported
   as a latch, and so was a process starting with `wait until clk = '1';`.
+  A `wait` inside a string or character literal, as in `report "wait;";`,
+  is not a wait statement: such a process is still analysed.
 
 - `require_meaningful_comments` with `"instantiations_required": true`
   reports an instantiation without a comment on one of the two lines above

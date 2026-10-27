@@ -18,10 +18,16 @@
 #   comb.vhd       a combinational process with a sensitivity list and a
 #                  latch; comments in it mention "wait for" and "wait;"
 #   comb_ok.vhd    the same process with a default assignment
+#   comb_string.vhd  comb.vhd with report "wait;"; a "wait" in a string
+#                    literal is not a wait statement
+#   comb_char.vhd    comb.vhd with "wait;" in a string between two
+#                    character literals '"'
 #
 # Checks labelled [control] hold before and after the fix: comb.vhd is
 # reported and comb_ok.vhd is not. The checks on tb_clk.vhd and
-# wait_until.vhd fail on the code before the fix.
+# wait_until.vhd fail on the code before the fix. The checks on
+# comb_string.vhd and comb_char.vhd hold before the fix too; they fail when
+# "wait;" is matched inside a literal.
 #=============================================================================
 
 set script_anchor [file dirname [file normalize [info script]]]
@@ -83,10 +89,14 @@ begin
 end architecture rtl;
 }
 
-# A combinational process; with a default assignment when default is 1.
-proc comb {name default} {
+# A combinational process; with a default assignment when default is 1,
+# and the statement report, if given, first.
+proc comb {name default {report ""}} {
     set path [file join $::sandbox $name.vhd]
     set first [expr {$default ? "    q <= '0';\n" : ""}]
+    if {$report ne ""} {
+        set first "    $report\n$first"
+    }
     write_file $path "library ieee;
 use ieee.std_logic_1164.all;
 
@@ -109,6 +119,8 @@ end architecture rtl;
 }
 set comb    [comb comb 0]
 set comb_ok [comb comb_ok 1]
+set comb_string [comb comb_string 0 {report "wait;";}]
+set comb_char   [comb comb_char 0 {report "say " & '"' & "wait;" & '"';}]
 
 set policy [file join $sandbox latch.json]
 write_file $policy {{"rules": {"forbid_latch_inference": {"enabled": true}}}
@@ -149,6 +161,17 @@ check_eq "\[control\] comb.vhd: latch reported" \
     [latch_lines $comb]
 check_eq "\[control\] comb_ok.vhd: default assignment, no latch" \
     {} [latch_lines $comb_ok]
+
+# ----------------------------------------------------------------------------
+# A "wait" in a string or character literal is not a wait statement: the
+# process is analysed and its latch reported
+# ----------------------------------------------------------------------------
+foreach path [list $comb_string $comb_char] {
+    # The report statement follows the process line: n is the same as above
+    check_eq "[file tail $path]: wait in a literal, latch reported" \
+        [list "$path:$n: warning: Signal 'q' may infer a latch in process 'hold' - missing default assignment \[forbid_latch_inference\]"] \
+        [latch_lines $path]
+}
 
 catch {file delete -force $sandbox}
 
