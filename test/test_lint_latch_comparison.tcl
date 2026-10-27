@@ -19,13 +19,15 @@
 # of a conditional expression (ok <= true when d = '1' else cnt <= 3;) is a
 # comparison too.
 #
-# Coverage is decided per branch of an if or case: a signal is covered by a
-# default assignment before the if or case, or by an if with else or a case
-# with others that assigns it in every branch. Several assignments to the
-# signal in one branch count as that one branch: two assignments in the if
-# branch of an if/else were taken for an assignment in each branch, and a
-# case with others for complete whenever one alternative assigned the
-# signal.
+# Coverage is decided per branch of an if or case: a signal is covered by an
+# unconditional assignment at the top level of the process, before or after
+# the if or case (the last assignment in a process wins), or by an if with
+# else or a case with others that assigns it in every branch. An assignment
+# after the if inside another conditional does not cover it. Several
+# assignments to the signal in one branch count as that one branch: two
+# assignments in the if branch of an if/else were taken for an assignment in
+# each branch, and a case with others for complete whenever one alternative
+# assigned the signal.
 #
 # Fixtures, one combinational process each, q with a default assignment
 # unless stated:
@@ -59,12 +61,18 @@
 #                         alternative only: a latch
 #   others_full.vhd       no default; case with others, q assigned in every
 #                         alternative
+#   after_if.vhd          no default; q assigned under an if without else,
+#                         then unconditionally after the if
+#   after_if_cond.vhd     the same, but the assignment after the if is under
+#                         another if without else: a latch
 #
 # Checks labelled [control] hold before and after the fix: incomplete.vhd
 # and case_alt.vhd report q, if_else_line.vhd reports ok and q, and
 # both_branches.vhd, both_branches_line.vhd, default_partial.vhd and
-# others_full.vhd report nothing. The check on one_branch_line.vhd holds
-# before the fix too. Every other check fails on the code before the fix;
+# others_full.vhd report nothing, after_if_cond.vhd reports q. The check on
+# one_branch_line.vhd holds before the fix too. Every other check fails on
+# the code before the fix (after_if.vhd also when only an assignment before
+# the if counts);
 # the checks on else_expr.vhd and else_expr_latch.vhd also fail when "else"
 # is taken for the start of a statement, the one on literal.vhd when a ";"
 # in a literal ends one, and the ones on one_branch_line.vhd,
@@ -207,7 +215,17 @@ set fixtures [dict create \
         q <= d;
       when others =>
         q <= '0';
-    end case;}]
+    end case;} \
+    after_if {    if en = '1' then
+      q <= d;
+    end if;
+    q <= '0';} \
+    after_if_cond {    if en = '1' then
+      q <= d;
+    end if;
+    if d = '1' then
+      q <= '0';
+    end if;}]
 dict for {name statements} $fixtures {
     set file($name) [fixture $name $statements]
 }
@@ -216,8 +234,8 @@ set policy [file join $sandbox latch.json]
 write_file $policy {{"rules": {"forbid_latch_inference": {"enabled": true}}}
 }
 
-# The compared names appear only inside an if or case, so a default
-# assignment before the if or case cannot hide them.
+# The compared names appear only inside an if or case, so a top-level
+# assignment cannot hide them.
 
 # The names the rule reports, sorted, or "rc 2" when the CLI rejected its
 # input.
@@ -271,6 +289,12 @@ check_eq "case with others, one alternative assigns: q reported" \
     q [reported $file(others_partial)]
 
 # ----------------------------------------------------------------------------
+# An unconditional assignment after the if covers the signal
+# ----------------------------------------------------------------------------
+check_eq "assignment after the if: nothing reported" \
+    {} [reported $file(after_if)]
+
+# ----------------------------------------------------------------------------
 # Controls: real incomplete assignments are still reported
 # ----------------------------------------------------------------------------
 check_eq "\[control\] incomplete if: q reported" q [reported $file(incomplete)]
@@ -285,6 +309,8 @@ check_eq "\[control\] default before partial branches: nothing reported" \
     {} [reported $file(default_partial)]
 check_eq "\[control\] case with others, every alternative assigns: nothing reported" \
     {} [reported $file(others_full)]
+check_eq "\[control\] assignment after the if under another if: q reported" \
+    q [reported $file(after_if_cond)]
 
 catch {file delete -force $sandbox}
 

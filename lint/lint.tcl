@@ -3484,8 +3484,10 @@ proc ::aurig::lint::filter_baseline {diagnostics baseline {base_dir ""}} {
 # DESIGN PHILOSOPHY:
 # This rule uses a conservative approach, without full control-flow analysis.
 # It follows the if and case statements of a process branch by branch: a
-# signal is covered by a default assignment before the first if or case that
-# assigns it, or by an if or case that assigns it in every branch.
+# signal is covered by an unconditional assignment at the top level of the
+# process, before or after the if or case statements that assign it (the
+# last assignment in a process wins), or by an if or case that assigns it in
+# every branch.
 #
 # WHAT IT DETECTS:
 # - Signals assigned only inside if/case without defaults
@@ -3494,8 +3496,6 @@ proc ::aurig::lint::filter_baseline {diagnostics baseline {base_dir ""}} {
 #   assignments in one branch count as that one branch
 #
 # WHAT IT DOESN'T HANDLE:
-# - An assignment after an if/case at the top level of the process does not
-#   count as a default: the if/case is reported
 # - A case without "when others" is incomplete, even when its choices cover
 #   every value
 # - The statements of a loop count as statements of the enclosing sequence
@@ -3503,10 +3503,10 @@ proc ::aurig::lint::filter_baseline {diagnostics baseline {base_dir ""}} {
 # STRATEGY:
 # For each signal assigned in a combinational process:
 # 1. Build the if/case structure of the process (statement_tree)
-# 2. Walk its top-level statements in order: an assignment to the signal,
-#    or an if/case that assigns it on every path, covers the signal
-# 3. An if/case that assigns the signal on some paths only, before the
-#    signal is covered, may infer a latch: warn
+# 2. A top-level assignment to the signal, or a top-level if/case that
+#    assigns it on every path, covers the signal, wherever it stands
+# 3. A signal not covered, that an if/case assigns on some paths only, may
+#    infer a latch: warn
 
 # Helper: The statements of a process body as a list of events, in order:
 # {if}, {elsif}, {else}, {case}, {when others} (others 1 for a
@@ -3680,20 +3680,14 @@ proc ::aurig::lint::assigns_ever {sequence signal_name} {
     return 0
 }
 
-# Helper: True if a signal is covered in a process body: walking its
-# top-level statements (statement_tree) in order, an assignment to it or an
-# if/case that assigns it on every path (assigns_always) comes before any
-# if/case that assigns it on some paths only
+# Helper: True if a signal is covered in a process body: its top-level
+# statements (statement_tree) assign it on every path (assigns_always), with
+# an assignment or an if/case that assigns it on every path, before or after
+# the if/case statements that assign it on some paths only (the last
+# assignment in a process wins). A signal the body never assigns is covered.
 proc ::aurig::lint::has_default_assignment {body signal_name} {
-    foreach node [statement_tree $body] {
-        if {[assigns_always [list $node] $signal_name]} {
-            return 1
-        }
-        if {[assigns_ever [list $node] $signal_name]} {
-            return 0
-        }
-    }
-    return 1
+    set tree [statement_tree $body]
+    return [expr {[assigns_always $tree $signal_name] || ![assigns_ever $tree $signal_name]}]
 }
 
 # Helper: Analyze combinational process for latch inference

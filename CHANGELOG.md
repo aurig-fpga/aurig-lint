@@ -236,14 +236,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   statement.
 
 - `forbid_latch_inference` decides coverage per branch of an `if` or
-  `case`. A signal is covered by an assignment before the `if` or `case`,
-  or by an `if` with `else` or a `case` with `when others` that assigns it
-  in every branch; several assignments in one branch count as that one
-  branch. Two assignments to a signal on two lines of the `if` branch of an
-  `if`/`else` were taken for complete coverage, and so was a `case` with
-  `when others` in which one alternative assigned the signal: both latches
-  are now reported. A signal assigned after an `if` that does not assign it
-  is no longer reported.
+  `case`. A signal is covered by an unconditional assignment at the top
+  level of the process, before or after the `if` or `case` (the last
+  assignment in a process wins), or by an `if` with `else` or a `case` with
+  `when others` that assigns it in every branch; several assignments in one
+  branch count as that one branch. Two assignments to a signal on two lines
+  of the `if` branch of an `if`/`else` were taken for complete coverage, and
+  so was a `case` with `when others` in which one alternative assigned the
+  signal: both latches are now reported. A signal assigned after an `if`,
+  as in `if en = '1' then q <= d; end if; q <= '0';`, is no longer
+  reported; an assignment after the `if` inside another conditional does
+  not cover it.
 
 - `require_meaningful_comments` with `"instantiations_required": true`
   reports an instantiation without a comment on one of the two lines above
