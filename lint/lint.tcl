@@ -3298,17 +3298,23 @@ proc ::aurig::lint::compare_diagnostics {diag1 diag2} {
     return 0
 }
 
-# Replace the contents of every string literal ("...", with "" for a quote)
-# and character literal ('x') in text with spaces, so a word or ";" inside a
-# literal is not taken for VHDL code. Quotes, lengths and line breaks are
-# kept. A tick after a name, ")" or "]" is an attribute (clk'event) or a
-# qualified expression (t'(...)), not the start of a character literal.
+# Replace the contents of every string literal ("...", with "" for a quote),
+# character literal ('x') and extended identifier (\...\, with \\ for a
+# backslash) in text with spaces, so a word or ";" inside one is not taken
+# for VHDL code: a keyword spelled as an extended identifier (\when\) is a
+# name. Quotes, backslashes, lengths and line breaks are kept. A tick after
+# a name, an extended identifier, ")" or "]" is an attribute (clk'event) or
+# a qualified expression (t'(...)), not the start of a character literal.
 proc ::aurig::lint::mask_literals {text} {
     set masked $text
-    foreach range [regexp -all -inline -indices {"(?:[^"\n]|"")*"|[\w)\]]'|'[^\n]'} $text] {
+    foreach range [regexp -all -inline -indices {"(?:[^"\n]|"")*"|[\w)\]]'|'[^\n]'|\\(?:[^\\\n]|\\\\)*\\'?} $text] {
         lassign $range first last
-        if {[string index $text $first] ni {\" '}} {
+        set open [string index $text $first]
+        if {$open ni [list \" ' \\]} {
             continue
+        }
+        if {$open eq "\\" && [string index $text $last] eq "'"} {
+            incr last -1
         }
         set masked [string replace $masked [expr {$first + 1}] [expr {$last - 1}] \
             [string repeat " " [expr {$last - $first - 1}]]]
@@ -3523,7 +3529,8 @@ proc ::aurig::lint::filter_baseline {diagnostics baseline {base_dir ""}} {
 # {end loop} and {assign name always} (name as written; always is 0 for a
 # conditional assignment whose last alternative is not an unconditional
 # else, as in q <= '0' when d = '1', else 1). The body is split into
-# statements on ";" outside string and character literals (mask_literals).
+# statements on ";" outside string and character literals and extended
+# identifiers (mask_literals), and its keywords are read outside them.
 # A statement may start with labels, "begin", "then", the loop headers
 # "for ... loop", "while ... loop" and "loop", and the headers
 # "if ... then", "elsif ... then", "else", "case ... is" and "when ... =>";
@@ -3791,8 +3798,9 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
             }
 
             # Check if process has any conditionals: an if, a case, a loop
-            # or a conditional assignment
-            if {![regexp -nocase {\m(if|case|loop|when)\M} $body]} {
+            # or a conditional assignment, outside literals and extended
+            # identifiers
+            if {![regexp -nocase {\m(if|case|loop|when)\M} [::aurig::lint::mask_literals $body]]} {
                 # No conditionals, no risk of latches
                 continue
             }

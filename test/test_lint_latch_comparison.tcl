@@ -84,6 +84,29 @@
 # part of the enclosing sequence and a process without if or case was not
 # checked; both report q now.
 #
+# An extended identifier that spells a keyword (\when\, \else\, \if\,
+# \loop\) is a name, not the keyword; a doubled backslash inside one is an
+# escaped backslash, not its end. The fixtures declare the signals
+# \when\, \else\, \b\ and \a\\\ (a name ending in a backslash); \if\ and
+# \loop\ (an integer) are used undeclared, since the engine fails (exit 2)
+# on a declaration of either one, a separate problem in locating declared
+# names:
+#   ext_when_rhs.vhd      q <= \when\;
+#   ext_when_cond.vhd     q <= d when en = '1' else \when\;
+#   ext_if.vhd            if en = '1' then q <= \if\; end if;  a latch
+#   ext_loop.vhd          q <= d when \loop\ = 1 else '0';
+#   ext_else.vhd          q <= d when \else\ = '1';  no final else: a latch
+#   ext_backslash.vhd     q <= \a\\\ when \b\ = '1';  no final else: a latch
+#   ext_loop_header.vhd   for i in 1 to \loop\ loop q <= d; end loop;  a
+#                         latch
+# When the words in extended identifiers were read as keywords,
+# ext_when_rhs.vhd and ext_when_cond.vhd reported q (the last "when" came
+# after the last "else"), ext_else.vhd reported nothing (an "else" after the
+# "when"), and ext_loop_header.vhd reported nothing (the loop header ended
+# at \loop\, so q <= d was not seen); those four checks fail on that code.
+# ext_if.vhd, ext_loop.vhd and ext_backslash.vhd report the same as with
+# ordinary names, with or without the masking of extended identifiers.
+#
 # Checks labelled [control] hold before and after the fix: incomplete.vhd
 # and case_alt.vhd report q, if_else_line.vhd reports ok and q, and
 # both_branches.vhd, both_branches_line.vhd, default_partial.vhd and
@@ -114,7 +137,7 @@ set sandbox [file join $script_anchor _tmp_latch_comparison]
 catch {file delete -force $sandbox}
 
 # A design whose process comb has the given statements; return its path.
-proc fixture {name statements} {
+proc fixture {name statements {declarations ""}} {
     set path [file join $::sandbox $name.vhd]
     write_file $path "library ieee;
 use ieee.std_logic_1164.all;
@@ -132,7 +155,7 @@ entity $name is
 end entity $name;
 
 architecture rtl of $name is
-begin
+${declarations}begin
   comb : process (cnt, lim, en, d)
   begin
 $statements
@@ -445,6 +468,26 @@ dict for {name statements} [dict merge $fixtures $adversarial] {
     set file($name) [fixture $name $statements]
 }
 
+# Extended identifiers that spell keywords
+set extended_declarations {  signal \when\, \else\, \b\ : std_logic;
+  signal \a\\\ : std_logic;
+}
+set extended [dict create \
+    ext_when_rhs {    q <= \when\;} \
+    ext_when_cond {    q <= d when en = '1' else \when\;} \
+    ext_if {    if en = '1' then
+      q <= \if\;
+    end if;} \
+    ext_loop {    q <= d when \loop\ = 1 else '0';} \
+    ext_else {    q <= d when \else\ = '1';} \
+    ext_backslash {    q <= \a\\\ when \b\ = '1';} \
+    ext_loop_header {    for i in 1 to \loop\ loop
+      q <= d;
+    end loop;}]
+dict for {name statements} $extended {
+    set file($name) [fixture $name $statements $extended_declarations]
+}
+
 set policy [file join $sandbox latch.json]
 write_file $policy {{"rules": {"forbid_latch_inference": {"enabled": true}}}
 }
@@ -534,6 +577,22 @@ foreach {name expected} $adversarial_expected {
     set what [expr {$expected eq "" ? "nothing" : $expected}]
     check_eq "adversarial $name: $what reported" $expected [reported $file($name)]
 }
+
+# ----------------------------------------------------------------------------
+# An extended identifier that spells a keyword is a name
+# ----------------------------------------------------------------------------
+check_eq "q <= \\when\\: nothing reported" {} [reported $file(ext_when_rhs)]
+check_eq "complete conditional ending in \\when\\: nothing reported" \
+    {} [reported $file(ext_when_cond)]
+check_eq "\\else\\ in the condition, no final else: q reported" \
+    q [reported $file(ext_else)]
+check_eq "\\loop\\ in a loop header: q reported" q [reported $file(ext_loop_header)]
+check_eq "\[control\] \\if\\ assigned under an if without else: q reported" \
+    q [reported $file(ext_if)]
+check_eq "\[control\] \\loop\\ in a complete conditional: nothing reported" \
+    {} [reported $file(ext_loop)]
+check_eq "\[control\] escaped backslash, no final else: q reported" \
+    q [reported $file(ext_backslash)]
 
 catch {file delete -force $sandbox}
 

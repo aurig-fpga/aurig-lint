@@ -233,7 +233,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   later `<=` in the same statement is an expression, including one after
   the `else` of a conditional expression (`ok <= true when d = '1' else
   cnt <= 3;`). A `;` in a string or character literal does not end a
-  statement.
+  statement. An extended identifier that spells a keyword (`\when\`,
+  `\else\`, `\loop\`) is a name, so `q <= d when en = '1' else \when\;`
+  is a complete assignment, not one that ends with a `when`.
 
 - `forbid_latch_inference` decides coverage per branch of an `if` or
   `case`. A signal is covered by a top-level statement of the process,
