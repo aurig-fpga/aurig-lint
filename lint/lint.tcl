@@ -3298,6 +3298,24 @@ proc ::aurig::lint::compare_diagnostics {diag1 diag2} {
     return 0
 }
 
+# Replace the contents of every string literal ("...", with "" for a quote)
+# and character literal ('x') in text with spaces, so a word or ";" inside a
+# literal is not taken for VHDL code. Quotes, lengths and line breaks are
+# kept. A tick after a name, ")" or "]" is an attribute (clk'event) or a
+# qualified expression (t'(...)), not the start of a character literal.
+proc ::aurig::lint::mask_literals {text} {
+    set masked $text
+    foreach range [regexp -all -inline -indices {"(?:[^"\n]|"")*"|[\w)\]]'|'[^\n]'} $text] {
+        lassign $range first last
+        if {[string index $text $first] ni {\" '}} {
+            continue
+        }
+        set masked [string replace $masked [expr {$first + 1}] [expr {$last - 1}] \
+            [string repeat " " [expr {$last - $first - 1}]]]
+    }
+    return $masked
+}
+
 #=============================================================================
 # Baseline Support
 #=============================================================================
@@ -3486,21 +3504,63 @@ proc ::aurig::lint::filter_baseline {diagnostics baseline {base_dir ""}} {
 # This produces false negatives (misses some latches) but avoids false positives.
 # Better to miss an issue than create noise with incorrect warnings.
 
-# Helper: Regexp matching a signal assignment to name (a regexp, captured;
-# default any name): the name and "<=" at the start of a statement, that is
-# at the start of the text or after ";", "then", "else", "=>" (a case
-# alternative), "begin", "loop" or a label. A "<=" comparison is never at the
-# start of a statement, so its left operand (if cnt <= 3 then, ok <= cnt <= 3)
-# is not taken for an assigned signal. Matched with -nocase.
-proc ::aurig::lint::signal_assignment_pattern {{name {\w+}}} {
-    return "(?:^|;|\\mthen\\M|\\melse\\M|=>|\\mbegin\\M|\\mloop\\M|:)\\s*(${name})\\s*<="
+# Helper: The signal assignments in a process body, a list of {line name}
+# with line counted from 0 in body and name as written. The body is split
+# into statements on ";" outside string and character literals
+# (mask_literals). In a statement, only a name and "<=" at its start is an
+# assignment, after any leading label, "begin", "if ... then",
+# "elsif ... then", "else", "then", "case ... is", "when ... =>",
+# "for ... loop", "while ... loop" or "loop". Every later "<=" in the
+# statement is an expression: a comparison (if cnt <= 3 then, ok <= cnt <= 3)
+# or one in a conditional expression (ok <= true when d = '1' else cnt <= 3),
+# so its left operand is not taken for an assigned signal.
+proc ::aurig::lint::signal_assignments {body} {
+    set masked [mask_literals $body]
+    set assignments {}
+    set start 0
+    foreach statement [split $masked ";"] {
+        # Skip what leads the statement up to its first name
+        set pos 0
+        while {1} {
+            set head [string range $statement $pos end]
+            if {[regexp -nocase {^\s*(?:\w+\s*:(?!=)|(?:begin|else|then|loop)\M)} $head match]} {
+                incr pos [string length $match]
+            } elseif {[regexp -nocase {^\s*(if|elsif|case|when|for|while)\M} $head -> keyword]} {
+                set close [dict get {
+                    if {\mthen\M} elsif {\mthen\M} case {\mis\M}
+                    when {=>} for {\mloop\M} while {\mloop\M}
+                } [string tolower $keyword]]
+                if {![regexp -nocase -indices $close $head range]} {
+                    break
+                }
+                incr pos [expr {[lindex $range 1] + 1}]
+            } else {
+                break
+            }
+        }
+
+        if {[regexp -indices {^\s*(\w+)\s*<=} [string range $statement $pos end] -> name]} {
+            set first [expr {$start + $pos + [lindex $name 0]}]
+            set last [expr {$start + $pos + [lindex $name 1]}]
+            set line [regexp -all {\n} [string range $masked 0 $first]]
+            lappend assignments [list $line [string range $body $first $last]]
+        }
+        incr start [expr {[string length $statement] + 1}]
+    }
+    return $assignments
 }
 
 # Helper: Check if a signal has a default assignment before any conditionals
 # OR if signal has complete if-else coverage (simple heuristic)
 proc ::aurig::lint::has_default_assignment {body signal_name} {
-    # An assignment to this signal, not a comparison
-    set assignment [signal_assignment_pattern $signal_name]
+    # The lines of the assignments to this signal (signal_assignments)
+    set assigned_lines {}
+    foreach assignment [signal_assignments $body] {
+        lassign $assignment line name
+        if {[string equal -nocase $name $signal_name]} {
+            lappend assigned_lines $line
+        }
+    }
 
     # Remove comments to avoid false matches
     set body [regsub -all -line -- {--.*$} $body ""]
@@ -3511,7 +3571,9 @@ proc ::aurig::lint::has_default_assignment {body signal_name} {
 
     # Process line by line
     set lines [split $body "\n"]
+    set line_index -1
     foreach line $lines {
+        incr line_index
         set line [string trim $line]
 
         # Skip empty lines
@@ -3535,7 +3597,7 @@ proc ::aurig::lint::has_default_assignment {body signal_name} {
 
         # Check for assignment to this signal at nesting level 0
         if {$nesting == 0} {
-            if {[regexp -nocase $assignment $line]} {
+            if {$line_index in $assigned_lines} {
                 set found_default true
                 break
             }
@@ -3549,14 +3611,8 @@ proc ::aurig::lint::has_default_assignment {body signal_name} {
         # This is a conservative check: only catches "if ... else ... end if" with no elsif
         if {[regexp -nocase "\\mif\\M.*\\melse\\M.*\\mend\\s+if\\M" $body]} {
             # Check if signal is assigned in both if and else branches
-            # Simple heuristic: if signal appears 2+ times with <=, likely covered
-            set assignment_count 0
-            foreach line $lines {
-                if {[regexp -nocase $assignment $line]} {
-                    incr assignment_count
-                }
-            }
-            if {$assignment_count >= 2} {
+            # Simple heuristic: if signal is assigned 2+ times, likely covered
+            if {[llength $assigned_lines] >= 2} {
                 set found_default true
             }
         }
@@ -3564,14 +3620,7 @@ proc ::aurig::lint::has_default_assignment {body signal_name} {
         # Also check for case with "others" clause (considered complete)
         if {[regexp -nocase "\\mcase\\M.*\\mothers\\M.*\\mend\\s+case\\M" $body]} {
             # If signal assigned in case with others, considered safe
-            set has_assignment 0
-            foreach line $lines {
-                if {[regexp -nocase $assignment $line]} {
-                    set has_assignment 1
-                    break
-                }
-            }
-            if {$has_assignment} {
+            if {[llength $assigned_lines] > 0} {
                 set found_default true
             }
         }
@@ -3585,9 +3634,10 @@ proc ::aurig::lint::analyze_combinational_process {body} {
     # Extract all signals assigned in this process
     set assigned_signals {}
 
-    # Match signal assignments (signal_assignment_pattern), not "<="
-    # comparisons. Collect unique signal names
-    foreach {match sig} [regexp -all -inline -nocase [signal_assignment_pattern] $body] {
+    # Signal assignments (signal_assignments), not "<=" expressions.
+    # Collect unique signal names
+    foreach assignment [signal_assignments $body] {
+        set sig [lindex $assignment 1]
         if {$sig ni $assigned_signals} {
             lappend assigned_signals $sig
         }

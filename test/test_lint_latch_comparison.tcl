@@ -11,8 +11,13 @@
 # A comparison also counted as an assignment of the compared signal, so
 # "if q <= 3 then q <= d; elsif ... else ... end if;" counted q twice and
 # took it for assigned in both branches. Now only a signal assignment
-# counts: a name followed by "<=" at the start of a statement (the start of
-# the body, or after ";", "then", "else", "=>", "begin", "loop" or a label).
+# counts. The body is split into statements on ";" (outside string and
+# character literals); in each statement only a name and "<=" at its start
+# (after a leading label, begin, if ... then, elsif ... then, else,
+# case ... is, when ... =>, or a loop header) is an assignment, and every
+# later "<=" in the statement is an expression. So the "<=" after the "else"
+# of a conditional expression (ok <= true when d = '1' else cnt <= 3;) is a
+# comparison too.
 #
 # Fixtures, one combinational process each, q with a default assignment
 # unless stated:
@@ -26,10 +31,20 @@
 #   case_alt.vhd     q assigned in a case alternative, no others: a latch
 #   compared.vhd     no default; q compared in the if and assigned in it,
 #                    the elsif and else branches do not assign q: a latch
+#   else_expr.vhd    under an if: ok <= true when d = '1' else cnt <= 3;
+#                    (ok has a default assignment)
+#   else_expr_latch.vhd  the same without the default: a latch on ok
+#   if_else_line.vhd no default; "if en = '1' then q <= d; else ok <= true;"
+#                    on one line, then "end if;": q and ok are assigned in
+#                    one branch each, two latches
+#   literal.vhd      under an if: report "done; cnt <= 3"; (q has a
+#                    default assignment)
 #
 # Checks labelled [control] hold before and after the fix: incomplete.vhd
-# and case_alt.vhd report q. Every other check fails on the code before the
-# fix.
+# and case_alt.vhd report q, if_else_line.vhd reports ok and q. Every other
+# check fails on the code before the fix; the checks on else_expr.vhd and
+# else_expr_latch.vhd also fail when "else" is taken for the start of a
+# statement, and the one on literal.vhd when a ";" in a literal ends one.
 #=============================================================================
 
 set script_anchor [file dirname [file normalize [info script]]]
@@ -116,6 +131,20 @@ set fixtures [dict create \
       null;
     else
       null;
+    end if;} \
+    else_expr {    ok <= false;
+    if en = '1' then
+      ok <= true when d = '1' else cnt <= 3;
+    end if;} \
+    else_expr_latch {    if en = '1' then
+      ok <= true when d = '1' else cnt <= 3;
+    end if;} \
+    if_else_line {    if en = '1' then q <= d; else ok <= true;
+    end if;} \
+    literal {    q <= '0';
+    if en = '1' then
+      report "done; cnt <= 3";
+      q <= d;
     end if;}]
 dict for {name statements} $fixtures {
     set file($name) [fixture $name $statements]
@@ -159,10 +188,24 @@ check_eq "right side of assignments: lim and cnt not reported" {} [reported $fil
 check_eq "compared and assigned in one branch only: q reported" q [reported $file(compared)]
 
 # ----------------------------------------------------------------------------
+# A "<=" after the else of a conditional expression is a comparison
+# ----------------------------------------------------------------------------
+check_eq "conditional expression: cnt not reported" {} [reported $file(else_expr)]
+check_eq "conditional expression without default: ok reported, cnt not" \
+    ok [reported $file(else_expr_latch)]
+
+# ----------------------------------------------------------------------------
+# A ";" in a string literal does not end a statement
+# ----------------------------------------------------------------------------
+check_eq "string literal: cnt not reported" {} [reported $file(literal)]
+
+# ----------------------------------------------------------------------------
 # Controls: real incomplete assignments are still reported
 # ----------------------------------------------------------------------------
 check_eq "\[control\] incomplete if: q reported" q [reported $file(incomplete)]
 check_eq "\[control\] case alternative without others: q reported" q [reported $file(case_alt)]
+check_eq "\[control\] if and else statements on one line: ok and q reported" \
+    {ok q} [reported $file(if_else_line)]
 
 catch {file delete -force $sandbox}
 

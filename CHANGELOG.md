@@ -229,7 +229,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`ok <= cnt <= 3;`, `q <= '1' when cnt <= 3 else '0';`), was reported as
   a signal that may infer a latch. A comparison also counted as an
   assignment of the compared signal, which could hide a real latch. An
-  assignment is now a name and `<=` at the start of a statement.
+  assignment is now a name and `<=` at the start of a statement; every
+  later `<=` in the same statement is an expression, including one after
+  the `else` of a conditional expression (`ok <= true when d = '1' else
+  cnt <= 3;`). A `;` in a string or character literal does not end a
+  statement.
 
 - `require_meaningful_comments` with `"instantiations_required": true`
   reports an instantiation without a comment on one of the two lines above
