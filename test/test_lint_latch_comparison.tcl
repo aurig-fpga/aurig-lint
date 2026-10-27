@@ -19,15 +19,17 @@
 # of a conditional expression (ok <= true when d = '1' else cnt <= 3;) is a
 # comparison too.
 #
-# Coverage is decided per branch of an if or case: a signal is covered by an
-# unconditional assignment at the top level of the process, before or after
-# the if or case (the last assignment in a process wins), or by an if with
-# else or a case with others that assigns it in every branch. An assignment
-# after the if inside another conditional does not cover it. Several
-# assignments to the signal in one branch count as that one branch: two
-# assignments in the if branch of an if/else were taken for an assignment in
-# each branch, and a case with others for complete whenever one alternative
-# assigned the signal.
+# Coverage is decided per branch of an if or case: a signal is covered by a
+# top-level statement of the process, before or after the if or case (the
+# last assignment in a process wins), that is a plain assignment, a
+# conditional assignment whose last alternative is an unconditional else,
+# or an if with else or a case with others that covers it in every branch,
+# by the same rule. An assignment after the if inside another conditional
+# does not cover it, and an assignment inside a loop never covers, since the
+# loop may run zero times or exit early. Several assignments to the signal
+# in one branch count as that one branch: two assignments in the if branch
+# of an if/else were taken for an assignment in each branch, and a case
+# with others for complete whenever one alternative assigned the signal.
 #
 # Fixtures, one combinational process each, q with a default assignment
 # unless stated:
@@ -65,6 +67,22 @@
 #                         then unconditionally after the if
 #   after_if_cond.vhd     the same, but the assignment after the if is under
 #                         another if without else: a latch
+#
+# The adversarial cases of an independent review follow, each with the
+# result it expects (q, a, or nothing reported). Two of them failed when
+# every assignment after an if counted as coverage, and must report q:
+#   loop_partial_then_assignment.vhd  q assigned in a for loop, under an if
+#                         without else and then unconditionally: the loop
+#                         may run zero times
+#   conditional_assignment_after_if.vhd  q assigned under an if without
+#                         else, then by "q <= '0' when d = '1';" without a
+#                         final else
+# loop_after_if.vhd, loop_early_exit.vhd and loop_while_after_if.vhd failed
+# there too. loop_only.vhd (q assigned only in a for loop, in a process
+# without if or case) and loop_complete_if.vhd (q assigned by a complete if
+# inside a for loop) failed before that as well, since a loop counted as
+# part of the enclosing sequence and a process without if or case was not
+# checked; both report q now.
 #
 # Checks labelled [control] hold before and after the fix: incomplete.vhd
 # and case_alt.vhd report q, if_else_line.vhd reports ok and q, and
@@ -108,6 +126,7 @@ entity $name is
     en  : in  std_logic;
     d   : in  std_logic;
     q   : out std_logic;
+    a   : out std_logic;
     ok  : out boolean
   );
 end entity $name;
@@ -226,7 +245,203 @@ set fixtures [dict create \
     if d = '1' then
       q <= '0';
     end if;}]
-dict for {name statements} $fixtures {
+
+# The adversarial cases: the statements of each and the names it reports
+set adversarial [dict create \
+    case_choices_and_comments {    case cnt is
+     when 0 | 1 => -- end case; when others =>
+      q <= d;
+     when others => q <= '0';
+    end case;} \
+    case_others_middle_missing {    case cnt is
+     when 0 => null;
+     when 1 => q <= d;
+     when others => q <= '0';
+    end case;} \
+    case_others_missing {    case cnt is
+     when 0 | 1 => q <= d;
+     when others => null;
+    end case;} \
+    case_range_choices {    case cnt is when 0 to 2 => q <= d; when others => q <= '0'; end case;} \
+    case_without_others_missing {    case cnt is
+     when 0 | 1 => q <= d;
+     when 2 => null;
+     when 3 => q <= '0';
+    end case;} \
+    comments_and_strings {    -- if bogus then; case bogus is; end if; q <= d;
+    q <= '0';
+    if en = '1' then
+     report "if; case; end if; end case; q <= '1';";
+     report "a ""if; end case;"" b";
+     q <= d; -- else; end case;
+    end if;
+    -- case cnt is when others => bogus <= d; end case;} \
+    complete_after_partial {    if en = '1' then q <= d; end if;
+    if cnt = 1 then q <= '1'; else q <= '0'; end if;} \
+    conditional_assignment_after_if {    if en = '1' then
+     q <= '1';
+    end if;
+    q <= '0' when d = '1';} \
+    default_before {    q <= '0';
+    if en = '1' then q <= d; end if;} \
+    elsif_without_else {    if en = '1' then q <= d;
+    elsif d = '1' then q <= '0';
+    end if;} \
+    full_case_others {    case cnt is
+     when 0 | 1 => q <= d;
+     when 2 => q <= '1';
+     when others => q <= '0';
+    end case;} \
+    full_if_elsif_else {    if en = '1' then
+     q <= d;
+    elsif cnt = 1 then
+     q <= '1';
+    else
+     q <= '0';
+    end if;} \
+    if_without_else {    if en = '1' then
+     q <= d;
+    end if;} \
+    labelled_case_full {    pick_q : case cnt is when 0 | 1 => set_q : q <= d; when others => clear_q : q <= '0'; end case pick_q;} \
+    labelled_if_full {    pick_q : if en = '1' then set_q : q <= d; else clear_q : q <= '0'; end if pick_q;} \
+    labelled_if_missing {    pick_q : if en = '1' then set_q : q <= d; end if pick_q;} \
+    loop_after_if {    if en = '1' then
+     q <= d;
+    end if;
+    for i in 1 to cnt loop
+     q <= '0';
+    end loop;} \
+    loop_complete_if {    for i in 1 to cnt loop
+     if en = '1' then q <= d; else q <= '0'; end if;
+    end loop;} \
+    loop_early_exit {    for i in 0 to 1 loop
+     if en = '0' then
+      exit;
+     end if;
+     q <= d;
+    end loop;} \
+    loop_only {    for i in 1 to cnt loop
+     q <= d;
+    end loop;} \
+    loop_partial_then_assignment {    for i in 1 to cnt loop
+     if en = '1' then
+      q <= '1';
+     end if;
+     q <= d;
+    end loop;} \
+    loop_while_after_if {    if en = '1' then
+     q <= d;
+    end if;
+    while cnt = 1 loop
+     q <= '0';
+     exit;
+    end loop;} \
+    loop_with_top_default {    q <= '0';
+    for i in 1 to cnt loop
+     if en = '1' then q <= d; end if;
+    end loop;} \
+    nested_case_missing {    if en = '1' then
+     case cnt is when 0 => q <= d; when others => null; end case;
+    else q <= '0'; end if;} \
+    nested_cases_full {    case cnt is
+     when 0 =>
+      if en = '1' then q <= d; else q <= '0'; end if;
+     when others =>
+      case en is when '1' => q <= '1'; when others => q <= '0'; end case;
+    end case;} \
+    nested_if_inner_missing {    if en = '1' then
+     if d = '1' then q <= '1'; else null; end if;
+    else
+     q <= '0';
+    end if;} \
+    nested_if_outer_missing {    if en = '1' then
+     if d = '1' then q <= '1'; else q <= '0'; end if;
+    end if;} \
+    nested_ifs_full {    if en = '1' then
+     if d = '1' then q <= '1'; else q <= '0'; end if;
+    else
+     if cnt = 1 then q <= '0'; else q <= d; end if;
+    end if;} \
+    null_branches_with_default {    q <= '0';
+    if en = '1' then null; elsif d = '1' then q <= d; else null; end if;} \
+    one_line_after_if {    if en = '1' then null; end if; q <= d;} \
+    one_line_if_full {    if en = '1' then q <= d; else q <= '0'; end if;} \
+    one_line_if_missing {    if en = '1' then q <= d; end if;} \
+    same_branch_one_line {    if en = '1' then
+     q <= d; q <= '1';
+    else
+     null;
+    end if;} \
+    same_branch_two_lines {    if en = '1' then
+     q <= d;
+     q <= '1';
+    else
+     null;
+    end if;} \
+    selected_branch_null {    case cnt is when 0 | 1 => null; when others => q <= '0'; end case;} \
+    several_signals {    if en = '1' then q <= d; a <= d; else q <= '0'; end if;} \
+    strings_with_missing_branch {    if en = '1' then
+     report "else; q <= d; end if;";
+     q <= d;
+    else
+     report "if; case; end; q <= '0';";
+    end if;} \
+    two_partial_ifs {    if en = '1' then q <= d; end if;
+    if d = '1' then q <= '0'; end if;} \
+    unconditional_after_case {    case cnt is
+     when 0 => q <= d;
+     when others => null;
+    end case;
+    q <= '0';} \
+    unconditional_after_if {    if en = '1' then
+     q <= d;
+    end if;
+    q <= '0';} \
+    uppercase_full {    IF en = '1' THEN q <= d; ELSIF cnt = 1 THEN q <= '1'; ELSE q <= '0'; END IF;}]
+set adversarial_expected {
+    case_choices_and_comments       {}
+    case_others_middle_missing      {q}
+    case_others_missing             {q}
+    case_range_choices              {}
+    case_without_others_missing     {q}
+    comments_and_strings            {}
+    complete_after_partial          {}
+    conditional_assignment_after_if {q}
+    default_before                  {}
+    elsif_without_else              {q}
+    full_case_others                {}
+    full_if_elsif_else              {}
+    if_without_else                 {q}
+    labelled_case_full              {}
+    labelled_if_full                {}
+    labelled_if_missing             {q}
+    loop_after_if                   {q}
+    loop_complete_if                {q}
+    loop_early_exit                 {q}
+    loop_only                       {q}
+    loop_partial_then_assignment    {q}
+    loop_while_after_if             {q}
+    loop_with_top_default           {}
+    nested_case_missing             {q}
+    nested_cases_full               {}
+    nested_if_inner_missing         {q}
+    nested_if_outer_missing         {q}
+    nested_ifs_full                 {}
+    null_branches_with_default      {}
+    one_line_after_if               {}
+    one_line_if_full                {}
+    one_line_if_missing             {q}
+    same_branch_one_line            {q}
+    same_branch_two_lines           {q}
+    selected_branch_null            {q}
+    several_signals                 {a}
+    strings_with_missing_branch     {q}
+    two_partial_ifs                 {q}
+    unconditional_after_case        {}
+    unconditional_after_if          {}
+    uppercase_full                  {}
+}
+dict for {name statements} [dict merge $fixtures $adversarial] {
     set file($name) [fixture $name $statements]
 }
 
@@ -311,6 +526,14 @@ check_eq "\[control\] case with others, every alternative assigns: nothing repor
     {} [reported $file(others_full)]
 check_eq "\[control\] assignment after the if under another if: q reported" \
     q [reported $file(after_if_cond)]
+
+# ----------------------------------------------------------------------------
+# Adversarial cases: loops and conditional assignments never cover
+# ----------------------------------------------------------------------------
+foreach {name expected} $adversarial_expected {
+    set what [expr {$expected eq "" ? "nothing" : $expected}]
+    check_eq "adversarial $name: $what reported" $expected [reported $file($name)]
+}
 
 catch {file delete -force $sandbox}
 

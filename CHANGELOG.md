@@ -236,17 +236,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   statement.
 
 - `forbid_latch_inference` decides coverage per branch of an `if` or
-  `case`. A signal is covered by an unconditional assignment at the top
-  level of the process, before or after the `if` or `case` (the last
-  assignment in a process wins), or by an `if` with `else` or a `case` with
-  `when others` that assigns it in every branch; several assignments in one
-  branch count as that one branch. Two assignments to a signal on two lines
-  of the `if` branch of an `if`/`else` were taken for complete coverage, and
-  so was a `case` with `when others` in which one alternative assigned the
-  signal: both latches are now reported. A signal assigned after an `if`,
-  as in `if en = '1' then q <= d; end if; q <= '0';`, is no longer
-  reported; an assignment after the `if` inside another conditional does
-  not cover it.
+  `case`. A signal is covered by a top-level statement of the process,
+  before or after the `if` or `case` (the last assignment in a process
+  wins), that is a plain assignment, a conditional assignment whose last
+  alternative is an unconditional `else`, or an `if` with `else` or a
+  `case` with `when others` that covers it in every branch by the same
+  rule; several assignments in one branch count as that one branch. Two
+  assignments to a signal on two lines of the `if` branch of an
+  `if`/`else` were taken for complete coverage, and so was a `case` with
+  `when others` in which one alternative assigned the signal: both latches
+  are now reported. A signal assigned after an `if`, as in
+  `if en = '1' then q <= d; end if; q <= '0';`, is no longer reported; an
+  assignment after the `if` inside another conditional, or a conditional
+  assignment without a final `else` (`q <= '0' when d = '1';`), does not
+  cover it. An assignment inside a loop never covers, since the loop may
+  run zero times or exit early: a signal assigned only inside a loop,
+  including by a complete `if` and in a process without `if` or `case`, is
+  now reported, also when the loop is never empty.
 
 - `require_meaningful_comments` with `"instantiations_required": true`
   reports an instantiation without a comment on one of the two lines above
