@@ -19,6 +19,14 @@
 # of a conditional expression (ok <= true when d = '1' else cnt <= 3;) is a
 # comparison too.
 #
+# Coverage is decided per branch of an if or case: a signal is covered by a
+# default assignment before the if or case, or by an if with else or a case
+# with others that assigns it in every branch. Several assignments to the
+# signal in one branch count as that one branch: two assignments in the if
+# branch of an if/else were taken for an assignment in each branch, and a
+# case with others for complete whenever one alternative assigned the
+# signal.
+#
 # Fixtures, one combinational process each, q with a default assignment
 # unless stated:
 #   if_guard.vhd     if cnt <= 3 then
@@ -39,12 +47,29 @@
 #                    one branch each, two latches
 #   literal.vhd      under an if: report "done; cnt <= 3"; (q has a
 #                    default assignment)
+#   one_branch_line.vhd   no default; if/else, "q <= d; q <= '1';" on one
+#                         line in the if branch, null in the else: a latch
+#   one_branch_lines.vhd  the same with the two assignments on two lines
+#   both_branches.vhd     no default; if/else assigning q in each branch,
+#                         one assignment per line
+#   both_branches_line.vhd  the same if/else on one line
+#   default_partial.vhd   q assigned in the if and elsif branches of an
+#                         if/elsif/else only, after a default assignment
+#   others_partial.vhd    no default; case with others, q assigned in one
+#                         alternative only: a latch
+#   others_full.vhd       no default; case with others, q assigned in every
+#                         alternative
 #
 # Checks labelled [control] hold before and after the fix: incomplete.vhd
-# and case_alt.vhd report q, if_else_line.vhd reports ok and q. Every other
-# check fails on the code before the fix; the checks on else_expr.vhd and
-# else_expr_latch.vhd also fail when "else" is taken for the start of a
-# statement, and the one on literal.vhd when a ";" in a literal ends one.
+# and case_alt.vhd report q, if_else_line.vhd reports ok and q, and
+# both_branches.vhd, both_branches_line.vhd, default_partial.vhd and
+# others_full.vhd report nothing. The check on one_branch_line.vhd holds
+# before the fix too. Every other check fails on the code before the fix;
+# the checks on else_expr.vhd and else_expr_latch.vhd also fail when "else"
+# is taken for the start of a statement, the one on literal.vhd when a ";"
+# in a literal ends one, and the ones on one_branch_line.vhd,
+# one_branch_lines.vhd and others_partial.vhd when assignments are counted
+# instead of the branches that make them.
 #=============================================================================
 
 set script_anchor [file dirname [file normalize [info script]]]
@@ -145,7 +170,44 @@ set fixtures [dict create \
     if en = '1' then
       report "done; cnt <= 3";
       q <= d;
-    end if;}]
+    end if;} \
+    one_branch_line {    if en = '1' then
+      q <= d; q <= '1';
+    else
+      null;
+    end if;} \
+    one_branch_lines {    if en = '1' then
+      q <= d;
+      q <= '1';
+    else
+      null;
+    end if;} \
+    both_branches {    if en = '1' then
+      q <= d;
+    else
+      q <= '0';
+    end if;} \
+    both_branches_line {    if en = '1' then q <= d; else q <= '0'; end if;} \
+    default_partial {    q <= '0';
+    if en = '1' then
+      q <= d;
+    elsif d = '1' then
+      q <= '1';
+    else
+      null;
+    end if;} \
+    others_partial {    case en is
+      when '1' =>
+        q <= d;
+      when others =>
+        null;
+    end case;} \
+    others_full {    case en is
+      when '1' =>
+        q <= d;
+      when others =>
+        q <= '0';
+    end case;}]
 dict for {name statements} $fixtures {
     set file($name) [fixture $name $statements]
 }
@@ -154,9 +216,8 @@ set policy [file join $sandbox latch.json]
 write_file $policy {{"rules": {"forbid_latch_inference": {"enabled": true}}}
 }
 
-# The compared names appear only inside an if or case, so the rule's
-# default-assignment checks (an assignment outside any if or case; a case
-# with others) cannot hide them.
+# The compared names appear only inside an if or case, so a default
+# assignment before the if or case cannot hide them.
 
 # The names the rule reports, sorted, or "rc 2" when the CLI rejected its
 # input.
@@ -200,12 +261,30 @@ check_eq "conditional expression without default: ok reported, cnt not" \
 check_eq "string literal: cnt not reported" {} [reported $file(literal)]
 
 # ----------------------------------------------------------------------------
+# Coverage per branch: several assignments in one branch are one branch
+# ----------------------------------------------------------------------------
+check_eq "two assignments on one line in one branch: q reported" \
+    q [reported $file(one_branch_line)]
+check_eq "two assignments on two lines in one branch: q reported" \
+    q [reported $file(one_branch_lines)]
+check_eq "case with others, one alternative assigns: q reported" \
+    q [reported $file(others_partial)]
+
+# ----------------------------------------------------------------------------
 # Controls: real incomplete assignments are still reported
 # ----------------------------------------------------------------------------
 check_eq "\[control\] incomplete if: q reported" q [reported $file(incomplete)]
 check_eq "\[control\] case alternative without others: q reported" q [reported $file(case_alt)]
 check_eq "\[control\] if and else statements on one line: ok and q reported" \
     {ok q} [reported $file(if_else_line)]
+check_eq "\[control\] assigned in both branches: nothing reported" \
+    {} [reported $file(both_branches)]
+check_eq "\[control\] assigned in both branches on one line: nothing reported" \
+    {} [reported $file(both_branches_line)]
+check_eq "\[control\] default before partial branches: nothing reported" \
+    {} [reported $file(default_partial)]
+check_eq "\[control\] case with others, every alternative assigns: nothing reported" \
+    {} [reported $file(others_full)]
 
 catch {file delete -force $sandbox}
 

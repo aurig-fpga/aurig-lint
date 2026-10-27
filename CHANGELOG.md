@@ -235,6 +235,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cnt <= 3;`). A `;` in a string or character literal does not end a
   statement.
 
+- `forbid_latch_inference` decides coverage per branch of an `if` or
+  `case`. A signal is covered by an assignment before the `if` or `case`,
+  or by an `if` with `else` or a `case` with `when others` that assigns it
+  in every branch; several assignments in one branch count as that one
+  branch. Two assignments to a signal on two lines of the `if` branch of an
+  `if`/`else` were taken for complete coverage, and so was a `case` with
+  `when others` in which one alternative assigned the signal: both latches
+  are now reported. A signal assigned after an `if` that does not assign it
+  is no longer reported.
+
 - `require_meaningful_comments` with `"instantiations_required": true`
   reports an instantiation without a comment on one of the two lines above
   it (#20). The rule read the instantiations from a parse-result key that
