@@ -2,7 +2,7 @@
 
 This document is auto-generated from `lint/metadata.json`.
 
-**Last updated:** 2026-10-28 09:25:54
+**Last updated:** 2026-10-28 10:01:16
 
 ---
 
@@ -394,7 +394,7 @@ This document is auto-generated from `lint/metadata.json`.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `enabled` | boolean | `false` | Whether rule is active |
-| `ignore_variables` | boolean | `true` | Skip the names declared as variables of the process or as shared variables of the architecture (compared ignoring case); the rule would otherwise take a variable on the left of a less-or-equal comparison for an assigned signal. The name alone never decides: a signal named `v_data` is checked |
+| `ignore_variables` | boolean | `true` | Skip the names declared as variables of the process or as shared variables of the architecture (compared ignoring case) when one is the target of a `<=` assignment, which VHDL rejects for a variable but the rule reads as text. A name compared with `<=` is never an assigned signal, whatever this option. The name alone never decides: a signal named `v_data` is checked |
 | `message` | string | `Signal '${signal}' may infer a latch in process '${process}' - missing default assignment` | Custom message template |
 | `severity` | string | `warning` | Diagnostic severity level |
 | `type` | string | `forbid_latch_inference` | Rule handler type |
