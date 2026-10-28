@@ -342,7 +342,7 @@ proc generate_markdown {rules rule_ids} {
             }
 
             # Description based on key name
-            set desc [get_option_description $key]
+            set desc [get_option_description $key $rule_id]
 
             append output "| `$key` | $type | `$value` | $desc |\n"
         }
@@ -367,7 +367,11 @@ proc generate_markdown {rules rule_ids} {
     return $output
 }
 
-proc get_option_description {key} {
+proc get_option_description {key {rule_id ""}} {
+    # Descriptions of an option of one rule only
+    switch -exact -- "$rule_id/$key" {
+        "require_meaningful_comments/message" { return "When not empty, replaces the text of every diagnostic of the rule. Variables: `\${kind}` (`header`, `port`, `generic`, `signal`, `constant`, `process` or `instantiation`), `\${name}` (the name or label; empty for the header), `\${default}` (the built-in text). Empty keeps the built-in texts" }
+    }
     # Provide helpful descriptions for common keys
     switch -exact -- $key {
         "type" { return "Rule handler type" }
@@ -377,8 +381,8 @@ proc get_option_description {key} {
         "patterns" { return "Naming patterns configuration" }
         "case" { return "Expected keyword case: `lowercase` or `uppercase`; any other value is rejected (exit 2)" }
         "reset_policy" { return "Reset style requirement: `either`, `sync` or `async`; any other value is rejected (exit 2). In `message`, `\${reset}` is the requirement in words (`a synchronous or asynchronous reset`, `a synchronous reset`, `an asynchronous reset`), `\${policy}` the raw value, `\${process}` the process label and `\${line}` the process line. For a process without a label, a quoted `'\${process}'` becomes `at line N`" }
-        "testbench_patterns" { return "Testbench file patterns" }
-        "bfm_patterns" { return "BFM (bus-functional model) file-name glob patterns that bypass the rule (case-sensitive, replaces — does not extend — the default; aligned with the testbench_patterns semantics on the same rule); use for files matching the _bfm.vhd suffix/pattern whose architecture name does not match excluded_architectures. A project using mixed-case filenames (e.g. Bus_BFM.vhd) must list each variant explicitly" }
+        "testbench_patterns" { return "Testbench file-name glob patterns (Tcl `string match`), matched against the base name ignoring case; the rule skips a file that matches one (`require_meaningful_comments`: while `skip_testbenches` is true). Replaces — does not extend — the default. The same detection in `require_reset_in_clocked_process`, `forbid_wait_statements` and `require_meaningful_comments`" }
+        "bfm_patterns" { return "BFM (bus-functional model) file-name glob patterns that bypass the rule (matched against the base name ignoring case, as testbench_patterns; replaces — does not extend — the default); use for files matching the _bfm.vhd suffix/pattern whose architecture name does not match excluded_architectures. The default also matches the suffix in any case, such as _BFM.vhd" }
         "excluded_architectures" { return "Architecture names that bypass the rule (case-insensitive, replaces — does not extend — the default)" }
         "entity_suffix_bindings" { return "Dict mapping entity-name suffix → list of allowed architecture names for entities with that suffix. When set, the binding OVERRIDES the regex `pattern` check for architectures whose parent entity matches one of the configured suffixes (longest match wins). Entities not matching any suffix fall through to the `pattern` check. Use for guidelines that bind e.g. `_tb` entities to `beh` and `_bfm` entities to `bfm` regardless of what the global pattern allows. Default `{}` preserves back-compat (regex-only behaviour)" }
         "binding_message" { return "Diagnostic message template for `entity_suffix_bindings` violations. Variables: `\${name}` (architecture name), `\${entity}` (parent entity name), `\${suffix}` (the matched suffix), `\${allowed}` (comma-separated allowed list)" }
@@ -400,7 +404,7 @@ proc get_option_description {key} {
         "major_signal_regex" { return "Pattern for major signals" }
         "processes_required" { return "Require process documentation" }
         "instantiations_required" { return "Require instantiation documentation" }
-        "skip_testbenches" { return "Skip testbench files" }
+        "skip_testbenches" { return "Skip testbench files (those matching `testbench_patterns`)" }
         default { return "Configuration option" }
     }
 }
@@ -593,7 +597,7 @@ proc generate_html {rules rule_ids} {
                 }
             }
 
-            set desc [get_option_description $key]
+            set desc [get_option_description $key $rule_id]
             append output "                <tr><td><code>$key</code></td><td>$type</td><td><code>$value</code></td><td>$desc</td></tr>\n"
         }
 

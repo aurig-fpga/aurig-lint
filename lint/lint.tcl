@@ -3774,6 +3774,44 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
     return $diagnostics
 }
 
+# File-name matching shared by the rules that skip some files (#21): a file
+# matches when its base name matches one of the patterns (Tcl `string match`
+# globs), ignoring case on every platform.
+#
+# Arguments:
+#   filename : Source file path
+#   patterns : List of glob patterns
+#
+# Returns: 1 when the file matches, else 0
+proc ::aurig::lint::rule::_name_matches {filename patterns} {
+    set basename [file tail $filename]
+    foreach pattern $patterns {
+        if {[string match -nocase $pattern $basename]} {
+            return 1
+        }
+    }
+    return 0
+}
+
+# Testbench detection shared by the rules that skip testbenches:
+# require_reset_in_clocked_process, forbid_wait_statements and
+# require_meaningful_comments (#21). A file is a testbench when its name
+# matches one of the rule's testbench_patterns (_name_matches). A policy
+# list replaces the default list.
+#
+# Arguments:
+#   filename    : Source file path
+#   rule_config : Rule configuration dict
+#
+# Returns: 1 when the file is a testbench, else 0
+proc ::aurig::lint::rule::_is_testbench {filename rule_config} {
+    set patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
+    if {[dict exists $rule_config testbench_patterns]} {
+        set patterns [dict get $rule_config testbench_patterns]
+    }
+    return [_name_matches $filename $patterns]
+}
+
 # Rule: require_reset_in_clocked_process
 #
 # Purpose:
@@ -3806,30 +3844,14 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     # Get reset policy: sync, async, or either (default)
     set reset_policy [_option_value require_reset_in_clocked_process $rule_id $rule_config reset_policy either]
 
-    # Check if this file is a testbench (rule doesn't apply to testbenches)
-    set testbench_patterns {}
-    if {[dict exists $rule_config testbench_patterns]} {
-        set testbench_patterns [dict get $rule_config testbench_patterns]
-    }
-
-    set is_testbench false
-    set basename [file tail $filename]
-    foreach pattern $testbench_patterns {
-        if {[string match $pattern $basename]} {
-            set is_testbench true
-            break
-        }
-    }
-
-    if {$is_testbench} {
-        # Skip testbench files
+    # The rule doesn't apply to testbenches
+    if {[_is_testbench $filename $rule_config]} {
         return $diagnostics
     }
 
-    # File-name BFM exclusion list (LINT-RULES-DEBT-023). Mirrors
-    # the `testbench_patterns` check above — same `string match`
-    # form, same case-sensitive semantics (no `-nocase`) — but
-    # targets bus-functional models, which by convention live in
+    # File-name BFM exclusion list (LINT-RULES-DEBT-023). The same
+    # matching as `testbench_patterns` (_name_matches: base name, ignoring
+    # case), but it targets bus-functional models, which by convention live in
     # `*_bfm.vhd` files and by definition do not carry a reset.
     # The architecture-name `excluded_architectures` check below
     # complements this for the case where the architecture is
@@ -3839,21 +3861,13 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     # `clear_n_i`, without `rst`/`reset` in the name: neither the
     # testbench patterns nor excluded_architectures would match
     # it without this option). Default `["*_bfm.vhd"]` catches
-    # the canonical suffix; a project using mixed case (e.g.
-    # `Bus_BFM.vhd`) must list each variant explicitly. An
+    # the canonical suffix in any case (`*_BFM.vhd` too). An
     # explicit empty list re-enables the rule on BFM files.
     set bfm_patterns {*_bfm.vhd}
     if {[dict exists $rule_config bfm_patterns]} {
         set bfm_patterns [dict get $rule_config bfm_patterns]
     }
-    set is_bfm false
-    foreach pattern $bfm_patterns {
-        if {[string match $pattern $basename]} {
-            set is_bfm true
-            break
-        }
-    }
-    if {$is_bfm} {
+    if {[_name_matches $filename $bfm_patterns]} {
         return $diagnostics
     }
 
@@ -4063,24 +4077,8 @@ proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename 
         set severity [dict get $rule_config severity]
     }
 
-    # Get testbench patterns (default: tb_*.vhd, *_tb.vhd)
-    set tb_patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
-    if {[dict exists $rule_config testbench_patterns]} {
-        set tb_patterns [dict get $rule_config testbench_patterns]
-    }
-
-    # Check if this file matches testbench patterns
-    set basename [file tail $filename]
-    set is_testbench false
-    foreach pattern $tb_patterns {
-        if {[string match -nocase $pattern $basename]} {
-            set is_testbench true
-            break
-        }
-    }
-
-    # Skip testbench files if configured
-    if {$is_testbench} {
+    # Skip testbench files
+    if {[_is_testbench $filename $rule_config]} {
         return $diagnostics
     }
 
@@ -4359,7 +4357,11 @@ proc ::aurig::lint::rule::forbid_unconstrained_ports {symbols parse_result filen
 #   - major_signal_regex: Pattern for "major" signals (default: clk|rst|enable|valid|ready|data|addr|ctrl)
 #   - processes_required: Require process documentation
 #   - instantiations_required: Require instantiation documentation
+#   - testbench_patterns: File-name globs of testbenches, matched ignoring
+#     case (default tb_*.vhd *_tb.vhd *_testbench.vhd)
 #   - skip_testbenches: Skip checks for testbench files (default true)
+#   - message: When not empty, replaces the text of every diagnostic, with
+#     ${kind}, ${name} and ${default} filled in (default "": built-in texts)
 #
 # Limitations:
 #   - Simple regex-based detection, not full VHDL semantic analysis
@@ -4375,18 +4377,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
     # Check if this file is a testbench (skip if configured)
     set skip_testbenches [expr {[dict exists $rule_config skip_testbenches] ? [dict get $rule_config skip_testbenches] : true}]
-
-    set testbench_patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
-    set is_testbench false
-    set basename [file tail $filename]
-    foreach pattern $testbench_patterns {
-        if {[string match $pattern $basename]} {
-            set is_testbench true
-            break
-        }
-    }
-
-    if {$skip_testbenches && $is_testbench} {
+    if {$skip_testbenches && [_is_testbench $filename $rule_config]} {
         return $diagnostics
     }
 
@@ -4404,6 +4395,8 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
     set major_signal_regex [expr {[dict exists $rule_config major_signal_regex] ? [dict get $rule_config major_signal_regex] : {clk|rst|reset|enable|valid|ready|data|addr|ctrl}}]
     set processes_required [expr {[dict exists $rule_config processes_required] ? [dict get $rule_config processes_required] : false}]
     set instantiations_required [expr {[dict exists $rule_config instantiations_required] ? [dict get $rule_config instantiations_required] : false}]
+    # A non-empty message replaces the text of every diagnostic of the rule
+    set template [expr {[dict exists $rule_config message] ? [dict get $rule_config message] : ""}]
 
     # Read file content for comment checking
     if {[catch {open $filename r} fh]} {
@@ -4444,6 +4437,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
         # Check if header is sufficient
         if {[llength $header_lines] < $header_min_lines} {
             set msg "Missing file header documentation block (found [llength $header_lines] lines, need $header_min_lines)"
+            set msg [_comment_text $template header {} $msg]
             lappend diagnostics [::aurig::lint::create_diagnostic \
                 $rule_id $severity $msg $filename 1 0 "file" "" ""]
         } elseif {[llength $header_keywords] > 0} {
@@ -4484,6 +4478,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 }
                 if {[llength $missing] > 0} {
                     set msg "File header missing required keywords: [join $missing {, }]"
+                    set msg [_comment_text $template header {} $msg]
                     lappend diagnostics [::aurig::lint::create_diagnostic \
                         $rule_id $severity $msg $filename 1 0 "file" "" ""]
                 }
@@ -4491,6 +4486,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 # any-of (legacy default)
                 if {[llength $found_keywords] == 0} {
                     set msg "File header missing required keywords: [join $header_keywords {, }]"
+                    set msg [_comment_text $template header {} $msg]
                     lappend diagnostics [::aurig::lint::create_diagnostic \
                         $rule_id $severity $msg $filename 1 0 "file" "" ""]
                 }
@@ -4546,12 +4542,14 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                         if {!$has_comment} {
                             set msg "Generic '$generic_name' in entity '$entity_name' missing documentation comment"
+                            set msg [_comment_text $template generic $generic_name $msg]
                             lappend diagnostics [::aurig::lint::create_diagnostic \
                                 $rule_id $severity $msg $filename $generic_line 0 "generic" $generic_name "entity:$entity_name"]
                         }
                     } else {
                         # Could not find line number - report with line=0
                         set msg "Generic '$generic_name' in entity '$entity_name' missing documentation comment"
+                        set msg [_comment_text $template generic $generic_name $msg]
                         lappend diagnostics [::aurig::lint::create_diagnostic \
                             $rule_id $severity $msg $filename 0 0 "generic" $generic_name "entity:$entity_name"]
                     }
@@ -4588,12 +4586,14 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                         if {!$has_comment} {
                             set msg "Port '$port_name' in entity '$entity_name' missing documentation comment"
+                            set msg [_comment_text $template port $port_name $msg]
                             lappend diagnostics [::aurig::lint::create_diagnostic \
                                 $rule_id $severity $msg $filename $port_line 0 "port" $port_name "entity:$entity_name"]
                         }
                     } else {
                         # Could not find line number - report with line=0
                         set msg "Port '$port_name' in entity '$entity_name' missing documentation comment"
+                        set msg [_comment_text $template port $port_name $msg]
                         lappend diagnostics [::aurig::lint::create_diagnostic \
                             $rule_id $severity $msg $filename 0 0 "port" $port_name "entity:$entity_name"]
                     }
@@ -4618,6 +4618,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                     if {!$has_comment} {
                         set msg "Major signal '$name' missing documentation comment"
+                        set msg [_comment_text $template signal $name $msg]
                         lappend diagnostics [::aurig::lint::create_diagnostic \
                             $rule_id $severity $msg $filename $line 0 "signal" $name ""]
                     }
@@ -4633,6 +4634,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                 if {!$has_comment} {
                     set msg "Constant '$name' missing documentation comment"
+                    set msg [_comment_text $template constant $name $msg]
                     lappend diagnostics [::aurig::lint::create_diagnostic \
                         $rule_id $severity $msg $filename $line 0 "constant" $name ""]
                 }
@@ -4670,6 +4672,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                                 append msg " '$proc_label'"
                             }
                             append msg " missing documentation comment"
+                            set msg [_comment_text $template process $proc_label $msg]
                             lappend diagnostics [::aurig::lint::create_diagnostic \
                                 $rule_id $severity $msg $filename $proc_line 0 "process" $proc_label ""]
                         }
@@ -4699,6 +4702,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                         if {!$has_comment} {
                             set msg "Instantiation '$inst_label' missing documentation comment"
+                            set msg [_comment_text $template instantiation $inst_label $msg]
                             lappend diagnostics [::aurig::lint::create_diagnostic \
                                 $rule_id $severity $msg $filename $inst_line 0 "instance" $inst_label ""]
                         }
@@ -4709,6 +4713,18 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
     }
 
     return $diagnostics
+}
+
+# Text of a require_meaningful_comments diagnostic. An empty template keeps
+# the built-in text; a non-empty one replaces it, with ${kind} (header,
+# port, generic, signal, constant, process or instantiation), ${name} (the
+# name or label, empty for the header) and ${default} (the built-in text)
+# filled in.
+proc ::aurig::lint::rule::_comment_text {template kind name default} {
+    if {$template eq ""} {
+        return $default
+    }
+    return [string map [list \${kind} $kind \${name} $name \${default} $default] $template]
 }
 
 # Helper: Check if a declaration has an associated comment

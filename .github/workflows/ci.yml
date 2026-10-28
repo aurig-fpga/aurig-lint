@@ -56,6 +56,7 @@ jobs:
             test/test_lint_enum_literal_naming.tcl
             test/test_lint_label_naming.tcl
             test/test_lint_instantiation_comments.tcl
+            test/test_lint_comments_message.tcl
             test/test_lint_library_case.tcl
             test/test_lint_policy_overrides.tcl
             test/test_lint_policy_validation.tcl
@@ -67,6 +68,7 @@ jobs:
             test/test_lint_process_diagnostic_lines.tcl
             test/test_lint_require_process_label.tcl
             test/test_lint_reset_message.tcl
+            test/test_lint_testbench_patterns.tcl
             test/test_run_lint_project_baseline.tcl
             test/test_run_lint_project_excludes.tcl
             test/test_run_lint_project_fail_on_and_manifest.tcl
@@ -160,6 +162,7 @@ jobs:
             'test/test_lint_enum_literal_naming.tcl'
             'test/test_lint_label_naming.tcl'
             'test/test_lint_instantiation_comments.tcl'
+            'test/test_lint_comments_message.tcl'
             'test/test_lint_library_case.tcl'
             'test/test_lint_policy_overrides.tcl'
             'test/test_lint_policy_validation.tcl'
@@ -171,6 +174,7 @@ jobs:
             'test/test_lint_process_diagnostic_lines.tcl'
             'test/test_lint_require_process_label.tcl'
             'test/test_lint_reset_message.tcl'
+            'test/test_lint_testbench_patterns.tcl'
             'test/test_run_lint_project_baseline.tcl'
             'test/test_run_lint_project_excludes.tcl'
             'test/test_run_lint_project_fail_on_and_manifest.tcl'

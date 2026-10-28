@@ -95,6 +95,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   given such a value through `::aurig::lint::run -rules_config` raises an
   error instead of falling back.
 
+- One testbench detection for `require_reset_in_clocked_process`,
+  `forbid_wait_statements` and `require_meaningful_comments` (#21). A file is
+  a testbench when its base name matches one of the rule's
+  `testbench_patterns`, default `tb_*.vhd`, `*_tb.vhd` and `*_testbench.vhd`,
+  ignoring case on every platform; a policy list replaces the default list.
+  Each rule used to decide on its own: `require_reset_in_clocked_process`
+  matched case-sensitively, so `UNIT_TB.VHD` or `Tb_Unit.vhd` was linted
+  as RTL; `require_meaningful_comments` had a fixed case-sensitive list and
+  rejected a `testbench_patterns` option (exit **2**). Files whose name
+  differs from a pattern only in case, linted by those two rules before, are
+  now skipped. `require_meaningful_comments` gains `testbench_patterns`; it
+  skips a testbench while `skip_testbenches` is on, its default.
+  `bfm_patterns` of `require_reset_in_clocked_process`, default `*_bfm.vhd`,
+  is matched the same way: it was case-sensitive, so `Uart_BFM.vhd` was
+  linted and a policy pattern had to list every case variant.
+
 - A user-defined rule id must match `^[a-z][a-z0-9_]*$`, the form of the
   built-in ids (#49). In-source pragmas (`-- aurig-lint: disable` and
   `disable-next-line`) name rules only in that form, so the diagnostics of a
@@ -238,6 +254,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   also identifies which interpreter it ran in.
 
 ### Fixed
+
+- `require_meaningful_comments` uses its `"message"` option. The policy
+  accepted it, but every diagnostic kept its built-in text. A `"message"`
+  that is not empty now replaces the text of every diagnostic of the rule,
+  with `${kind}` (`header`, `port`, `generic`, `signal`, `constant`,
+  `process` or `instantiation`), `${name}` (the name or label, empty for the
+  header) and `${default}` (the built-in text) filled in. An empty
+  `"message"`, the default, or none keeps the built-in texts. Baseline
+  fingerprints do not include the text, so baselines still match.
 
 - `require_meaningful_comments` with `"instantiations_required": true`
   reports an instantiation without a comment on one of the two lines above
