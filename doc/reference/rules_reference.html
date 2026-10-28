@@ -70,7 +70,7 @@
             <h1>VHDL Lint Rules Reference</h1>
             <div class="meta-info">
                 <strong>Auto-generated</strong> from <code>lint/metadata.json</code><br>
-                <strong>Last updated:</strong> 2026-10-28 09:01:20
+                <strong>Last updated:</strong> 2026-10-28 09:25:55
             </div>
             <h2 id="allowed-libraries">allowed_libraries</h2>
             <p><strong>Type:</strong> <code>library</code></p>
@@ -322,7 +322,7 @@
             <table>
                 <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
                 <tr><td><code>enabled</code></td><td>boolean</td><td><code>false</code></td><td>Whether rule is active</td></tr>
-                <tr><td><code>ignore_variables</code></td><td>boolean</td><td><code>true</code></td><td>Skip variable checking</td></tr>
+                <tr><td><code>ignore_variables</code></td><td>boolean</td><td><code>true</code></td><td>Skip the names declared as variables of the process or as shared variables of the architecture (compared ignoring case); the rule would otherwise take a variable on the left of a less-or-equal comparison for an assigned signal. The name alone never decides: a signal named `v_data` is checked</td></tr>
                 <tr><td><code>message</code></td><td>string</td><td><code>Signal '${signal}' may infer a latch in process '${process}' - missing default assignment</code></td><td>Custom message template</td></tr>
                 <tr><td><code>severity</code></td><td>string</td><td><code>warning</code></td><td>Diagnostic severity level</td></tr>
                 <tr><td><code>type</code></td><td>string</td><td><code>forbid_latch_inference</code></td><td>Rule handler type</td></tr>

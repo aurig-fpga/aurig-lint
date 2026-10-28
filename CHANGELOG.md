@@ -255,6 +255,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `forbid_latch_inference` with `"ignore_variables": true`, the default,
+  skips the variables of the process and the shared variables of the
+  architecture, as declared, ignoring case. It skipped every name starting
+  with `v_` instead: a signal such as `v_data` with a latch was never
+  reported, and a variable without the prefix on the left of a `<=`
+  comparison (`if cnt <= 3 then`) was reported as a signal that may infer a
+  latch. Signals named `v_*` are now checked like any other signal.
+
 - `require_meaningful_comments` uses its `"message"` option. The policy
   accepted it, but every diagnostic kept its built-in text. A `"message"`
   that is not empty now replaces the text of every diagnostic of the rule,

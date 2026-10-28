@@ -3682,6 +3682,22 @@ proc ::aurig::lint::analyze_combinational_process {body} {
     return $assigned_signals
 }
 
+# Helper: Names of the variables in the declarations of a parse-result
+# element (a process, or an architecture for its shared variables),
+# lowercase
+proc ::aurig::lint::declared_variables {element} {
+    set names {}
+    if {[dict exists $element declarations]} {
+        foreach decl [dict get $element declarations] {
+            if {[dict exists $decl kind] && [dict get $decl kind] eq "variable"
+                    && [dict exists $decl name]} {
+                lappend names [string tolower [dict get $decl name]]
+            }
+        }
+    }
+    return $names
+}
+
 proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
 
@@ -3700,6 +3716,9 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
         if {![dict exists $arch processes]} {
             continue
         }
+
+        # Shared variables of the architecture, lowercase
+        set arch_variables [::aurig::lint::declared_variables $arch]
 
         # Check each process
         foreach proc [dict get $arch processes] {
@@ -3740,10 +3759,17 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
             # Extract all assigned signals
             set assigned_signals [::aurig::lint::analyze_combinational_process $body]
 
+            # The names before "<=" include the left operand of a "<="
+            # comparison, so a variable can be among them. With
+            # ignore_variables, skip the names declared as variables of the
+            # process or shared variables of the architecture (VHDL names
+            # ignore case). The name alone never decides: a signal v_data is
+            # a signal.
+            set variables [concat $arch_variables [::aurig::lint::declared_variables $proc]]
+
             # For each assigned signal, check if it has a default assignment
             foreach sig $assigned_signals {
-                # Skip if configured to ignore variables and this looks like a variable
-                if {$ignore_variables && [regexp -nocase {^v_} $sig]} {
+                if {$ignore_variables && [string tolower $sig] in $variables} {
                     continue
                 }
 

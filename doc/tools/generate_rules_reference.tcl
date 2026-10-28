@@ -391,7 +391,7 @@ proc get_option_description {key {rule_id ""}} {
         "header_keywords_mode" { return "Header-keywords match mode: \"any\" (default — at least one keyword present) or \"all\" (every listed keyword must appear); any other value is rejected (exit 2)" }
         "allow_patterns" { return "Patterns to allow/ignore" }
         "type_pattern" { return "Regexp on the enumerated type name: when not empty, only the types whose name matches are checked (e.g. `_state_t\$`); empty checks every enumerated type" }
-        "ignore_variables" { return "Skip variable checking" }
+        "ignore_variables" { return "Skip the names declared as variables of the process or as shared variables of the architecture (compared ignoring case); the rule would otherwise take a variable on the left of a less-or-equal comparison for an assigned signal. The name alone never decides: a signal named `v_data` is checked" }
         "file_header_required" { return "Require file header block" }
         "header_min_lines" { return "Minimum header lines" }
         "header_keywords" { return "Required header keywords" }
