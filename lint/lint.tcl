@@ -56,6 +56,24 @@ namespace eval ::aurig::lint {
     variable file_cache
     array set file_cache {}
 
+    # Options with a fixed set of values: rule type -> option -> allowed
+    # values. The policy validator checks a policy against this list
+    # (_policy_entry_problems) and the handlers read these options through
+    # rule::_option_value, so both use the same values.
+    variable option_values {
+        keyword_case {
+            case {lowercase uppercase}
+        }
+        require_reset_in_clocked_process {
+            reset_policy {either sync async}
+        }
+        require_meaningful_comments {
+            header_keywords_mode   {any all}
+            ports_comment_style    {inline block either}
+            generics_comment_style {inline block either}
+        }
+    }
+
     namespace export run
 }
 
@@ -392,6 +410,8 @@ proc ::aurig::lint::policy_problem_line {policy_file problem} {
 #     on architecture_naming but read by every naming rule with scope
 #     "architecture");
 #   - "severity" must be the string error, warning or info;
+#   - an option with a fixed set of values (option_values) must be one of
+#     them, as a string (also in an override);
 #   - "overrides" is checked by _validate_policy_overrides;
 #   - keys starting with "_" are comments and are ignored at the top level,
 #     inside "rules", inside a rule entry and inside an override entry.
@@ -473,6 +493,15 @@ proc ::aurig::lint::validate_policy {policy metadata} {
         dict set allowed_by_rule $rule_id [lsort -unique [concat $common_keys $allowed]]
     }
 
+    # Type of every rule an override may name, for the options with a fixed
+    # set of values: built-in rules here, user-defined ones below.
+    set type_by_rule [dict create]
+    dict for {rule_id rule_meta} $builtin_rules {
+        if {[dict exists $rule_meta type]} {
+            dict set type_by_rule $rule_id [dict get $rule_meta type]
+        }
+    }
+
     dict for {rule_id typed_entry} $policy_rules {
         if {[string index $rule_id 0] eq "_"} {
             continue
@@ -517,6 +546,7 @@ proc ::aurig::lint::validate_policy {policy metadata} {
         } else {
             set allowed [lsort -unique [concat $common_keys [dict get $keys_by_type $given_type]]]
             dict set allowed_by_rule $rule_id $allowed
+            dict set type_by_rule $rule_id $given_type
             if {$given_type eq "naming"} {
                 lappend naming_rules $rule_id
                 foreach required {scope pattern} {
@@ -527,7 +557,8 @@ proc ::aurig::lint::validate_policy {policy metadata} {
             }
         }
 
-        lappend problems {*}[_policy_entry_problems $where $entry $allowed]
+        set rule_type [expr {[dict exists $type_by_rule $rule_id] ? [dict get $type_by_rule $rule_id] : ""}]
+        lappend problems {*}[_policy_entry_problems $where $entry $allowed $rule_type]
         if {$rule_id in $naming_rules} {
             lappend problems {*}[_naming_scope_problems $where $entry]
         }
@@ -535,21 +566,51 @@ proc ::aurig::lint::validate_policy {policy metadata} {
 
     if {[dict exists $top overrides]} {
         lappend problems {*}[_validate_policy_overrides \
-            [dict get $top overrides] $allowed_by_rule $naming_rules]
+            [dict get $top overrides] $allowed_by_rule $naming_rules $type_by_rule]
     }
 
     return $problems
 }
 
-# Option and severity problems of one rule entry (top level or override).
+# Options with a fixed set of values of a rule type (from option_values).
 #
 # Arguments:
-#   where   : Prefix naming the entry, e.g. rule "x" or overrides[0] rule "x"
-#   entry   : Typed members of the entry (an object's member dict)
-#   allowed : Sorted list of supported options, or "" to skip that check
+#   rule_type : Rule type, e.g. keyword_case
+#
+# Returns: Dict option -> list of allowed values, empty when the type has no
+#          such option
+proc ::aurig::lint::option_values {rule_type} {
+    variable option_values
+    if {[dict exists $option_values $rule_type]} {
+        return [dict get $option_values $rule_type]
+    }
+    return {}
+}
+
+# A typed policy value as written in a problem line: a string quoted with
+# _policy_quote, a number, boolean or null as is, "an array" or "an object".
+proc ::aurig::lint::_policy_value_text {kind value} {
+    switch -exact -- $kind {
+        string  { return "\"[_policy_quote $value]\"" }
+        null    { return null }
+        array   { return "an array" }
+        object  { return "an object" }
+        default { return $value }
+    }
+}
+
+# Option, severity and option-value problems of one rule entry (top level or
+# override).
+#
+# Arguments:
+#   where     : Prefix naming the entry, e.g. rule "x" or overrides[0] rule "x"
+#   entry     : Typed members of the entry (an object's member dict)
+#   allowed   : Sorted list of supported options, or "" to skip that check
+#   rule_type : Rule type, for the options with a fixed set of values
+#               (option_values); "" skips that check
 #
 # Returns: List of problem strings
-proc ::aurig::lint::_policy_entry_problems {where entry allowed} {
+proc ::aurig::lint::_policy_entry_problems {where entry allowed {rule_type ""}} {
     set problems {}
     if {$allowed ne ""} {
         foreach key [dict keys $entry] {
@@ -563,6 +624,15 @@ proc ::aurig::lint::_policy_entry_problems {where entry allowed} {
         lassign [dict get $entry severity] kind severity
         if {$kind ne "string" || $severity ni {error warning info}} {
             lappend problems "$where: invalid severity \"[_policy_quote $severity]\" (must be the string error, warning or info)"
+        }
+    }
+    dict for {option values} [option_values $rule_type] {
+        if {![dict exists $entry $option]} {
+            continue
+        }
+        lassign [dict get $entry $option] kind value
+        if {$kind ne "string" || $value ni $values} {
+            lappend problems "$where: invalid value [_policy_value_text $kind $value] for option \"$option\" (allowed: [join $values {, }])"
         }
     }
     return $problems
@@ -602,8 +672,8 @@ proc ::aurig::lint::_naming_scope_problems {where entry} {
 #   - "rules" is an object of rule entries, each an object; a rule id must be
 #     a built-in rule or a rule of the top-level "rules"; "type" is not
 #     allowed (an override cannot turn a rule into another kind of rule);
-#     options, severity and the scope of a naming rule are checked as for
-#     the top-level entry.
+#     options, severity, option values and the scope of a naming rule are
+#     checked as for the top-level entry.
 # Entries are named by their 0-based position: overrides[0], overrides[1]...
 #
 # Arguments:
@@ -611,9 +681,11 @@ proc ::aurig::lint::_naming_scope_problems {where entry} {
 #   allowed_by_rule : Rule id -> supported options ("" when unknown), for
 #                     every rule an override may name
 #   naming_rules    : Ids of the naming rules (built-in and user-defined)
+#   type_by_rule    : Rule id -> rule type, for the options with a fixed set
+#                     of values
 #
 # Returns: List of problem strings
-proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule naming_rules} {
+proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule naming_rules type_by_rule} {
     lassign $typed kind items
     if {$kind ne "array"} {
         return [list "\"overrides\" is not a JSON array (found $kind)"]
@@ -690,7 +762,8 @@ proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule naming_rul
                 lappend problems "$rule_where: \"type\" is not allowed in an override (a rule's type comes from metadata or the top-level \"rules\")"
                 dict unset entry type
             }
-            lappend problems {*}[_policy_entry_problems $rule_where $entry $allowed]
+            set rule_type [expr {[dict exists $type_by_rule $rule_id] ? [dict get $type_by_rule $rule_id] : ""}]
+            lappend problems {*}[_policy_entry_problems $rule_where $entry $allowed $rule_type]
             if {$rule_id in $naming_rules} {
                 lappend problems {*}[_naming_scope_problems $rule_where $entry]
             }
@@ -1442,6 +1515,35 @@ proc ::aurig::lint::dispatch_rules {symbols parse_result filename} {
 }
 
 #=============================================================================
+# Rule Handlers - shared option access
+#=============================================================================
+
+# Value of an option with a fixed set of values (::aurig::lint::option_values),
+# or the default when the rule configuration does not set it. The policy
+# validator rejects any other value; a configuration that bypasses it
+# (::aurig::lint::run -rules_config) gets an error, never a fallback.
+#
+# Arguments:
+#   rule_type   : Rule type, e.g. keyword_case
+#   rule_id     : Rule identifier, for the error message
+#   rule_config : Rule configuration dict
+#   option      : Option name
+#   default     : Value when the option is not set
+#
+# Returns: The option value
+proc ::aurig::lint::rule::_option_value {rule_type rule_id rule_config option default} {
+    set value $default
+    if {[dict exists $rule_config $option]} {
+        set value [dict get $rule_config $option]
+    }
+    set values [dict get [::aurig::lint::option_values $rule_type] $option]
+    if {$value ni $values} {
+        error "rule \"$rule_id\": invalid value \"$value\" for option \"$option\" (allowed: [join $values {, }])"
+    }
+    return $value
+}
+
+#=============================================================================
 # Rule Handlers - Naming
 #=============================================================================
 
@@ -1758,10 +1860,7 @@ proc ::aurig::lint::rule::keyword_case {symbols parse_result filename rule_id ru
     set diagnostics {}
 
     # Get expected case (default: lowercase)
-    set expected_case "lowercase"
-    if {[dict exists $rule_config case]} {
-        set expected_case [dict get $rule_config case]
-    }
+    set expected_case [_option_value keyword_case $rule_id $rule_config case lowercase]
 
     # Get severity (default: info)
     set severity "info"
@@ -3749,6 +3848,22 @@ proc ::aurig::lint::analyze_combinational_process {body} {
     return $assigned_signals
 }
 
+# Helper: Names of the variables in the declarations of a parse-result
+# element (a process, or an architecture for its shared variables),
+# lowercase
+proc ::aurig::lint::declared_variables {element} {
+    set names {}
+    if {[dict exists $element declarations]} {
+        foreach decl [dict get $element declarations] {
+            if {[dict exists $decl kind] && [dict get $decl kind] eq "variable"
+                    && [dict exists $decl name]} {
+                lappend names [string tolower [dict get $decl name]]
+            }
+        }
+    }
+    return $names
+}
+
 proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename rule_id rule_config} {
     set diagnostics {}
 
@@ -3767,6 +3882,9 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
         if {![dict exists $arch processes]} {
             continue
         }
+
+        # Shared variables of the architecture, lowercase
+        set arch_variables [::aurig::lint::declared_variables $arch]
 
         # Check each process
         foreach proc [dict get $arch processes] {
@@ -3809,10 +3927,18 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
             # Extract all assigned signals
             set assigned_signals [::aurig::lint::analyze_combinational_process $body]
 
+            # The assigned signals are the targets of "<=" assignments
+            # (statement_events), never a compared name. A variable is among
+            # them only when written as one (cnt <= 1), which VHDL rejects
+            # but the rule reads as text. With ignore_variables, skip the
+            # names declared as variables of the process or shared variables
+            # of the architecture (VHDL names ignore case). The name alone
+            # never decides: a signal v_data is a signal.
+            set variables [concat $arch_variables [::aurig::lint::declared_variables $proc]]
+
             # For each assigned signal, check if it has a default assignment
             foreach sig $assigned_signals {
-                # Skip if configured to ignore variables and this looks like a variable
-                if {$ignore_variables && [regexp -nocase {^v_} $sig]} {
+                if {$ignore_variables && [string tolower $sig] in $variables} {
                     continue
                 }
 
@@ -3841,6 +3967,44 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
     }
 
     return $diagnostics
+}
+
+# File-name matching shared by the rules that skip some files (#21): a file
+# matches when its base name matches one of the patterns (Tcl `string match`
+# globs), ignoring case on every platform.
+#
+# Arguments:
+#   filename : Source file path
+#   patterns : List of glob patterns
+#
+# Returns: 1 when the file matches, else 0
+proc ::aurig::lint::rule::_name_matches {filename patterns} {
+    set basename [file tail $filename]
+    foreach pattern $patterns {
+        if {[string match -nocase $pattern $basename]} {
+            return 1
+        }
+    }
+    return 0
+}
+
+# Testbench detection shared by the rules that skip testbenches:
+# require_reset_in_clocked_process, forbid_wait_statements and
+# require_meaningful_comments (#21). A file is a testbench when its name
+# matches one of the rule's testbench_patterns (_name_matches). A policy
+# list replaces the default list.
+#
+# Arguments:
+#   filename    : Source file path
+#   rule_config : Rule configuration dict
+#
+# Returns: 1 when the file is a testbench, else 0
+proc ::aurig::lint::rule::_is_testbench {filename rule_config} {
+    set patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
+    if {[dict exists $rule_config testbench_patterns]} {
+        set patterns [dict get $rule_config testbench_patterns]
+    }
+    return [_name_matches $filename $patterns]
 }
 
 # Rule: require_reset_in_clocked_process
@@ -3873,35 +4037,16 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     }
 
     # Get reset policy: sync, async, or either (default)
-    set reset_policy "either"
-    if {[dict exists $rule_config reset_policy]} {
-        set reset_policy [dict get $rule_config reset_policy]
-    }
+    set reset_policy [_option_value require_reset_in_clocked_process $rule_id $rule_config reset_policy either]
 
-    # Check if this file is a testbench (rule doesn't apply to testbenches)
-    set testbench_patterns {}
-    if {[dict exists $rule_config testbench_patterns]} {
-        set testbench_patterns [dict get $rule_config testbench_patterns]
-    }
-
-    set is_testbench false
-    set basename [file tail $filename]
-    foreach pattern $testbench_patterns {
-        if {[string match $pattern $basename]} {
-            set is_testbench true
-            break
-        }
-    }
-
-    if {$is_testbench} {
-        # Skip testbench files
+    # The rule doesn't apply to testbenches
+    if {[_is_testbench $filename $rule_config]} {
         return $diagnostics
     }
 
-    # File-name BFM exclusion list (LINT-RULES-DEBT-023). Mirrors
-    # the `testbench_patterns` check above — same `string match`
-    # form, same case-sensitive semantics (no `-nocase`) — but
-    # targets bus-functional models, which by convention live in
+    # File-name BFM exclusion list (LINT-RULES-DEBT-023). The same
+    # matching as `testbench_patterns` (_name_matches: base name, ignoring
+    # case), but it targets bus-functional models, which by convention live in
     # `*_bfm.vhd` files and by definition do not carry a reset.
     # The architecture-name `excluded_architectures` check below
     # complements this for the case where the architecture is
@@ -3911,21 +4056,13 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     # `clear_n_i`, without `rst`/`reset` in the name: neither the
     # testbench patterns nor excluded_architectures would match
     # it without this option). Default `["*_bfm.vhd"]` catches
-    # the canonical suffix; a project using mixed case (e.g.
-    # `Bus_BFM.vhd`) must list each variant explicitly. An
+    # the canonical suffix in any case (`*_BFM.vhd` too). An
     # explicit empty list re-enables the rule on BFM files.
     set bfm_patterns {*_bfm.vhd}
     if {[dict exists $rule_config bfm_patterns]} {
         set bfm_patterns [dict get $rule_config bfm_patterns]
     }
-    set is_bfm false
-    foreach pattern $bfm_patterns {
-        if {[string match $pattern $basename]} {
-            set is_bfm true
-            break
-        }
-    }
-    if {$is_bfm} {
+    if {[_name_matches $filename $bfm_patterns]} {
         return $diagnostics
     }
 
@@ -4104,7 +4241,6 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
                         either  { set reset_words "a synchronous or asynchronous reset" }
                         sync    { set reset_words "a synchronous reset" }
                         async   { set reset_words "an asynchronous reset" }
-                        default { set reset_words "$reset_policy reset" }
                     }
                     # An unlabelled process has no name to quote: the
                     # quoted '${process}' becomes "at line N" rather than ''.
@@ -4136,24 +4272,8 @@ proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename 
         set severity [dict get $rule_config severity]
     }
 
-    # Get testbench patterns (default: tb_*.vhd, *_tb.vhd)
-    set tb_patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
-    if {[dict exists $rule_config testbench_patterns]} {
-        set tb_patterns [dict get $rule_config testbench_patterns]
-    }
-
-    # Check if this file matches testbench patterns
-    set basename [file tail $filename]
-    set is_testbench false
-    foreach pattern $tb_patterns {
-        if {[string match -nocase $pattern $basename]} {
-            set is_testbench true
-            break
-        }
-    }
-
-    # Skip testbench files if configured
-    if {$is_testbench} {
+    # Skip testbench files
+    if {[_is_testbench $filename $rule_config]} {
         return $diagnostics
     }
 
@@ -4432,7 +4552,11 @@ proc ::aurig::lint::rule::forbid_unconstrained_ports {symbols parse_result filen
 #   - major_signal_regex: Pattern for "major" signals (default: clk|rst|enable|valid|ready|data|addr|ctrl)
 #   - processes_required: Require process documentation
 #   - instantiations_required: Require instantiation documentation
+#   - testbench_patterns: File-name globs of testbenches, matched ignoring
+#     case (default tb_*.vhd *_tb.vhd *_testbench.vhd)
 #   - skip_testbenches: Skip checks for testbench files (default true)
+#   - message: When not empty, replaces the text of every diagnostic, with
+#     ${kind}, ${name} and ${default} filled in (default "": built-in texts)
 #
 # Limitations:
 #   - Simple regex-based detection, not full VHDL semantic analysis
@@ -4448,18 +4572,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
     # Check if this file is a testbench (skip if configured)
     set skip_testbenches [expr {[dict exists $rule_config skip_testbenches] ? [dict get $rule_config skip_testbenches] : true}]
-
-    set testbench_patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
-    set is_testbench false
-    set basename [file tail $filename]
-    foreach pattern $testbench_patterns {
-        if {[string match $pattern $basename]} {
-            set is_testbench true
-            break
-        }
-    }
-
-    if {$skip_testbenches && $is_testbench} {
+    if {$skip_testbenches && [_is_testbench $filename $rule_config]} {
         return $diagnostics
     }
 
@@ -4469,13 +4582,16 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
     set header_keywords [expr {[dict exists $rule_config header_keywords] ? [dict get $rule_config header_keywords] : {}}]
     set ports_required [expr {[dict exists $rule_config ports_required] ? [dict get $rule_config ports_required] : true}]
     set generics_required [expr {[dict exists $rule_config generics_required] ? [dict get $rule_config generics_required] : true}]
-    set ports_comment_style [expr {[dict exists $rule_config ports_comment_style] ? [dict get $rule_config ports_comment_style] : "either"}]
-    set generics_comment_style [expr {[dict exists $rule_config generics_comment_style] ? [dict get $rule_config generics_comment_style] : "either"}]
+    set keywords_mode [_option_value require_meaningful_comments $rule_id $rule_config header_keywords_mode any]
+    set ports_comment_style [_option_value require_meaningful_comments $rule_id $rule_config ports_comment_style either]
+    set generics_comment_style [_option_value require_meaningful_comments $rule_id $rule_config generics_comment_style either]
     set signals_required [expr {[dict exists $rule_config signals_required] ? [dict get $rule_config signals_required] : false}]
     set constants_required [expr {[dict exists $rule_config constants_required] ? [dict get $rule_config constants_required] : false}]
     set major_signal_regex [expr {[dict exists $rule_config major_signal_regex] ? [dict get $rule_config major_signal_regex] : {clk|rst|reset|enable|valid|ready|data|addr|ctrl}}]
     set processes_required [expr {[dict exists $rule_config processes_required] ? [dict get $rule_config processes_required] : false}]
     set instantiations_required [expr {[dict exists $rule_config instantiations_required] ? [dict get $rule_config instantiations_required] : false}]
+    # A non-empty message replaces the text of every diagnostic of the rule
+    set template [expr {[dict exists $rule_config message] ? [dict get $rule_config message] : ""}]
 
     # Read file content for comment checking
     if {[catch {open $filename r} fh]} {
@@ -4516,6 +4632,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
         # Check if header is sufficient
         if {[llength $header_lines] < $header_min_lines} {
             set msg "Missing file header documentation block (found [llength $header_lines] lines, need $header_min_lines)"
+            set msg [_comment_text $template header {} $msg]
             lappend diagnostics [::aurig::lint::create_diagnostic \
                 $rule_id $severity $msg $filename 1 0 "file" "" ""]
         } elseif {[llength $header_keywords] > 0} {
@@ -4547,19 +4664,6 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                     lappend found_keywords $keyword
                 }
             }
-            set keywords_mode "any"
-            if {[dict exists $rule_config header_keywords_mode]} {
-                set requested [dict get $rule_config header_keywords_mode]
-                if {$requested in {any all}} {
-                    set keywords_mode $requested
-                }
-                # Silently fall back to "any" for unrecognised values
-                # rather than erroring — policy files are user-edited
-                # and we'd rather degrade to the safe default than
-                # block the whole lint sweep on a typo. The schema
-                # is documented in lint/metadata.json and
-                # doc/reference/rules_reference.md.
-            }
             if {$keywords_mode eq "all"} {
                 set missing {}
                 foreach keyword $header_keywords {
@@ -4569,6 +4673,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 }
                 if {[llength $missing] > 0} {
                     set msg "File header missing required keywords: [join $missing {, }]"
+                    set msg [_comment_text $template header {} $msg]
                     lappend diagnostics [::aurig::lint::create_diagnostic \
                         $rule_id $severity $msg $filename 1 0 "file" "" ""]
                 }
@@ -4576,6 +4681,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 # any-of (legacy default)
                 if {[llength $found_keywords] == 0} {
                     set msg "File header missing required keywords: [join $header_keywords {, }]"
+                    set msg [_comment_text $template header {} $msg]
                     lappend diagnostics [::aurig::lint::create_diagnostic \
                         $rule_id $severity $msg $filename 1 0 "file" "" ""]
                 }
@@ -4631,12 +4737,14 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                         if {!$has_comment} {
                             set msg "Generic '$generic_name' in entity '$entity_name' missing documentation comment"
+                            set msg [_comment_text $template generic $generic_name $msg]
                             lappend diagnostics [::aurig::lint::create_diagnostic \
                                 $rule_id $severity $msg $filename $generic_line 0 "generic" $generic_name "entity:$entity_name"]
                         }
                     } else {
                         # Could not find line number - report with line=0
                         set msg "Generic '$generic_name' in entity '$entity_name' missing documentation comment"
+                        set msg [_comment_text $template generic $generic_name $msg]
                         lappend diagnostics [::aurig::lint::create_diagnostic \
                             $rule_id $severity $msg $filename 0 0 "generic" $generic_name "entity:$entity_name"]
                     }
@@ -4673,12 +4781,14 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                         if {!$has_comment} {
                             set msg "Port '$port_name' in entity '$entity_name' missing documentation comment"
+                            set msg [_comment_text $template port $port_name $msg]
                             lappend diagnostics [::aurig::lint::create_diagnostic \
                                 $rule_id $severity $msg $filename $port_line 0 "port" $port_name "entity:$entity_name"]
                         }
                     } else {
                         # Could not find line number - report with line=0
                         set msg "Port '$port_name' in entity '$entity_name' missing documentation comment"
+                        set msg [_comment_text $template port $port_name $msg]
                         lappend diagnostics [::aurig::lint::create_diagnostic \
                             $rule_id $severity $msg $filename 0 0 "port" $port_name "entity:$entity_name"]
                     }
@@ -4703,6 +4813,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                     if {!$has_comment} {
                         set msg "Major signal '$name' missing documentation comment"
+                        set msg [_comment_text $template signal $name $msg]
                         lappend diagnostics [::aurig::lint::create_diagnostic \
                             $rule_id $severity $msg $filename $line 0 "signal" $name ""]
                     }
@@ -4718,6 +4829,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                 if {!$has_comment} {
                     set msg "Constant '$name' missing documentation comment"
+                    set msg [_comment_text $template constant $name $msg]
                     lappend diagnostics [::aurig::lint::create_diagnostic \
                         $rule_id $severity $msg $filename $line 0 "constant" $name ""]
                 }
@@ -4755,6 +4867,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                                 append msg " '$proc_label'"
                             }
                             append msg " missing documentation comment"
+                            set msg [_comment_text $template process $proc_label $msg]
                             lappend diagnostics [::aurig::lint::create_diagnostic \
                                 $rule_id $severity $msg $filename $proc_line 0 "process" $proc_label ""]
                         }
@@ -4784,6 +4897,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                         if {!$has_comment} {
                             set msg "Instantiation '$inst_label' missing documentation comment"
+                            set msg [_comment_text $template instantiation $inst_label $msg]
                             lappend diagnostics [::aurig::lint::create_diagnostic \
                                 $rule_id $severity $msg $filename $inst_line 0 "instance" $inst_label ""]
                         }
@@ -4794,6 +4908,18 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
     }
 
     return $diagnostics
+}
+
+# Text of a require_meaningful_comments diagnostic. An empty template keeps
+# the built-in text; a non-empty one replaces it, with ${kind} (header,
+# port, generic, signal, constant, process or instantiation), ${name} (the
+# name or label, empty for the header) and ${default} (the built-in text)
+# filled in.
+proc ::aurig::lint::rule::_comment_text {template kind name default} {
+    if {$template eq ""} {
+        return $default
+    }
+    return [string map [list \${kind} $kind \${name} $name \${default} $default] $template]
 }
 
 # Helper: Check if a declaration has an associated comment
