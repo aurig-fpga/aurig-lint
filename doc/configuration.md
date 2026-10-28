@@ -410,6 +410,7 @@ Exit code 2. How to fix each:
 | `unknown rule id` | A typo in a rule id. Copy the id from the reference's table of contents. (If you meant a new rule, add `"type"`, see [User-defined rules](#user-defined-rules).) |
 | `unsupported option "…" (supported: …)` | The rule does not have this option. The message lists what it does support. Here `bfm_patterns` belongs to `require_reset_in_clocked_process`; to turn a rule off for BFMs, use an [override](#4-different-rules-for-some-files-overrides). |
 | `invalid severity` | Use exactly `"error"`, `"warning"` or `"info"`. |
+| `invalid value "…" for option "…" (allowed: …)` | The option takes one of a fixed set of strings, listed in the message: `case` (`keyword_lowercase`), `reset_policy`, `header_keywords_mode`, `ports_comment_style` and `generics_comment_style`. Values are compared exactly: `"Lowercase"` is not `"lowercase"`. |
 
 Malformed JSON is reported with its position. A trailing comma, which JSON
 does not allow:
@@ -483,8 +484,8 @@ rule without `"scope"` or `"pattern"`; a user-defined rule whose id is not
 lowercase letters, digits and underscores starting with a letter; a naming
 rule whose `"scope"` is not one of the scopes listed under "User-defined
 rules"; and the override mistakes in section 4.
-Option *values* are not checked: a pattern that never matches, or a number
-where a list belongs, is accepted.
+Other option *values* are not checked: a pattern that never matches, or a
+number where a list belongs, is accepted.
 
 ## 4. Different rules for some files: overrides
 
@@ -647,8 +648,8 @@ Error: invalid policy bad-override.json: overrides[0] files[0] "tb\\*.vhd": use 
 Error: invalid policy bad-override.json: overrides[0] rule "forbid_latch_inference": "type" is not allowed in an override (a rule's type comes from metadata or the top-level "rules")
 ```
 
-Exit code 2. Options, severities and unknown rule ids are checked as in
-section 3.
+Exit code 2. Options, severities, option values and unknown rule ids are
+checked as in section 3.
 
 Some rules also have file-pattern options of their own.
 `require_reset_in_clocked_process`, `forbid_wait_statements` and

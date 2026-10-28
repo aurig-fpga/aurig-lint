@@ -78,6 +78,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (BREAKING)
 
+- Options with a fixed set of values are validated, like `"severity"`:
+  `case` (`keyword_case` rules such as `keyword_lowercase`: `lowercase`,
+  `uppercase`), `reset_policy` (`either`, `sync`, `async`),
+  `header_keywords_mode` (`any`, `all`), `ports_comment_style` and
+  `generics_comment_style` (`inline`, `block`, `either`). Any other value,
+  or a value that is not a string, used to be accepted without a message:
+  `header_keywords_mode` fell back to `any`, an unknown `case` reported no
+  keyword, an unknown `reset_policy` reported every clocked process and an
+  unknown comment style every port or generic. It now exits **2** with one
+  `invalid policy <file>: rule "<id>": invalid value "<value>" for option
+  "<option>" (allowed: ...)` line, also in `"overrides"`. Values are
+  compared exactly (`"Lowercase"` is rejected). A policy with such a value
+  that loaded before is now rejected. The allowed values are defined once
+  (`::aurig::lint::option_values`) for the validator and the rules; a rule
+  given such a value through `::aurig::lint::run -rules_config` raises an
+  error instead of falling back.
+
 - One testbench detection for `require_reset_in_clocked_process`,
   `forbid_wait_statements` and `require_meaningful_comments` (#21). A file is
   a testbench when its base name matches one of the rule's
