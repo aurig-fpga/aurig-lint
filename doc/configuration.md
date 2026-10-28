@@ -254,7 +254,7 @@ Every rule has these options:
 |---|---|
 | `enabled` | `true` or `false`. Many rules are off by default; the reference shows each default. |
 | `severity` | `"error"`, `"warning"` or `"info"`. Only `error` fails the run by default (`--fail-on`). |
-| `message` | The text of the diagnostic. Placeholders such as `${name}` are filled in. Each rule's placeholders are listed in the reference, in its default messages and option descriptions. A naming rule fills in `${name}` in `message`; `architecture_naming` also has `binding_message`, used when `entity_suffix_bindings` is configured, which fills in `${name}`, `${entity}`, `${suffix}` and `${allowed}`. |
+| `message` | The text of the diagnostic. Placeholders such as `${name}` are filled in. Each rule's placeholders are listed in the reference, in its default messages and option descriptions. A naming rule fills in `${name}` in `message`; `architecture_naming` also has `binding_message`, used when `entity_suffix_bindings` is configured, which fills in `${name}`, `${entity}`, `${suffix}` and `${allowed}`. `require_meaningful_comments` has no default message, each check has its own text; a `message` that is not empty replaces the text of all its diagnostics and fills in `${kind}` (`header`, `port`, `generic`, `signal`, `constant`, `process` or `instantiation`), `${name}` (empty for the header) and `${default}`, the built-in text. |
 
 The other options belong to the rule's **type**. In the reference, each rule
 shows its `Type:` and a table of its options with their defaults. A rule

@@ -238,6 +238,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `require_meaningful_comments` uses its `"message"` option. The policy
+  accepted it, but every diagnostic kept its built-in text. A `"message"`
+  that is not empty now replaces the text of every diagnostic of the rule,
+  with `${kind}` (`header`, `port`, `generic`, `signal`, `constant`,
+  `process` or `instantiation`), `${name}` (the name or label, empty for the
+  header) and `${default}` (the built-in text) filled in. An empty
+  `"message"`, the default, or none keeps the built-in texts. Baseline
+  fingerprints do not include the text, so baselines still match.
+
 - `require_meaningful_comments` with `"instantiations_required": true`
   reports an instantiation without a comment on one of the two lines above
   it (#20). The rule read the instantiations from a parse-result key that

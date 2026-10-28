@@ -342,7 +342,7 @@ proc generate_markdown {rules rule_ids} {
             }
 
             # Description based on key name
-            set desc [get_option_description $key]
+            set desc [get_option_description $key $rule_id]
 
             append output "| `$key` | $type | `$value` | $desc |\n"
         }
@@ -367,7 +367,11 @@ proc generate_markdown {rules rule_ids} {
     return $output
 }
 
-proc get_option_description {key} {
+proc get_option_description {key {rule_id ""}} {
+    # Descriptions of an option of one rule only
+    switch -exact -- "$rule_id/$key" {
+        "require_meaningful_comments/message" { return "When not empty, replaces the text of every diagnostic of the rule. Variables: `\${kind}` (`header`, `port`, `generic`, `signal`, `constant`, `process` or `instantiation`), `\${name}` (the name or label; empty for the header), `\${default}` (the built-in text). Empty keeps the built-in texts" }
+    }
     # Provide helpful descriptions for common keys
     switch -exact -- $key {
         "type" { return "Rule handler type" }
@@ -592,7 +596,7 @@ proc generate_html {rules rule_ids} {
                 }
             }
 
-            set desc [get_option_description $key]
+            set desc [get_option_description $key $rule_id]
             append output "                <tr><td><code>$key</code></td><td>$type</td><td><code>$value</code></td><td>$desc</td></tr>\n"
         }
 
