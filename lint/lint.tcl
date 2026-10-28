@@ -3397,6 +3397,30 @@ proc ::aurig::lint::compare_diagnostics {diag1 diag2} {
     return 0
 }
 
+# Replace the contents of every string literal ("...", with "" for a quote),
+# character literal ('x') and extended identifier (\...\, with \\ for a
+# backslash) in text with spaces, so a word or ";" inside one is not taken
+# for VHDL code: a keyword spelled as an extended identifier (\when\) is a
+# name. Quotes, backslashes, lengths and line breaks are kept. A tick after
+# a name, an extended identifier, ")" or "]" is an attribute (clk'event) or
+# a qualified expression (t'(...)), not the start of a character literal.
+proc ::aurig::lint::mask_literals {text} {
+    set masked $text
+    foreach range [regexp -all -inline -indices {"(?:[^"\n]|"")*"|[\w)\]]'|'[^\n]'|\\(?:[^\\\n]|\\\\)*\\'?} $text] {
+        lassign $range first last
+        set open [string index $text $first]
+        if {$open ni [list \" ' \\]} {
+            continue
+        }
+        if {$open eq "\\" && [string index $text $last] eq "'"} {
+            incr last -1
+        }
+        set masked [string replace $masked [expr {$first + 1}] [expr {$last - 1}] \
+            [string repeat " " [expr {$last - $first - 1}]]]
+    }
+    return $masked
+}
+
 #=============================================================================
 # Baseline Support
 #=============================================================================
@@ -3563,107 +3587,245 @@ proc ::aurig::lint::filter_baseline {diagnostics baseline {base_dir ""}} {
 # Detects combinational processes that may infer latches due to incomplete assignments
 #
 # DESIGN PHILOSOPHY:
-# This rule uses a conservative heuristic approach. It checks if signals are assigned
-# a default value BEFORE any conditional statements (if/case). This is simpler than
-# full control-flow analysis but catches the most common latch patterns.
+# This rule uses a conservative approach, without full control-flow analysis.
+# It follows the if, case and loop statements of a process branch by branch:
+# a signal is covered by a top-level statement of the process, before or
+# after the statements that assign it on some paths only (the last
+# assignment in a process wins), when that statement is
+# - a plain signal assignment,
+# - a conditional assignment (x <= a when c else b ...) whose last
+#   alternative is an unconditional else, or
+# - an if with else or a case with "when others" that covers it in every
+#   branch, by the same rule inside each branch.
+# An assignment inside a loop never covers.
 #
 # WHAT IT DETECTS:
 # - Signals assigned only inside if/case without defaults
 # - Common pattern: if condition then sig <= val1; (no else, no default)
+# - Signals assigned in some branches of an if/else or a case only; several
+#   assignments in one branch count as that one branch
+# - Signals assigned only by a conditional assignment without a final else
+# - Signals assigned only inside a loop, which may run zero times or exit
+#   early
 #
-# WHAT IT INTENTIONALLY DOESN'T DETECT:
-# - Complex nested conditionals with full coverage but no explicit default
-# - Case statements with "others" clause (considered safe)
-# - Signals with assignments in all branches (would need full CFG analysis)
+# WHAT IT DOESN'T HANDLE:
+# - A case without "when others" is incomplete, even when its choices cover
+#   every value
+# - A loop is incomplete, even when its range is never empty and it has no
+#   exit
 #
 # STRATEGY:
 # For each signal assigned in a combinational process:
-# 1. Check if it has a default assignment (before first if/case)
-# 2. If no default found, check if there are any conditionals
-# 3. If conditionals exist without default, warn about potential latch
-#
-# This produces false negatives (misses some latches) but avoids false positives.
-# Better to miss an issue than create noise with incorrect warnings.
+# 1. Build the if/case/loop structure of the process (statement_tree)
+# 2. A top-level statement that covers the signal, as above, covers it
+#    wherever it stands
+# 3. A signal not covered, that some statements assign on some paths only,
+#    may infer a latch: warn
 
-# Helper: Check if a signal has a default assignment before any conditionals
-# OR if signal has complete if-else coverage (simple heuristic)
-proc ::aurig::lint::has_default_assignment {body signal_name} {
-    # Remove comments to avoid false matches
-    set body [regsub -all -line -- {--.*$} $body ""]
-
-    # Track nesting level: 0 = outside all conditionals
-    set nesting 0
-    set found_default false
-
-    # Process line by line
-    set lines [split $body "\n"]
-    foreach line $lines {
-        set line [string trim $line]
-
-        # Skip empty lines
-        if {$line eq ""} {
-            continue
-        }
-
-        # Track conditional depth
-        # Opening: if, case
-        if {[regexp -nocase {\m(if|case)\M} $line]} {
-            incr nesting
-        }
-
-        # Closing: end if, end case
-        if {[regexp -nocase {\mend\s+(if|case)\M} $line]} {
-            incr nesting -1
-            if {$nesting < 0} {
-                set nesting 0
-            }
-        }
-
-        # Check for assignment to this signal at nesting level 0
-        if {$nesting == 0} {
-            if {[regexp -nocase "\\m${signal_name}\\s*<=" $line]} {
-                set found_default true
+# Helper: The statements of a process body as a list of events, in order:
+# {if}, {elsif}, {else}, {case}, {when others} (others 1 for a
+# "when others" alternative, else 0), {loop}, {end if}, {end case},
+# {end loop} and {assign name always} (name as written; always is 0 for a
+# conditional assignment whose last alternative is not an unconditional
+# else, as in q <= '0' when d = '1', else 1). The body is split into
+# statements on ";" outside string and character literals and extended
+# identifiers (mask_literals), and its keywords are read outside them.
+# A statement may start with labels, "begin", "then", the loop headers
+# "for ... loop", "while ... loop" and "loop", and the headers
+# "if ... then", "elsif ... then", "else", "case ... is" and "when ... =>";
+# after them, only a name and "<=" is an assignment. Every later "<=" in the
+# statement is an expression: a comparison (if cnt <= 3 then, ok <= cnt <= 3)
+# or one in a conditional expression (ok <= true when d = '1' else cnt <= 3),
+# so its left operand is not taken for an assigned signal.
+proc ::aurig::lint::statement_events {body} {
+    set masked [mask_literals $body]
+    set events {}
+    set start 0
+    foreach statement [split $masked ";"] {
+        # The headers that lead the statement up to its first name
+        set pos 0
+        while {1} {
+            set head [string range $statement $pos end]
+            if {[regexp -nocase {^\s*(?:\w+\s*:(?!=)|(?:begin|then)\M)} $head match]} {
+                incr pos [string length $match]
+            } elseif {[regexp -nocase {^\s*loop\M} $head match]} {
+                lappend events [list loop]
+                incr pos [string length $match]
+            } elseif {[regexp -nocase {^\s*else\M} $head match]} {
+                lappend events [list else]
+                incr pos [string length $match]
+            } elseif {[regexp -nocase {^\s*(if|elsif|case|when|for|while)\M} $head -> keyword]} {
+                set keyword [string tolower $keyword]
+                set close [dict get {
+                    if {\mthen\M} elsif {\mthen\M} case {\mis\M}
+                    when {=>} for {\mloop\M} while {\mloop\M}
+                } $keyword]
+                if {![regexp -nocase -indices $close $head range]} {
+                    break
+                }
+                if {$keyword eq "when"} {
+                    set choices [string range $head 0 [lindex $range 0]]
+                    lappend events [list when [regexp -nocase {\mothers\M} $choices]]
+                } elseif {$keyword in {if elsif case}} {
+                    lappend events [list $keyword]
+                } else {
+                    lappend events [list loop]
+                }
+                incr pos [expr {[lindex $range 1] + 1}]
+            } else {
                 break
             }
         }
-    }
 
-    # If no default found, check for complete if-else coverage (simple pattern)
-    # Pattern: one top-level if with else, signal assigned in both branches
-    if {!$found_default} {
-        # Check if process has simple if-else structure at top level
-        # This is a conservative check: only catches "if ... else ... end if" with no elsif
-        if {[regexp -nocase "\\mif\\M.*\\melse\\M.*\\mend\\s+if\\M" $body]} {
-            # Check if signal is assigned in both if and else branches
-            # Simple heuristic: if signal appears 2+ times with <=, likely covered
-            set assignment_count 0
-            foreach line $lines {
-                if {[regexp -nocase "\\m${signal_name}\\s*<=" $line]} {
-                    incr assignment_count
+        set rest [string range $statement $pos end]
+        if {[regexp -nocase {^\s*end\s+(if|case|loop)\M} $rest -> kind]} {
+            lappend events [list end [string tolower $kind]]
+        } elseif {[regexp -indices {^\s*(\w+)\s*<=} $rest match name]} {
+            set first [expr {$start + $pos + [lindex $name 0]}]
+            set last [expr {$start + $pos + [lindex $name 1]}]
+            # A conditional assignment is unconditional only if an else
+            # follows its last "when"
+            set value [string range $rest [expr {[lindex $match 1] + 1}] end]
+            set whens [regexp -all -inline -indices -nocase {\mwhen\M} $value]
+            set elses [regexp -all -inline -indices -nocase {\melse\M} $value]
+            set always [expr {[llength $whens] == 0 ||
+                ([llength $elses] > 0 && [lindex $elses end 0] > [lindex $whens end 0])}]
+            lappend events [list assign [string range $body $first $last] $always]
+        }
+        incr start [expr {[string length $statement] + 1}]
+    }
+    return $events
+}
+
+# Helper: The statements of a process body (statement_events) as a tree: a
+# sequence of nodes {assign name} and, for each if, case or loop,
+# {branch complete branches}, where branches is the list of the sequences of
+# its branches and complete is 1 for an if with an else or a case with a
+# "when others" alternative. A loop is one branch, never complete; a
+# conditional assignment without a final else is the incomplete branch
+# {branch 0 {{{assign name}}}}. An if, case or loop still open at the end of
+# the body is closed there.
+proc ::aurig::lint::statement_tree {body} {
+    # The open sequences, innermost last: {kind complete branches sequence
+    # started}; started is 0 for a case before its first alternative
+    set stack [list [list root 0 {} {} 1]]
+    foreach event [concat [statement_events $body] {{end root}}] {
+        lassign [lindex $stack end] kind complete branches sequence started
+        switch -- [lindex $event 0] {
+            assign {
+                lassign $event -> name always
+                if {$always} {
+                    lappend sequence [list assign $name]
+                } else {
+                    lappend sequence [list branch 0 [list [list [list assign $name]]]]
+                }
+                lset stack end [list $kind $complete $branches $sequence $started]
+            }
+            if - case - loop {
+                lappend stack [list [lindex $event 0] 0 {} {} [expr {[lindex $event 0] ne "case"}]]
+            }
+            elsif - else {
+                if {$kind eq "if"} {
+                    lappend branches $sequence
+                    set complete [expr {[lindex $event 0] eq "else"}]
+                    lset stack end [list if $complete $branches {} 1]
                 }
             }
-            if {$assignment_count >= 2} {
-                set found_default true
-            }
-        }
-
-        # Also check for case with "others" clause (considered complete)
-        if {[regexp -nocase "\\mcase\\M.*\\mothers\\M.*\\mend\\s+case\\M" $body]} {
-            # If signal assigned in case with others, considered safe
-            set has_assignment 0
-            foreach line $lines {
-                if {[regexp -nocase "\\m${signal_name}\\s*<=" $line]} {
-                    set has_assignment 1
-                    break
+            when {
+                if {$kind eq "case"} {
+                    if {$started} {
+                        lappend branches $sequence
+                    }
+                    set complete [expr {$complete || [lindex $event 1]}]
+                    lset stack end [list case $complete $branches {} 1]
                 }
             }
-            if {$has_assignment} {
-                set found_default true
+            end {
+                # Close the innermost open if/case/loop of this kind, and any
+                # still open inside it; an end that closes none is ignored.
+                # The final {end root} closes all of them.
+                set target [lindex $event 1]
+                set index [expr {[llength $stack] - 1}]
+                while {$index > 0 && [lindex $stack $index 0] ne $target} {
+                    incr index -1
+                }
+                if {$index == 0 && $target ne "root"} {
+                    continue
+                }
+                while {[llength $stack] > max($index, 1)} {
+                    lassign [lindex $stack end] kind complete branches sequence started
+                    if {$started} {
+                        lappend branches $sequence
+                    }
+                    set stack [lrange $stack 0 end-1]
+                    set parent [lindex $stack end]
+                    lset parent 3 [linsert [lindex $parent 3] end [list branch $complete $branches]]
+                    lset stack end $parent
+                }
             }
         }
     }
+    return [lindex $stack 0 3]
+}
 
-    return $found_default
+# Helper: True if a sequence of statement_tree nodes assigns the signal on
+# every path: an assignment to it, or a complete if/case that assigns it on
+# every path of every branch. A loop is never complete.
+proc ::aurig::lint::assigns_always {sequence signal_name} {
+    foreach node $sequence {
+        if {[lindex $node 0] eq "assign"} {
+            if {[string equal -nocase [lindex $node 1] $signal_name]} {
+                return 1
+            }
+            continue
+        }
+        lassign $node -> complete branches
+        if {!$complete || [llength $branches] == 0} {
+            continue
+        }
+        set every 1
+        foreach branch $branches {
+            if {![assigns_always $branch $signal_name]} {
+                set every 0
+                break
+            }
+        }
+        if {$every} {
+            return 1
+        }
+    }
+    return 0
+}
+
+# Helper: True if a sequence of statement_tree nodes assigns the signal on
+# any path
+proc ::aurig::lint::assigns_ever {sequence signal_name} {
+    foreach node $sequence {
+        if {[lindex $node 0] eq "assign"} {
+            if {[string equal -nocase [lindex $node 1] $signal_name]} {
+                return 1
+            }
+            continue
+        }
+        foreach branch [lindex $node 2] {
+            if {[assigns_ever $branch $signal_name]} {
+                return 1
+            }
+        }
+    }
+    return 0
+}
+
+# Helper: True if a signal is covered in a process body: its top-level
+# statements (statement_tree) assign it on every path (assigns_always), with
+# a plain assignment, a conditional assignment with a final else, or an
+# if/case that assigns it on every path, before or after the statements that
+# assign it on some paths only (the last assignment in a process wins). An
+# assignment inside a loop never covers. A signal the body never assigns is
+# covered.
+proc ::aurig::lint::has_default_assignment {body signal_name} {
+    set tree [statement_tree $body]
+    return [expr {[assigns_always $tree $signal_name] || ![assigns_ever $tree $signal_name]}]
 }
 
 # Helper: Analyze combinational process for latch inference
@@ -3671,9 +3833,13 @@ proc ::aurig::lint::analyze_combinational_process {body} {
     # Extract all signals assigned in this process
     set assigned_signals {}
 
-    # Match pattern: signal_name <=
+    # Signal assignments (statement_events), not "<=" expressions.
     # Collect unique signal names
-    foreach {match sig} [regexp -all -inline -nocase {(\w+)\s*<=} $body] {
+    foreach event [statement_events $body] {
+        if {[lindex $event 0] ne "assign"} {
+            continue
+        }
+        set sig [lindex $event 1]
         if {$sig ni $assigned_signals} {
             lappend assigned_signals $sig
         }
@@ -3749,8 +3915,10 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
                 continue
             }
 
-            # Check if process has any conditionals
-            if {![regexp -nocase {\m(if|case)\M} $body]} {
+            # Check if process has any conditionals: an if, a case, a loop
+            # or a conditional assignment, outside literals and extended
+            # identifiers
+            if {![regexp -nocase {\m(if|case|loop|when)\M} [::aurig::lint::mask_literals $body]]} {
                 # No conditionals, no risk of latches
                 continue
             }
@@ -3759,12 +3927,13 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
             # Extract all assigned signals
             set assigned_signals [::aurig::lint::analyze_combinational_process $body]
 
-            # The names before "<=" include the left operand of a "<="
-            # comparison, so a variable can be among them. With
-            # ignore_variables, skip the names declared as variables of the
-            # process or shared variables of the architecture (VHDL names
-            # ignore case). The name alone never decides: a signal v_data is
-            # a signal.
+            # The assigned signals are the targets of "<=" assignments
+            # (statement_events), never a compared name. A variable is among
+            # them only when written as one (cnt <= 1), which VHDL rejects
+            # but the rule reads as text. With ignore_variables, skip the
+            # names declared as variables of the process or shared variables
+            # of the architecture (VHDL names ignore case). The name alone
+            # never decides: a signal v_data is a signal.
             set variables [concat $arch_variables [::aurig::lint::declared_variables $proc]]
 
             # For each assigned signal, check if it has a default assignment
@@ -3773,7 +3942,7 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
                     continue
                 }
 
-                # Check for default assignment before any conditional
+                # Check that the signal is assigned on every path
                 set has_default [::aurig::lint::has_default_assignment $body $sig]
 
                 # If no default found, potential latch

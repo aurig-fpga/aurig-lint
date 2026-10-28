@@ -5,28 +5,33 @@
 # Regression: forbid_latch_inference ignore_variables skips variables, not
 # names starting with "v_"
 #
-# The rule collects the names before "<=" in a process, which also catches
-# the left operand of a "<=" comparison. With ignore_variables (default
-# true) it skipped every name starting with "v_", so a signal v_data with a
-# latch was never reported, while a variable without the prefix compared
-# with "<=" was reported as a signal. It now skips exactly the names the
-# parser reports as variables of the process or as shared variables of the
-# architecture, compared ignoring case as VHDL does.
+# With ignore_variables (default true) the rule skipped every name starting
+# with "v_", so a signal v_data with a latch was never reported, while a
+# variable without the prefix was reported as a signal. It now skips exactly
+# the names the parser reports as variables of the process or as shared
+# variables of the architecture, compared ignoring case as VHDL does.
+#
+# The rule counts only the targets of signal assignments, so a variable
+# reaches this skip only as the target of "<=" (cnt <= 1), which VHDL
+# rejects for a variable but the rule reads as text. A variable compared
+# with "<=" (if cnt <= 3 then) is never an assigned signal, whatever
+# ignore_variables.
 #
 # Fixtures (each a combinational process with an if and no default
 # assignment):
 #   signal_v.vhd    signal v_data assigned under an if: a latch
-#   vars.vhd        process variables cnt (one declaration with idx) and
-#                   v_cnt and shared variable lim, compared with "<=";
-#                   cnt is declared as Cnt and written CNT; signal q has a
-#                   default assignment
+#   targets.vhd     process variables cnt (one declaration with idx) and
+#                   v_cnt and shared variable lim, assigned with "<=" under
+#                   an if; cnt is declared as Cnt and written CNT; signal q
+#                   has a default assignment
+#   compared.vhd    the same variables, compared with "<=" in if guards
 # Policies enable the rule with ignore_variables absent (default true),
 # true and false.
 #
 # Checks labelled [control] hold before and after the fix: v_cnt is never
-# reported with ignore_variables, and with ignore_variables false the rule
-# reports every name as before. Every other check fails on the code before
-# the fix.
+# reported with ignore_variables, ignore_variables false reports every
+# assigned name, and no compared name is reported. Every other check fails
+# on the code before the fix.
 #=============================================================================
 
 set script_anchor [file dirname [file normalize [info script]]]
@@ -65,15 +70,41 @@ begin
 end architecture rtl;
 }
 
-set vars [file join $sandbox vars.vhd]
-write_file $vars {library ieee;
+set targets [file join $sandbox targets.vhd]
+write_file $targets {library ieee;
 use ieee.std_logic_1164.all;
 
-entity vars is
+entity targets is
   port (en : in std_logic; q : out std_logic);
-end entity vars;
+end entity targets;
 
-architecture rtl of vars is
+architecture rtl of targets is
+  shared variable lim : integer;
+begin
+  comb : process (en)
+    variable idx, Cnt : integer;
+    variable v_cnt : integer;
+  begin
+    q <= '0';
+    if en = '1' then
+      CNT <= 1;
+      v_cnt <= 1;
+      lim <= 1;
+      q <= en;
+    end if;
+  end process comb;
+end architecture rtl;
+}
+
+set compared [file join $sandbox compared.vhd]
+write_file $compared {library ieee;
+use ieee.std_logic_1164.all;
+
+entity compared is
+  port (en : in std_logic; q : out std_logic);
+end entity compared;
+
+architecture rtl of compared is
   shared variable lim : integer;
 begin
   comb : process (en)
@@ -129,13 +160,21 @@ check_eq "\[control\] ignore_variables false: signal v_data reported" \
 # Declared variables are skipped, whatever their name and case
 # ----------------------------------------------------------------------------
 foreach p {absent true} {
-    set names [reported $vars $pol($p)]
+    set names [reported $targets $pol($p)]
     check_eq "ignore_variables $p: no variable reported" {} $names
     check_true "\[control\] ignore_variables $p: v_cnt not reported" \
         {"v_cnt" ni $names && $names ne "rc 2"}
 }
-check_eq "\[control\] ignore_variables false: every compared name reported" \
-    {CNT lim v_cnt} [reported $vars $pol(false)]
+check_eq "\[control\] ignore_variables false: every assigned name reported" \
+    {CNT lim v_cnt} [reported $targets $pol(false)]
+
+# ----------------------------------------------------------------------------
+# A compared variable is not an assigned signal, whatever ignore_variables
+# ----------------------------------------------------------------------------
+foreach p {absent true false} {
+    check_eq "\[control\] ignore_variables $p: no compared name reported" \
+        {} [reported $compared $pol($p)]
+}
 
 catch {file delete -force $sandbox}
 

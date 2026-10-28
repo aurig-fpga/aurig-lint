@@ -255,13 +255,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `forbid_latch_inference` counts signal assignments only. It took every
+  name followed by `<=` for an assigned signal, so the left operand of a
+  `<=` comparison was one too: a port `cnt` in `if cnt <= 3 then`, in an
+  `elsif` or `case` guard or on the right side of an assignment
+  (`ok <= cnt <= 3;`, `q <= '1' when cnt <= 3 else '0';`), was reported as
+  a signal that may infer a latch. A comparison also counted as an
+  assignment of the compared signal, which could hide a real latch. An
+  assignment is now a name and `<=` at the start of a statement; every
+  later `<=` in the same statement is an expression, including one after
+  the `else` of a conditional expression (`ok <= true when d = '1' else
+  cnt <= 3;`). A `;` in a string or character literal does not end a
+  statement. An extended identifier that spells a keyword (`\when\`,
+  `\else\`, `\loop\`) is a name, so `q <= d when en = '1' else \when\;`
+  is a complete assignment, not one that ends with a `when`.
+
+- `forbid_latch_inference` decides coverage per branch of an `if` or
+  `case`. A signal is covered by a top-level statement of the process,
+  before or after the `if` or `case` (the last assignment in a process
+  wins), that is a plain assignment, a conditional assignment whose last
+  alternative is an unconditional `else`, or an `if` with `else` or a
+  `case` with `when others` that covers it in every branch by the same
+  rule; several assignments in one branch count as that one branch. Two
+  assignments to a signal on two lines of the `if` branch of an
+  `if`/`else` were taken for complete coverage, and so was a `case` with
+  `when others` in which one alternative assigned the signal: both latches
+  are now reported. A signal assigned after an `if`, as in
+  `if en = '1' then q <= d; end if; q <= '0';`, is no longer reported; an
+  assignment after the `if` inside another conditional, or a conditional
+  assignment without a final `else` (`q <= '0' when d = '1';`), does not
+  cover it. An assignment inside a loop never covers, since the loop may
+  run zero times or exit early: a signal assigned only inside a loop,
+  including by a complete `if` and in a process without `if` or `case`, is
+  now reported, also when the loop is never empty.
+
 - `forbid_latch_inference` with `"ignore_variables": true`, the default,
   skips the variables of the process and the shared variables of the
   architecture, as declared, ignoring case. It skipped every name starting
-  with `v_` instead: a signal such as `v_data` with a latch was never
-  reported, and a variable without the prefix on the left of a `<=`
-  comparison (`if cnt <= 3 then`) was reported as a signal that may infer a
-  latch. Signals named `v_*` are now checked like any other signal.
+  with `v_` instead, so a signal such as `v_data` with a latch was never
+  reported. Signals named `v_*` are now checked like any other signal. The
+  rule counts only the targets of signal assignments, so the option applies
+  to a variable written as one (`cnt <= 1;`, which VHDL rejects); a
+  variable compared with `<=` (`if cnt <= 3 then`) is never reported,
+  whatever the option.
 
 - `require_meaningful_comments` uses its `"message"` option. The policy
   accepted it, but every diagnostic kept its built-in text. A `"message"`
