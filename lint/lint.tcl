@@ -56,6 +56,24 @@ namespace eval ::aurig::lint {
     variable file_cache
     array set file_cache {}
 
+    # Options with a fixed set of values: rule type -> option -> allowed
+    # values. The policy validator checks a policy against this list
+    # (_policy_entry_problems) and the handlers read these options through
+    # rule::_option_value, so both use the same values.
+    variable option_values {
+        keyword_case {
+            case {lowercase uppercase}
+        }
+        require_reset_in_clocked_process {
+            reset_policy {either sync async}
+        }
+        require_meaningful_comments {
+            header_keywords_mode   {any all}
+            ports_comment_style    {inline block either}
+            generics_comment_style {inline block either}
+        }
+    }
+
     namespace export run
 }
 
@@ -392,6 +410,8 @@ proc ::aurig::lint::policy_problem_line {policy_file problem} {
 #     on architecture_naming but read by every naming rule with scope
 #     "architecture");
 #   - "severity" must be the string error, warning or info;
+#   - an option with a fixed set of values (option_values) must be one of
+#     them, as a string (also in an override);
 #   - "overrides" is checked by _validate_policy_overrides;
 #   - keys starting with "_" are comments and are ignored at the top level,
 #     inside "rules", inside a rule entry and inside an override entry.
@@ -473,6 +493,15 @@ proc ::aurig::lint::validate_policy {policy metadata} {
         dict set allowed_by_rule $rule_id [lsort -unique [concat $common_keys $allowed]]
     }
 
+    # Type of every rule an override may name, for the options with a fixed
+    # set of values: built-in rules here, user-defined ones below.
+    set type_by_rule [dict create]
+    dict for {rule_id rule_meta} $builtin_rules {
+        if {[dict exists $rule_meta type]} {
+            dict set type_by_rule $rule_id [dict get $rule_meta type]
+        }
+    }
+
     dict for {rule_id typed_entry} $policy_rules {
         if {[string index $rule_id 0] eq "_"} {
             continue
@@ -517,6 +546,7 @@ proc ::aurig::lint::validate_policy {policy metadata} {
         } else {
             set allowed [lsort -unique [concat $common_keys [dict get $keys_by_type $given_type]]]
             dict set allowed_by_rule $rule_id $allowed
+            dict set type_by_rule $rule_id $given_type
             if {$given_type eq "naming"} {
                 lappend naming_rules $rule_id
                 foreach required {scope pattern} {
@@ -527,7 +557,8 @@ proc ::aurig::lint::validate_policy {policy metadata} {
             }
         }
 
-        lappend problems {*}[_policy_entry_problems $where $entry $allowed]
+        set rule_type [expr {[dict exists $type_by_rule $rule_id] ? [dict get $type_by_rule $rule_id] : ""}]
+        lappend problems {*}[_policy_entry_problems $where $entry $allowed $rule_type]
         if {$rule_id in $naming_rules} {
             lappend problems {*}[_naming_scope_problems $where $entry]
         }
@@ -535,21 +566,51 @@ proc ::aurig::lint::validate_policy {policy metadata} {
 
     if {[dict exists $top overrides]} {
         lappend problems {*}[_validate_policy_overrides \
-            [dict get $top overrides] $allowed_by_rule $naming_rules]
+            [dict get $top overrides] $allowed_by_rule $naming_rules $type_by_rule]
     }
 
     return $problems
 }
 
-# Option and severity problems of one rule entry (top level or override).
+# Options with a fixed set of values of a rule type (from option_values).
 #
 # Arguments:
-#   where   : Prefix naming the entry, e.g. rule "x" or overrides[0] rule "x"
-#   entry   : Typed members of the entry (an object's member dict)
-#   allowed : Sorted list of supported options, or "" to skip that check
+#   rule_type : Rule type, e.g. keyword_case
+#
+# Returns: Dict option -> list of allowed values, empty when the type has no
+#          such option
+proc ::aurig::lint::option_values {rule_type} {
+    variable option_values
+    if {[dict exists $option_values $rule_type]} {
+        return [dict get $option_values $rule_type]
+    }
+    return {}
+}
+
+# A typed policy value as written in a problem line: a string quoted with
+# _policy_quote, a number, boolean or null as is, "an array" or "an object".
+proc ::aurig::lint::_policy_value_text {kind value} {
+    switch -exact -- $kind {
+        string  { return "\"[_policy_quote $value]\"" }
+        null    { return null }
+        array   { return "an array" }
+        object  { return "an object" }
+        default { return $value }
+    }
+}
+
+# Option, severity and option-value problems of one rule entry (top level or
+# override).
+#
+# Arguments:
+#   where     : Prefix naming the entry, e.g. rule "x" or overrides[0] rule "x"
+#   entry     : Typed members of the entry (an object's member dict)
+#   allowed   : Sorted list of supported options, or "" to skip that check
+#   rule_type : Rule type, for the options with a fixed set of values
+#               (option_values); "" skips that check
 #
 # Returns: List of problem strings
-proc ::aurig::lint::_policy_entry_problems {where entry allowed} {
+proc ::aurig::lint::_policy_entry_problems {where entry allowed {rule_type ""}} {
     set problems {}
     if {$allowed ne ""} {
         foreach key [dict keys $entry] {
@@ -563,6 +624,15 @@ proc ::aurig::lint::_policy_entry_problems {where entry allowed} {
         lassign [dict get $entry severity] kind severity
         if {$kind ne "string" || $severity ni {error warning info}} {
             lappend problems "$where: invalid severity \"[_policy_quote $severity]\" (must be the string error, warning or info)"
+        }
+    }
+    dict for {option values} [option_values $rule_type] {
+        if {![dict exists $entry $option]} {
+            continue
+        }
+        lassign [dict get $entry $option] kind value
+        if {$kind ne "string" || $value ni $values} {
+            lappend problems "$where: invalid value [_policy_value_text $kind $value] for option \"$option\" (allowed: [join $values {, }])"
         }
     }
     return $problems
@@ -602,8 +672,8 @@ proc ::aurig::lint::_naming_scope_problems {where entry} {
 #   - "rules" is an object of rule entries, each an object; a rule id must be
 #     a built-in rule or a rule of the top-level "rules"; "type" is not
 #     allowed (an override cannot turn a rule into another kind of rule);
-#     options, severity and the scope of a naming rule are checked as for
-#     the top-level entry.
+#     options, severity, option values and the scope of a naming rule are
+#     checked as for the top-level entry.
 # Entries are named by their 0-based position: overrides[0], overrides[1]...
 #
 # Arguments:
@@ -611,9 +681,11 @@ proc ::aurig::lint::_naming_scope_problems {where entry} {
 #   allowed_by_rule : Rule id -> supported options ("" when unknown), for
 #                     every rule an override may name
 #   naming_rules    : Ids of the naming rules (built-in and user-defined)
+#   type_by_rule    : Rule id -> rule type, for the options with a fixed set
+#                     of values
 #
 # Returns: List of problem strings
-proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule naming_rules} {
+proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule naming_rules type_by_rule} {
     lassign $typed kind items
     if {$kind ne "array"} {
         return [list "\"overrides\" is not a JSON array (found $kind)"]
@@ -690,7 +762,8 @@ proc ::aurig::lint::_validate_policy_overrides {typed allowed_by_rule naming_rul
                 lappend problems "$rule_where: \"type\" is not allowed in an override (a rule's type comes from metadata or the top-level \"rules\")"
                 dict unset entry type
             }
-            lappend problems {*}[_policy_entry_problems $rule_where $entry $allowed]
+            set rule_type [expr {[dict exists $type_by_rule $rule_id] ? [dict get $type_by_rule $rule_id] : ""}]
+            lappend problems {*}[_policy_entry_problems $rule_where $entry $allowed $rule_type]
             if {$rule_id in $naming_rules} {
                 lappend problems {*}[_naming_scope_problems $rule_where $entry]
             }
@@ -1442,6 +1515,35 @@ proc ::aurig::lint::dispatch_rules {symbols parse_result filename} {
 }
 
 #=============================================================================
+# Rule Handlers - shared option access
+#=============================================================================
+
+# Value of an option with a fixed set of values (::aurig::lint::option_values),
+# or the default when the rule configuration does not set it. The policy
+# validator rejects any other value; a configuration that bypasses it
+# (::aurig::lint::run -rules_config) gets an error, never a fallback.
+#
+# Arguments:
+#   rule_type   : Rule type, e.g. keyword_case
+#   rule_id     : Rule identifier, for the error message
+#   rule_config : Rule configuration dict
+#   option      : Option name
+#   default     : Value when the option is not set
+#
+# Returns: The option value
+proc ::aurig::lint::rule::_option_value {rule_type rule_id rule_config option default} {
+    set value $default
+    if {[dict exists $rule_config $option]} {
+        set value [dict get $rule_config $option]
+    }
+    set values [dict get [::aurig::lint::option_values $rule_type] $option]
+    if {$value ni $values} {
+        error "rule \"$rule_id\": invalid value \"$value\" for option \"$option\" (allowed: [join $values {, }])"
+    }
+    return $value
+}
+
+#=============================================================================
 # Rule Handlers - Naming
 #=============================================================================
 
@@ -1758,10 +1860,7 @@ proc ::aurig::lint::rule::keyword_case {symbols parse_result filename rule_id ru
     set diagnostics {}
 
     # Get expected case (default: lowercase)
-    set expected_case "lowercase"
-    if {[dict exists $rule_config case]} {
-        set expected_case [dict get $rule_config case]
-    }
+    set expected_case [_option_value keyword_case $rule_id $rule_config case lowercase]
 
     # Get severity (default: info)
     set severity "info"
@@ -3298,17 +3397,23 @@ proc ::aurig::lint::compare_diagnostics {diag1 diag2} {
     return 0
 }
 
-# Replace the contents of every string literal ("...", with "" for a quote)
-# and character literal ('x') in text with spaces, so a word or ";" inside a
-# literal is not taken for VHDL code. Quotes, lengths and line breaks are
-# kept. A tick after a name, ")" or "]" is an attribute (clk'event) or a
-# qualified expression (t'(...)), not the start of a character literal.
+# Replace the contents of every string literal ("...", with "" for a quote),
+# character literal ('x') and extended identifier (\...\, with \\ for a
+# backslash) in text with spaces, so a word or ";" inside one is not taken
+# for VHDL code: a keyword spelled as an extended identifier (\when\) is a
+# name. Quotes, backslashes, lengths and line breaks are kept. A tick after
+# a name, an extended identifier, ")" or "]" is an attribute (clk'event) or
+# a qualified expression (t'(...)), not the start of a character literal.
 proc ::aurig::lint::mask_literals {text} {
     set masked $text
-    foreach range [regexp -all -inline -indices {"(?:[^"\n]|"")*"|[\w)\]]'|'[^\n]'} $text] {
+    foreach range [regexp -all -inline -indices {"(?:[^"\n]|"")*"|[\w)\]]'|'[^\n]'|\\(?:[^\\\n]|\\\\)*\\'?} $text] {
         lassign $range first last
-        if {[string index $text $first] ni {\" '}} {
+        set open [string index $text $first]
+        if {$open ni [list \" ' \\]} {
             continue
+        }
+        if {$open eq "\\" && [string index $text $last] eq "'"} {
+            incr last -1
         }
         set masked [string replace $masked [expr {$first + 1}] [expr {$last - 1}] \
             [string repeat " " [expr {$last - $first - 1}]]]
@@ -3482,107 +3587,245 @@ proc ::aurig::lint::filter_baseline {diagnostics baseline {base_dir ""}} {
 # Detects combinational processes that may infer latches due to incomplete assignments
 #
 # DESIGN PHILOSOPHY:
-# This rule uses a conservative heuristic approach. It checks if signals are assigned
-# a default value BEFORE any conditional statements (if/case). This is simpler than
-# full control-flow analysis but catches the most common latch patterns.
+# This rule uses a conservative approach, without full control-flow analysis.
+# It follows the if, case and loop statements of a process branch by branch:
+# a signal is covered by a top-level statement of the process, before or
+# after the statements that assign it on some paths only (the last
+# assignment in a process wins), when that statement is
+# - a plain signal assignment,
+# - a conditional assignment (x <= a when c else b ...) whose last
+#   alternative is an unconditional else, or
+# - an if with else or a case with "when others" that covers it in every
+#   branch, by the same rule inside each branch.
+# An assignment inside a loop never covers.
 #
 # WHAT IT DETECTS:
 # - Signals assigned only inside if/case without defaults
 # - Common pattern: if condition then sig <= val1; (no else, no default)
+# - Signals assigned in some branches of an if/else or a case only; several
+#   assignments in one branch count as that one branch
+# - Signals assigned only by a conditional assignment without a final else
+# - Signals assigned only inside a loop, which may run zero times or exit
+#   early
 #
-# WHAT IT INTENTIONALLY DOESN'T DETECT:
-# - Complex nested conditionals with full coverage but no explicit default
-# - Case statements with "others" clause (considered safe)
-# - Signals with assignments in all branches (would need full CFG analysis)
+# WHAT IT DOESN'T HANDLE:
+# - A case without "when others" is incomplete, even when its choices cover
+#   every value
+# - A loop is incomplete, even when its range is never empty and it has no
+#   exit
 #
 # STRATEGY:
 # For each signal assigned in a combinational process:
-# 1. Check if it has a default assignment (before first if/case)
-# 2. If no default found, check if there are any conditionals
-# 3. If conditionals exist without default, warn about potential latch
-#
-# This produces false negatives (misses some latches) but avoids false positives.
-# Better to miss an issue than create noise with incorrect warnings.
+# 1. Build the if/case/loop structure of the process (statement_tree)
+# 2. A top-level statement that covers the signal, as above, covers it
+#    wherever it stands
+# 3. A signal not covered, that some statements assign on some paths only,
+#    may infer a latch: warn
 
-# Helper: Check if a signal has a default assignment before any conditionals
-# OR if signal has complete if-else coverage (simple heuristic)
-proc ::aurig::lint::has_default_assignment {body signal_name} {
-    # Remove comments to avoid false matches
-    set body [regsub -all -line -- {--.*$} $body ""]
-
-    # Track nesting level: 0 = outside all conditionals
-    set nesting 0
-    set found_default false
-
-    # Process line by line
-    set lines [split $body "\n"]
-    foreach line $lines {
-        set line [string trim $line]
-
-        # Skip empty lines
-        if {$line eq ""} {
-            continue
-        }
-
-        # Track conditional depth
-        # Opening: if, case
-        if {[regexp -nocase {\m(if|case)\M} $line]} {
-            incr nesting
-        }
-
-        # Closing: end if, end case
-        if {[regexp -nocase {\mend\s+(if|case)\M} $line]} {
-            incr nesting -1
-            if {$nesting < 0} {
-                set nesting 0
-            }
-        }
-
-        # Check for assignment to this signal at nesting level 0
-        if {$nesting == 0} {
-            if {[regexp -nocase "\\m${signal_name}\\s*<=" $line]} {
-                set found_default true
+# Helper: The statements of a process body as a list of events, in order:
+# {if}, {elsif}, {else}, {case}, {when others} (others 1 for a
+# "when others" alternative, else 0), {loop}, {end if}, {end case},
+# {end loop} and {assign name always} (name as written; always is 0 for a
+# conditional assignment whose last alternative is not an unconditional
+# else, as in q <= '0' when d = '1', else 1). The body is split into
+# statements on ";" outside string and character literals and extended
+# identifiers (mask_literals), and its keywords are read outside them.
+# A statement may start with labels, "begin", "then", the loop headers
+# "for ... loop", "while ... loop" and "loop", and the headers
+# "if ... then", "elsif ... then", "else", "case ... is" and "when ... =>";
+# after them, only a name and "<=" is an assignment. Every later "<=" in the
+# statement is an expression: a comparison (if cnt <= 3 then, ok <= cnt <= 3)
+# or one in a conditional expression (ok <= true when d = '1' else cnt <= 3),
+# so its left operand is not taken for an assigned signal.
+proc ::aurig::lint::statement_events {body} {
+    set masked [mask_literals $body]
+    set events {}
+    set start 0
+    foreach statement [split $masked ";"] {
+        # The headers that lead the statement up to its first name
+        set pos 0
+        while {1} {
+            set head [string range $statement $pos end]
+            if {[regexp -nocase {^\s*(?:\w+\s*:(?!=)|(?:begin|then)\M)} $head match]} {
+                incr pos [string length $match]
+            } elseif {[regexp -nocase {^\s*loop\M} $head match]} {
+                lappend events [list loop]
+                incr pos [string length $match]
+            } elseif {[regexp -nocase {^\s*else\M} $head match]} {
+                lappend events [list else]
+                incr pos [string length $match]
+            } elseif {[regexp -nocase {^\s*(if|elsif|case|when|for|while)\M} $head -> keyword]} {
+                set keyword [string tolower $keyword]
+                set close [dict get {
+                    if {\mthen\M} elsif {\mthen\M} case {\mis\M}
+                    when {=>} for {\mloop\M} while {\mloop\M}
+                } $keyword]
+                if {![regexp -nocase -indices $close $head range]} {
+                    break
+                }
+                if {$keyword eq "when"} {
+                    set choices [string range $head 0 [lindex $range 0]]
+                    lappend events [list when [regexp -nocase {\mothers\M} $choices]]
+                } elseif {$keyword in {if elsif case}} {
+                    lappend events [list $keyword]
+                } else {
+                    lappend events [list loop]
+                }
+                incr pos [expr {[lindex $range 1] + 1}]
+            } else {
                 break
             }
         }
-    }
 
-    # If no default found, check for complete if-else coverage (simple pattern)
-    # Pattern: one top-level if with else, signal assigned in both branches
-    if {!$found_default} {
-        # Check if process has simple if-else structure at top level
-        # This is a conservative check: only catches "if ... else ... end if" with no elsif
-        if {[regexp -nocase "\\mif\\M.*\\melse\\M.*\\mend\\s+if\\M" $body]} {
-            # Check if signal is assigned in both if and else branches
-            # Simple heuristic: if signal appears 2+ times with <=, likely covered
-            set assignment_count 0
-            foreach line $lines {
-                if {[regexp -nocase "\\m${signal_name}\\s*<=" $line]} {
-                    incr assignment_count
+        set rest [string range $statement $pos end]
+        if {[regexp -nocase {^\s*end\s+(if|case|loop)\M} $rest -> kind]} {
+            lappend events [list end [string tolower $kind]]
+        } elseif {[regexp -indices {^\s*(\w+)\s*<=} $rest match name]} {
+            set first [expr {$start + $pos + [lindex $name 0]}]
+            set last [expr {$start + $pos + [lindex $name 1]}]
+            # A conditional assignment is unconditional only if an else
+            # follows its last "when"
+            set value [string range $rest [expr {[lindex $match 1] + 1}] end]
+            set whens [regexp -all -inline -indices -nocase {\mwhen\M} $value]
+            set elses [regexp -all -inline -indices -nocase {\melse\M} $value]
+            set always [expr {[llength $whens] == 0 ||
+                ([llength $elses] > 0 && [lindex $elses end 0] > [lindex $whens end 0])}]
+            lappend events [list assign [string range $body $first $last] $always]
+        }
+        incr start [expr {[string length $statement] + 1}]
+    }
+    return $events
+}
+
+# Helper: The statements of a process body (statement_events) as a tree: a
+# sequence of nodes {assign name} and, for each if, case or loop,
+# {branch complete branches}, where branches is the list of the sequences of
+# its branches and complete is 1 for an if with an else or a case with a
+# "when others" alternative. A loop is one branch, never complete; a
+# conditional assignment without a final else is the incomplete branch
+# {branch 0 {{{assign name}}}}. An if, case or loop still open at the end of
+# the body is closed there.
+proc ::aurig::lint::statement_tree {body} {
+    # The open sequences, innermost last: {kind complete branches sequence
+    # started}; started is 0 for a case before its first alternative
+    set stack [list [list root 0 {} {} 1]]
+    foreach event [concat [statement_events $body] {{end root}}] {
+        lassign [lindex $stack end] kind complete branches sequence started
+        switch -- [lindex $event 0] {
+            assign {
+                lassign $event -> name always
+                if {$always} {
+                    lappend sequence [list assign $name]
+                } else {
+                    lappend sequence [list branch 0 [list [list [list assign $name]]]]
+                }
+                lset stack end [list $kind $complete $branches $sequence $started]
+            }
+            if - case - loop {
+                lappend stack [list [lindex $event 0] 0 {} {} [expr {[lindex $event 0] ne "case"}]]
+            }
+            elsif - else {
+                if {$kind eq "if"} {
+                    lappend branches $sequence
+                    set complete [expr {[lindex $event 0] eq "else"}]
+                    lset stack end [list if $complete $branches {} 1]
                 }
             }
-            if {$assignment_count >= 2} {
-                set found_default true
-            }
-        }
-
-        # Also check for case with "others" clause (considered complete)
-        if {[regexp -nocase "\\mcase\\M.*\\mothers\\M.*\\mend\\s+case\\M" $body]} {
-            # If signal assigned in case with others, considered safe
-            set has_assignment 0
-            foreach line $lines {
-                if {[regexp -nocase "\\m${signal_name}\\s*<=" $line]} {
-                    set has_assignment 1
-                    break
+            when {
+                if {$kind eq "case"} {
+                    if {$started} {
+                        lappend branches $sequence
+                    }
+                    set complete [expr {$complete || [lindex $event 1]}]
+                    lset stack end [list case $complete $branches {} 1]
                 }
             }
-            if {$has_assignment} {
-                set found_default true
+            end {
+                # Close the innermost open if/case/loop of this kind, and any
+                # still open inside it; an end that closes none is ignored.
+                # The final {end root} closes all of them.
+                set target [lindex $event 1]
+                set index [expr {[llength $stack] - 1}]
+                while {$index > 0 && [lindex $stack $index 0] ne $target} {
+                    incr index -1
+                }
+                if {$index == 0 && $target ne "root"} {
+                    continue
+                }
+                while {[llength $stack] > max($index, 1)} {
+                    lassign [lindex $stack end] kind complete branches sequence started
+                    if {$started} {
+                        lappend branches $sequence
+                    }
+                    set stack [lrange $stack 0 end-1]
+                    set parent [lindex $stack end]
+                    lset parent 3 [linsert [lindex $parent 3] end [list branch $complete $branches]]
+                    lset stack end $parent
+                }
             }
         }
     }
+    return [lindex $stack 0 3]
+}
 
-    return $found_default
+# Helper: True if a sequence of statement_tree nodes assigns the signal on
+# every path: an assignment to it, or a complete if/case that assigns it on
+# every path of every branch. A loop is never complete.
+proc ::aurig::lint::assigns_always {sequence signal_name} {
+    foreach node $sequence {
+        if {[lindex $node 0] eq "assign"} {
+            if {[string equal -nocase [lindex $node 1] $signal_name]} {
+                return 1
+            }
+            continue
+        }
+        lassign $node -> complete branches
+        if {!$complete || [llength $branches] == 0} {
+            continue
+        }
+        set every 1
+        foreach branch $branches {
+            if {![assigns_always $branch $signal_name]} {
+                set every 0
+                break
+            }
+        }
+        if {$every} {
+            return 1
+        }
+    }
+    return 0
+}
+
+# Helper: True if a sequence of statement_tree nodes assigns the signal on
+# any path
+proc ::aurig::lint::assigns_ever {sequence signal_name} {
+    foreach node $sequence {
+        if {[lindex $node 0] eq "assign"} {
+            if {[string equal -nocase [lindex $node 1] $signal_name]} {
+                return 1
+            }
+            continue
+        }
+        foreach branch [lindex $node 2] {
+            if {[assigns_ever $branch $signal_name]} {
+                return 1
+            }
+        }
+    }
+    return 0
+}
+
+# Helper: True if a signal is covered in a process body: its top-level
+# statements (statement_tree) assign it on every path (assigns_always), with
+# a plain assignment, a conditional assignment with a final else, or an
+# if/case that assigns it on every path, before or after the statements that
+# assign it on some paths only (the last assignment in a process wins). An
+# assignment inside a loop never covers. A signal the body never assigns is
+# covered.
+proc ::aurig::lint::has_default_assignment {body signal_name} {
+    set tree [statement_tree $body]
+    return [expr {[assigns_always $tree $signal_name] || ![assigns_ever $tree $signal_name]}]
 }
 
 # Helper: Analyze combinational process for latch inference
@@ -3590,15 +3833,35 @@ proc ::aurig::lint::analyze_combinational_process {body} {
     # Extract all signals assigned in this process
     set assigned_signals {}
 
-    # Match pattern: signal_name <=
+    # Signal assignments (statement_events), not "<=" expressions.
     # Collect unique signal names
-    foreach {match sig} [regexp -all -inline -nocase {(\w+)\s*<=} $body] {
+    foreach event [statement_events $body] {
+        if {[lindex $event 0] ne "assign"} {
+            continue
+        }
+        set sig [lindex $event 1]
         if {$sig ni $assigned_signals} {
             lappend assigned_signals $sig
         }
     }
 
     return $assigned_signals
+}
+
+# Helper: Names of the variables in the declarations of a parse-result
+# element (a process, or an architecture for its shared variables),
+# lowercase
+proc ::aurig::lint::declared_variables {element} {
+    set names {}
+    if {[dict exists $element declarations]} {
+        foreach decl [dict get $element declarations] {
+            if {[dict exists $decl kind] && [dict get $decl kind] eq "variable"
+                    && [dict exists $decl name]} {
+                lappend names [string tolower [dict get $decl name]]
+            }
+        }
+    }
+    return $names
 }
 
 proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename rule_id rule_config} {
@@ -3619,6 +3882,9 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
         if {![dict exists $arch processes]} {
             continue
         }
+
+        # Shared variables of the architecture, lowercase
+        set arch_variables [::aurig::lint::declared_variables $arch]
 
         # Check each process
         foreach proc [dict get $arch processes] {
@@ -3656,8 +3922,10 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
                 continue
             }
 
-            # Check if process has any conditionals
-            if {![regexp -nocase {\m(if|case)\M} $body]} {
+            # Check if process has any conditionals: an if, a case, a loop
+            # or a conditional assignment, outside literals and extended
+            # identifiers
+            if {![regexp -nocase {\m(if|case|loop|when)\M} [::aurig::lint::mask_literals $body]]} {
                 # No conditionals, no risk of latches
                 continue
             }
@@ -3666,14 +3934,22 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
             # Extract all assigned signals
             set assigned_signals [::aurig::lint::analyze_combinational_process $body]
 
+            # The assigned signals are the targets of "<=" assignments
+            # (statement_events), never a compared name. A variable is among
+            # them only when written as one (cnt <= 1), which VHDL rejects
+            # but the rule reads as text. With ignore_variables, skip the
+            # names declared as variables of the process or shared variables
+            # of the architecture (VHDL names ignore case). The name alone
+            # never decides: a signal v_data is a signal.
+            set variables [concat $arch_variables [::aurig::lint::declared_variables $proc]]
+
             # For each assigned signal, check if it has a default assignment
             foreach sig $assigned_signals {
-                # Skip if configured to ignore variables and this looks like a variable
-                if {$ignore_variables && [regexp -nocase {^v_} $sig]} {
+                if {$ignore_variables && [string tolower $sig] in $variables} {
                     continue
                 }
 
-                # Check for default assignment before any conditional
+                # Check that the signal is assigned on every path
                 set has_default [::aurig::lint::has_default_assignment $body $sig]
 
                 # If no default found, potential latch
@@ -3698,6 +3974,44 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
     }
 
     return $diagnostics
+}
+
+# File-name matching shared by the rules that skip some files (#21): a file
+# matches when its base name matches one of the patterns (Tcl `string match`
+# globs), ignoring case on every platform.
+#
+# Arguments:
+#   filename : Source file path
+#   patterns : List of glob patterns
+#
+# Returns: 1 when the file matches, else 0
+proc ::aurig::lint::rule::_name_matches {filename patterns} {
+    set basename [file tail $filename]
+    foreach pattern $patterns {
+        if {[string match -nocase $pattern $basename]} {
+            return 1
+        }
+    }
+    return 0
+}
+
+# Testbench detection shared by the rules that skip testbenches:
+# require_reset_in_clocked_process, forbid_wait_statements and
+# require_meaningful_comments (#21). A file is a testbench when its name
+# matches one of the rule's testbench_patterns (_name_matches). A policy
+# list replaces the default list.
+#
+# Arguments:
+#   filename    : Source file path
+#   rule_config : Rule configuration dict
+#
+# Returns: 1 when the file is a testbench, else 0
+proc ::aurig::lint::rule::_is_testbench {filename rule_config} {
+    set patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
+    if {[dict exists $rule_config testbench_patterns]} {
+        set patterns [dict get $rule_config testbench_patterns]
+    }
+    return [_name_matches $filename $patterns]
 }
 
 # Rule: require_reset_in_clocked_process
@@ -3730,35 +4044,16 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     }
 
     # Get reset policy: sync, async, or either (default)
-    set reset_policy "either"
-    if {[dict exists $rule_config reset_policy]} {
-        set reset_policy [dict get $rule_config reset_policy]
-    }
+    set reset_policy [_option_value require_reset_in_clocked_process $rule_id $rule_config reset_policy either]
 
-    # Check if this file is a testbench (rule doesn't apply to testbenches)
-    set testbench_patterns {}
-    if {[dict exists $rule_config testbench_patterns]} {
-        set testbench_patterns [dict get $rule_config testbench_patterns]
-    }
-
-    set is_testbench false
-    set basename [file tail $filename]
-    foreach pattern $testbench_patterns {
-        if {[string match $pattern $basename]} {
-            set is_testbench true
-            break
-        }
-    }
-
-    if {$is_testbench} {
-        # Skip testbench files
+    # The rule doesn't apply to testbenches
+    if {[_is_testbench $filename $rule_config]} {
         return $diagnostics
     }
 
-    # File-name BFM exclusion list (LINT-RULES-DEBT-023). Mirrors
-    # the `testbench_patterns` check above — same `string match`
-    # form, same case-sensitive semantics (no `-nocase`) — but
-    # targets bus-functional models, which by convention live in
+    # File-name BFM exclusion list (LINT-RULES-DEBT-023). The same
+    # matching as `testbench_patterns` (_name_matches: base name, ignoring
+    # case), but it targets bus-functional models, which by convention live in
     # `*_bfm.vhd` files and by definition do not carry a reset.
     # The architecture-name `excluded_architectures` check below
     # complements this for the case where the architecture is
@@ -3768,21 +4063,13 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     # `clear_n_i`, without `rst`/`reset` in the name: neither the
     # testbench patterns nor excluded_architectures would match
     # it without this option). Default `["*_bfm.vhd"]` catches
-    # the canonical suffix; a project using mixed case (e.g.
-    # `Bus_BFM.vhd`) must list each variant explicitly. An
+    # the canonical suffix in any case (`*_BFM.vhd` too). An
     # explicit empty list re-enables the rule on BFM files.
     set bfm_patterns {*_bfm.vhd}
     if {[dict exists $rule_config bfm_patterns]} {
         set bfm_patterns [dict get $rule_config bfm_patterns]
     }
-    set is_bfm false
-    foreach pattern $bfm_patterns {
-        if {[string match $pattern $basename]} {
-            set is_bfm true
-            break
-        }
-    }
-    if {$is_bfm} {
+    if {[_name_matches $filename $bfm_patterns]} {
         return $diagnostics
     }
 
@@ -3961,7 +4248,6 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
                         either  { set reset_words "a synchronous or asynchronous reset" }
                         sync    { set reset_words "a synchronous reset" }
                         async   { set reset_words "an asynchronous reset" }
-                        default { set reset_words "$reset_policy reset" }
                     }
                     # An unlabelled process has no name to quote: the
                     # quoted '${process}' becomes "at line N" rather than ''.
@@ -3984,7 +4270,8 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
 
 # Helper: true if a process body contains a wait statement: wait for, wait
 # until, wait on or the bare "wait;" (suspend forever). A "wait" in a string
-# or character literal is not one; the parser has removed the comments.
+# or character literal, or an extended identifier spelled \wait\, is not one
+# (mask_literals); the parser has removed the comments.
 proc ::aurig::lint::has_wait_statement {body} {
     return [regexp -nocase {\mwait\M\s*(for\M|until\M|on\M|;)} [mask_literals $body]]
 }
@@ -4000,24 +4287,8 @@ proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename 
         set severity [dict get $rule_config severity]
     }
 
-    # Get testbench patterns (default: tb_*.vhd, *_tb.vhd)
-    set tb_patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
-    if {[dict exists $rule_config testbench_patterns]} {
-        set tb_patterns [dict get $rule_config testbench_patterns]
-    }
-
-    # Check if this file matches testbench patterns
-    set basename [file tail $filename]
-    set is_testbench false
-    foreach pattern $tb_patterns {
-        if {[string match -nocase $pattern $basename]} {
-            set is_testbench true
-            break
-        }
-    }
-
-    # Skip testbench files if configured
-    if {$is_testbench} {
+    # Skip testbench files
+    if {[_is_testbench $filename $rule_config]} {
         return $diagnostics
     }
 
@@ -4040,8 +4311,8 @@ proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename 
             set proc_line [expr {[dict exists $proc line] ? [dict get $proc line] : 0}]
             set proc_label [expr {[dict exists $proc label] ? [dict get $proc label] : ""}]
 
-            # Search for wait statements
-            if {[regexp -nocase {\mwait\s+(for|until|on)\M} $body match wait_type]} {
+            # Search for wait statements (has_wait_statement)
+            if {[::aurig::lint::has_wait_statement $body]} {
                 set msg "Wait statement found in synthesizable code"
                 if {$proc_label ne ""} {
                     append msg " (process '$proc_label')"
@@ -4296,7 +4567,11 @@ proc ::aurig::lint::rule::forbid_unconstrained_ports {symbols parse_result filen
 #   - major_signal_regex: Pattern for "major" signals (default: clk|rst|enable|valid|ready|data|addr|ctrl)
 #   - processes_required: Require process documentation
 #   - instantiations_required: Require instantiation documentation
+#   - testbench_patterns: File-name globs of testbenches, matched ignoring
+#     case (default tb_*.vhd *_tb.vhd *_testbench.vhd)
 #   - skip_testbenches: Skip checks for testbench files (default true)
+#   - message: When not empty, replaces the text of every diagnostic, with
+#     ${kind}, ${name} and ${default} filled in (default "": built-in texts)
 #
 # Limitations:
 #   - Simple regex-based detection, not full VHDL semantic analysis
@@ -4312,18 +4587,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
     # Check if this file is a testbench (skip if configured)
     set skip_testbenches [expr {[dict exists $rule_config skip_testbenches] ? [dict get $rule_config skip_testbenches] : true}]
-
-    set testbench_patterns {tb_*.vhd *_tb.vhd *_testbench.vhd}
-    set is_testbench false
-    set basename [file tail $filename]
-    foreach pattern $testbench_patterns {
-        if {[string match $pattern $basename]} {
-            set is_testbench true
-            break
-        }
-    }
-
-    if {$skip_testbenches && $is_testbench} {
+    if {$skip_testbenches && [_is_testbench $filename $rule_config]} {
         return $diagnostics
     }
 
@@ -4333,13 +4597,16 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
     set header_keywords [expr {[dict exists $rule_config header_keywords] ? [dict get $rule_config header_keywords] : {}}]
     set ports_required [expr {[dict exists $rule_config ports_required] ? [dict get $rule_config ports_required] : true}]
     set generics_required [expr {[dict exists $rule_config generics_required] ? [dict get $rule_config generics_required] : true}]
-    set ports_comment_style [expr {[dict exists $rule_config ports_comment_style] ? [dict get $rule_config ports_comment_style] : "either"}]
-    set generics_comment_style [expr {[dict exists $rule_config generics_comment_style] ? [dict get $rule_config generics_comment_style] : "either"}]
+    set keywords_mode [_option_value require_meaningful_comments $rule_id $rule_config header_keywords_mode any]
+    set ports_comment_style [_option_value require_meaningful_comments $rule_id $rule_config ports_comment_style either]
+    set generics_comment_style [_option_value require_meaningful_comments $rule_id $rule_config generics_comment_style either]
     set signals_required [expr {[dict exists $rule_config signals_required] ? [dict get $rule_config signals_required] : false}]
     set constants_required [expr {[dict exists $rule_config constants_required] ? [dict get $rule_config constants_required] : false}]
     set major_signal_regex [expr {[dict exists $rule_config major_signal_regex] ? [dict get $rule_config major_signal_regex] : {clk|rst|reset|enable|valid|ready|data|addr|ctrl}}]
     set processes_required [expr {[dict exists $rule_config processes_required] ? [dict get $rule_config processes_required] : false}]
     set instantiations_required [expr {[dict exists $rule_config instantiations_required] ? [dict get $rule_config instantiations_required] : false}]
+    # A non-empty message replaces the text of every diagnostic of the rule
+    set template [expr {[dict exists $rule_config message] ? [dict get $rule_config message] : ""}]
 
     # Read file content for comment checking
     if {[catch {open $filename r} fh]} {
@@ -4380,6 +4647,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
         # Check if header is sufficient
         if {[llength $header_lines] < $header_min_lines} {
             set msg "Missing file header documentation block (found [llength $header_lines] lines, need $header_min_lines)"
+            set msg [_comment_text $template header {} $msg]
             lappend diagnostics [::aurig::lint::create_diagnostic \
                 $rule_id $severity $msg $filename 1 0 "file" "" ""]
         } elseif {[llength $header_keywords] > 0} {
@@ -4411,19 +4679,6 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                     lappend found_keywords $keyword
                 }
             }
-            set keywords_mode "any"
-            if {[dict exists $rule_config header_keywords_mode]} {
-                set requested [dict get $rule_config header_keywords_mode]
-                if {$requested in {any all}} {
-                    set keywords_mode $requested
-                }
-                # Silently fall back to "any" for unrecognised values
-                # rather than erroring — policy files are user-edited
-                # and we'd rather degrade to the safe default than
-                # block the whole lint sweep on a typo. The schema
-                # is documented in lint/metadata.json and
-                # doc/reference/rules_reference.md.
-            }
             if {$keywords_mode eq "all"} {
                 set missing {}
                 foreach keyword $header_keywords {
@@ -4433,6 +4688,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 }
                 if {[llength $missing] > 0} {
                     set msg "File header missing required keywords: [join $missing {, }]"
+                    set msg [_comment_text $template header {} $msg]
                     lappend diagnostics [::aurig::lint::create_diagnostic \
                         $rule_id $severity $msg $filename 1 0 "file" "" ""]
                 }
@@ -4440,6 +4696,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                 # any-of (legacy default)
                 if {[llength $found_keywords] == 0} {
                     set msg "File header missing required keywords: [join $header_keywords {, }]"
+                    set msg [_comment_text $template header {} $msg]
                     lappend diagnostics [::aurig::lint::create_diagnostic \
                         $rule_id $severity $msg $filename 1 0 "file" "" ""]
                 }
@@ -4495,12 +4752,14 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                         if {!$has_comment} {
                             set msg "Generic '$generic_name' in entity '$entity_name' missing documentation comment"
+                            set msg [_comment_text $template generic $generic_name $msg]
                             lappend diagnostics [::aurig::lint::create_diagnostic \
                                 $rule_id $severity $msg $filename $generic_line 0 "generic" $generic_name "entity:$entity_name"]
                         }
                     } else {
                         # Could not find line number - report with line=0
                         set msg "Generic '$generic_name' in entity '$entity_name' missing documentation comment"
+                        set msg [_comment_text $template generic $generic_name $msg]
                         lappend diagnostics [::aurig::lint::create_diagnostic \
                             $rule_id $severity $msg $filename 0 0 "generic" $generic_name "entity:$entity_name"]
                     }
@@ -4537,12 +4796,14 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                         if {!$has_comment} {
                             set msg "Port '$port_name' in entity '$entity_name' missing documentation comment"
+                            set msg [_comment_text $template port $port_name $msg]
                             lappend diagnostics [::aurig::lint::create_diagnostic \
                                 $rule_id $severity $msg $filename $port_line 0 "port" $port_name "entity:$entity_name"]
                         }
                     } else {
                         # Could not find line number - report with line=0
                         set msg "Port '$port_name' in entity '$entity_name' missing documentation comment"
+                        set msg [_comment_text $template port $port_name $msg]
                         lappend diagnostics [::aurig::lint::create_diagnostic \
                             $rule_id $severity $msg $filename 0 0 "port" $port_name "entity:$entity_name"]
                     }
@@ -4567,6 +4828,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                     if {!$has_comment} {
                         set msg "Major signal '$name' missing documentation comment"
+                        set msg [_comment_text $template signal $name $msg]
                         lappend diagnostics [::aurig::lint::create_diagnostic \
                             $rule_id $severity $msg $filename $line 0 "signal" $name ""]
                     }
@@ -4582,6 +4844,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                 if {!$has_comment} {
                     set msg "Constant '$name' missing documentation comment"
+                    set msg [_comment_text $template constant $name $msg]
                     lappend diagnostics [::aurig::lint::create_diagnostic \
                         $rule_id $severity $msg $filename $line 0 "constant" $name ""]
                 }
@@ -4619,6 +4882,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
                                 append msg " '$proc_label'"
                             }
                             append msg " missing documentation comment"
+                            set msg [_comment_text $template process $proc_label $msg]
                             lappend diagnostics [::aurig::lint::create_diagnostic \
                                 $rule_id $severity $msg $filename $proc_line 0 "process" $proc_label ""]
                         }
@@ -4648,6 +4912,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
 
                         if {!$has_comment} {
                             set msg "Instantiation '$inst_label' missing documentation comment"
+                            set msg [_comment_text $template instantiation $inst_label $msg]
                             lappend diagnostics [::aurig::lint::create_diagnostic \
                                 $rule_id $severity $msg $filename $inst_line 0 "instance" $inst_label ""]
                         }
@@ -4658,6 +4923,18 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
     }
 
     return $diagnostics
+}
+
+# Text of a require_meaningful_comments diagnostic. An empty template keeps
+# the built-in text; a non-empty one replaces it, with ${kind} (header,
+# port, generic, signal, constant, process or instantiation), ${name} (the
+# name or label, empty for the header) and ${default} (the built-in text)
+# filled in.
+proc ::aurig::lint::rule::_comment_text {template kind name default} {
+    if {$template eq ""} {
+        return $default
+    }
+    return [string map [list \${kind} $kind \${name} $name \${default} $default] $template]
 }
 
 # Helper: Check if a declaration has an associated comment

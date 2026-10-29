@@ -2,7 +2,7 @@
 
 This document is auto-generated from `lint/metadata.json`.
 
-**Last updated:** 2026-10-26 16:22:30
+**Last updated:** 2026-10-28 10:01:16
 
 ---
 
@@ -394,7 +394,7 @@ This document is auto-generated from `lint/metadata.json`.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `enabled` | boolean | `false` | Whether rule is active |
-| `ignore_variables` | boolean | `true` | Skip variable checking |
+| `ignore_variables` | boolean | `true` | Skip the names declared as variables of the process or as shared variables of the architecture (compared ignoring case) when one is the target of a `<=` assignment, which VHDL rejects for a variable but the rule reads as text. A name compared with `<=` is never an assigned signal, whatever this option. The name alone never decides: a signal named `v_data` is checked |
 | `message` | string | `Signal '${signal}' may infer a latch in process '${process}' - missing default assignment` | Custom message template |
 | `severity` | string | `warning` | Diagnostic severity level |
 | `type` | string | `forbid_latch_inference` | Rule handler type |
@@ -652,7 +652,7 @@ This document is auto-generated from `lint/metadata.json`.
 | `enabled` | boolean | `false` | Whether rule is active |
 | `message` | string | `Wait statement in process '${process}' - not synthesizable` | Custom message template |
 | `severity` | string | `error` | Diagnostic severity level |
-| `testbench_patterns` | array | `["tb_*.vhd", "*_tb.vhd", "*_testbench.vhd"]` | Testbench file patterns |
+| `testbench_patterns` | array | `["tb_*.vhd", "*_tb.vhd", "*_testbench.vhd"]` | Testbench file-name glob patterns (Tcl `string match`), matched against the base name ignoring case; the rule skips a file that matches one (`require_meaningful_comments`: while `skip_testbenches` is true). Replaces — does not extend — the default. The same detection in `require_reset_in_clocked_process`, `forbid_wait_statements` and `require_meaningful_comments` |
 | `type` | string | `forbid_wait_statements` | Rule handler type |
 
 **Example Override:**
@@ -870,7 +870,7 @@ This document is auto-generated from `lint/metadata.json`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `case` | string | `lowercase` | Configuration option |
+| `case` | string | `lowercase` | Expected keyword case: `lowercase` or `uppercase`; any other value is rejected (exit 2) |
 | `enabled` | boolean | `false` | Whether rule is active |
 | `message` | string | `Keyword '${keyword}' should be ${expected}` | Custom message template |
 | `severity` | string | `info` | Diagnostic severity level |
@@ -1290,6 +1290,11 @@ This document is auto-generated from `lint/metadata.json`.
     "severity": "warning",
     "signals_required": false,
     "skip_testbenches": true,
+    "testbench_patterns": [
+      "tb_*.vhd",
+      "*_tb.vhd",
+      "*_testbench.vhd"
+    ],
     "type": "require_meaningful_comments"
   }
 }
@@ -1302,20 +1307,21 @@ This document is auto-generated from `lint/metadata.json`.
 | `constants_required` | boolean | `false` | Require constant documentation |
 | `enabled` | boolean | `false` | Whether rule is active |
 | `file_header_required` | boolean | `true` | Require file header block |
-| `generics_comment_style` | string | `either` | Generic comment style |
+| `generics_comment_style` | string | `either` | Generic comment style: `inline` (on the declaration line), `block` (above it) or `either`; any other value is rejected (exit 2) |
 | `generics_required` | boolean | `true` | Require generic documentation |
 | `header_keywords` | array | `[]` | Required header keywords |
-| `header_keywords_mode` | string | `any` | Header-keywords match mode: "any" (default — at least one keyword present) or "all" (every listed keyword must appear) |
+| `header_keywords_mode` | string | `any` | Header-keywords match mode: "any" (default — at least one keyword present) or "all" (every listed keyword must appear); any other value is rejected (exit 2) |
 | `header_min_lines` | integer | `3` | Minimum header lines |
 | `instantiations_required` | boolean | `false` | Require instantiation documentation |
 | `major_signal_regex` | string | `clk|rst|reset|enable|valid|ready|data|addr|ctrl` | Pattern for major signals |
-| `message` | string | `(empty)` | Custom message template |
-| `ports_comment_style` | string | `either` | Port comment style (inline/block/either) |
+| `message` | string | `(empty)` | When not empty, replaces the text of every diagnostic of the rule. Variables: `${kind}` (`header`, `port`, `generic`, `signal`, `constant`, `process` or `instantiation`), `${name}` (the name or label; empty for the header), `${default}` (the built-in text). Empty keeps the built-in texts |
+| `ports_comment_style` | string | `either` | Port comment style: `inline` (on the declaration line), `block` (above it) or `either`; any other value is rejected (exit 2) |
 | `ports_required` | boolean | `true` | Require port documentation |
 | `processes_required` | boolean | `false` | Require process documentation |
 | `severity` | string | `warning` | Diagnostic severity level |
 | `signals_required` | boolean | `false` | Require signal documentation |
-| `skip_testbenches` | boolean | `true` | Skip testbench files |
+| `skip_testbenches` | boolean | `true` | Skip testbench files (those matching `testbench_patterns`) |
+| `testbench_patterns` | array | `["tb_*.vhd", "*_tb.vhd", "*_testbench.vhd"]` | Testbench file-name glob patterns (Tcl `string match`), matched against the base name ignoring case; the rule skips a file that matches one (`require_meaningful_comments`: while `skip_testbenches` is true). Replaces — does not extend — the default. The same detection in `require_reset_in_clocked_process`, `forbid_wait_statements` and `require_meaningful_comments` |
 | `type` | string | `require_meaningful_comments` | Rule handler type |
 
 **Example Override:**
@@ -1408,14 +1414,14 @@ This document is auto-generated from `lint/metadata.json`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `bfm_patterns` | array | `["*_bfm.vhd"]` | BFM (bus-functional model) file-name glob patterns that bypass the rule (case-sensitive, replaces — does not extend — the default; aligned with the testbench_patterns semantics on the same rule); use for files matching the _bfm.vhd suffix/pattern whose architecture name does not match excluded_architectures. A project using mixed-case filenames (e.g. Bus_BFM.vhd) must list each variant explicitly |
+| `bfm_patterns` | array | `["*_bfm.vhd"]` | BFM (bus-functional model) file-name glob patterns that bypass the rule (matched against the base name ignoring case, as testbench_patterns; replaces — does not extend — the default); use for files matching the _bfm.vhd suffix/pattern whose architecture name does not match excluded_architectures. The default also matches the suffix in any case, such as _BFM.vhd |
 | `enabled` | boolean | `false` | Whether rule is active |
 | `excluded_architectures` | array | `["bfm"]` | Architecture names that bypass the rule (case-insensitive, replaces — does not extend — the default) |
 | `excluded_processes` | array | `[]` | Process labels that bypass the rule (case-insensitive); use for reset synchronizers and similar by-design no-reset processes |
 | `message` | string | `Clocked process '${process}' missing ${reset}` | Custom message template |
-| `reset_policy` | string | `either` | Reset style requirement: `either`, `sync` or `async`. In `message`, `${reset}` is the requirement in words (`a synchronous or asynchronous reset`, `a synchronous reset`, `an asynchronous reset`), `${policy}` the raw value, `${process}` the process label and `${line}` the process line. For a process without a label, a quoted `'${process}'` becomes `at line N` |
+| `reset_policy` | string | `either` | Reset style requirement: `either`, `sync` or `async`; any other value is rejected (exit 2). In `message`, `${reset}` is the requirement in words (`a synchronous or asynchronous reset`, `a synchronous reset`, `an asynchronous reset`), `${policy}` the raw value, `${process}` the process label and `${line}` the process line. For a process without a label, a quoted `'${process}'` becomes `at line N` |
 | `severity` | string | `warning` | Diagnostic severity level |
-| `testbench_patterns` | array | `["tb_*.vhd", "*_tb.vhd", "*_testbench.vhd"]` | Testbench file patterns |
+| `testbench_patterns` | array | `["tb_*.vhd", "*_tb.vhd", "*_testbench.vhd"]` | Testbench file-name glob patterns (Tcl `string match`), matched against the base name ignoring case; the rule skips a file that matches one (`require_meaningful_comments`: while `skip_testbenches` is true). Replaces — does not extend — the default. The same detection in `require_reset_in_clocked_process`, `forbid_wait_statements` and `require_meaningful_comments` |
 | `type` | string | `require_reset_in_clocked_process` | Rule handler type |
 
 **Example Override:**

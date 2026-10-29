@@ -78,6 +78,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (BREAKING)
 
+- Options with a fixed set of values are validated, like `"severity"`:
+  `case` (`keyword_case` rules such as `keyword_lowercase`: `lowercase`,
+  `uppercase`), `reset_policy` (`either`, `sync`, `async`),
+  `header_keywords_mode` (`any`, `all`), `ports_comment_style` and
+  `generics_comment_style` (`inline`, `block`, `either`). Any other value,
+  or a value that is not a string, used to be accepted without a message:
+  `header_keywords_mode` fell back to `any`, an unknown `case` reported no
+  keyword, an unknown `reset_policy` reported every clocked process and an
+  unknown comment style every port or generic. It now exits **2** with one
+  `invalid policy <file>: rule "<id>": invalid value "<value>" for option
+  "<option>" (allowed: ...)` line, also in `"overrides"`. Values are
+  compared exactly (`"Lowercase"` is rejected). A policy with such a value
+  that loaded before is now rejected. The allowed values are defined once
+  (`::aurig::lint::option_values`) for the validator and the rules; a rule
+  given such a value through `::aurig::lint::run -rules_config` raises an
+  error instead of falling back.
+
+- One testbench detection for `require_reset_in_clocked_process`,
+  `forbid_wait_statements` and `require_meaningful_comments` (#21). A file is
+  a testbench when its base name matches one of the rule's
+  `testbench_patterns`, default `tb_*.vhd`, `*_tb.vhd` and `*_testbench.vhd`,
+  ignoring case on every platform; a policy list replaces the default list.
+  Each rule used to decide on its own: `require_reset_in_clocked_process`
+  matched case-sensitively, so `UNIT_TB.VHD` or `Tb_Unit.vhd` was linted
+  as RTL; `require_meaningful_comments` had a fixed case-sensitive list and
+  rejected a `testbench_patterns` option (exit **2**). Files whose name
+  differs from a pattern only in case, linted by those two rules before, are
+  now skipped. `require_meaningful_comments` gains `testbench_patterns`; it
+  skips a testbench while `skip_testbenches` is on, its default.
+  `bfm_patterns` of `require_reset_in_clocked_process`, default `*_bfm.vhd`,
+  is matched the same way: it was case-sensitive, so `Uart_BFM.vhd` was
+  linted and a policy pattern had to list every case variant.
+
 - A user-defined rule id must match `^[a-z][a-z0-9_]*$`, the form of the
   built-in ids (#49). In-source pragmas (`-- aurig-lint: disable` and
   `disable-next-line`) name rules only in that form, so the diagnostics of a
@@ -229,6 +262,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as a latch, and so was a process starting with `wait until clk = '1';`.
   A `wait` inside a string or character literal, as in `report "wait;";`,
   is not a wait statement: such a process is still analysed.
+
+- `forbid_wait_statements` reports a bare `wait;` (suspend forever), like
+  `wait for`, `wait until` and `wait on`. A process whose only wait
+  statement was `wait;` was not reported. A `wait` inside a string or
+  character literal, as in `report "wait for ack";`, is not a wait statement
+  and is no longer reported.
+
+- `forbid_latch_inference` counts signal assignments only. It took every
+  name followed by `<=` for an assigned signal, so the left operand of a
+  `<=` comparison was one too: a port `cnt` in `if cnt <= 3 then`, in an
+  `elsif` or `case` guard or on the right side of an assignment
+  (`ok <= cnt <= 3;`, `q <= '1' when cnt <= 3 else '0';`), was reported as
+  a signal that may infer a latch. A comparison also counted as an
+  assignment of the compared signal, which could hide a real latch. An
+  assignment is now a name and `<=` at the start of a statement; every
+  later `<=` in the same statement is an expression, including one after
+  the `else` of a conditional expression (`ok <= true when d = '1' else
+  cnt <= 3;`). A `;` in a string or character literal does not end a
+  statement. An extended identifier that spells a keyword (`\when\`,
+  `\else\`, `\loop\`) is a name, so `q <= d when en = '1' else \when\;`
+  is a complete assignment, not one that ends with a `when`.
+
+- `forbid_latch_inference` decides coverage per branch of an `if` or
+  `case`. A signal is covered by a top-level statement of the process,
+  before or after the `if` or `case` (the last assignment in a process
+  wins), that is a plain assignment, a conditional assignment whose last
+  alternative is an unconditional `else`, or an `if` with `else` or a
+  `case` with `when others` that covers it in every branch by the same
+  rule; several assignments in one branch count as that one branch. Two
+  assignments to a signal on two lines of the `if` branch of an
+  `if`/`else` were taken for complete coverage, and so was a `case` with
+  `when others` in which one alternative assigned the signal: both latches
+  are now reported. A signal assigned after an `if`, as in
+  `if en = '1' then q <= d; end if; q <= '0';`, is no longer reported; an
+  assignment after the `if` inside another conditional, or a conditional
+  assignment without a final `else` (`q <= '0' when d = '1';`), does not
+  cover it. An assignment inside a loop never covers, since the loop may
+  run zero times or exit early: a signal assigned only inside a loop,
+  including by a complete `if` and in a process without `if` or `case`, is
+  now reported, also when the loop is never empty.
+
+- `forbid_latch_inference` with `"ignore_variables": true`, the default,
+  skips the variables of the process and the shared variables of the
+  architecture, as declared, ignoring case. It skipped every name starting
+  with `v_` instead, so a signal such as `v_data` with a latch was never
+  reported. Signals named `v_*` are now checked like any other signal. The
+  rule counts only the targets of signal assignments, so the option applies
+  to a variable written as one (`cnt <= 1;`, which VHDL rejects); a
+  variable compared with `<=` (`if cnt <= 3 then`) is never reported,
+  whatever the option.
+
+- `require_meaningful_comments` uses its `"message"` option. The policy
+  accepted it, but every diagnostic kept its built-in text. A `"message"`
+  that is not empty now replaces the text of every diagnostic of the rule,
+  with `${kind}` (`header`, `port`, `generic`, `signal`, `constant`,
+  `process` or `instantiation`), `${name}` (the name or label, empty for the
+  header) and `${default}` (the built-in text) filled in. An empty
+  `"message"`, the default, or none keeps the built-in texts. Baseline
+  fingerprints do not include the text, so baselines still match.
 
 - `require_meaningful_comments` with `"instantiations_required": true`
   reports an instantiation without a comment on one of the two lines above
