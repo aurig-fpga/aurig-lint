@@ -1341,6 +1341,13 @@ C:\aurig-trial\l15\guide-run\generated\lint_report\lint_report.txt:23:SKIPPED by
 override patterns, these are regular expressions, not globs, and they are
 case-sensitive.
 
+### Info diagnostics count
+
+As in the CLI, an `info` diagnostic is in the runner's totals (`Total
+diagnostics`) and in every report format, and `-fail_on info` exits `1` on
+it. A file whose only diagnostics are `info` counts under `Files with lint
+issues`, not `Files OK`.
+
 ### At most 50 diagnostics per rule per file
 
 The runner keeps the first 50 diagnostics of each rule in each file and adds

@@ -526,19 +526,10 @@ proc lint_project_escape_md_cell {text} {
 #   warning -> fail if any diag at warning|error
 #   error   -> fail only on hard errors
 #
-# Skipped files are not consulted (they carry no diagnostic list).
-#
-# OK-status files are not consulted either. The per-file classifier
-# upstream treats a file with only info-severity diagnostics as OK,
-# and every report writer (HTML/MD/text/CSV) hides those diagnostics
-# from the rendered output. If `-fail_on any` (or any future level
-# that includes info severity) consulted the raw diagnostic list it
-# would produce rc=1 with a visually clean report — a "fail with no
-# evidence" surprise for CI. Aligning the threshold with what the
-# reports actually render keeps rc and report content consistent.
-# This narrows the project-runner's -fail_on semantics relative to
-# the single-file CLI's, because the single-file CLI has no
-# OK-vs-LINT_ISSUES classifier.
+# Skipped, tool-error and OK files carry no diagnostics. Every
+# diagnostic of the other files counts, info included: a file with
+# any diagnostic is LINT_ISSUES and every report writer renders it,
+# so the threshold consults exactly what the reports show.
 #-----------------------------------------------------------------------------
 proc lint_project_should_fail {fail_on_level results} {
     if {$fail_on_level eq "none"} {
@@ -547,10 +538,6 @@ proc lint_project_should_fail {fail_on_level results} {
     set order {info warning error}
     set thr [lsearch -exact $order $fail_on_level]
     foreach result $results {
-        set status [dict get $result status]
-        if {$status eq "SKIPPED" || $status eq "OK"} {
-            continue
-        }
         foreach diag [dict get $result diagnostics] {
             if {$fail_on_level eq "any"} {
                 return 1
@@ -713,7 +700,7 @@ proc lint_project_apply_baseline {all_results baseline_dict base_dir max_diags_p
             }
         }
 
-        if {$diag_count == 0 || ($err == 0 && $warn == 0)} {
+        if {$diag_count == 0} {
             set new_status "OK"
             incr ok_count
         } else {
@@ -1550,14 +1537,11 @@ foreach vhdl_file $vhdl_files {
             }
         }
 
-        # Determine result state
+        # A file with any diagnostic, info included, has lint issues
         if {$diag_count == 0} {
             set result_state "OK"
-        } elseif {$error_count > 0 || $warning_count > 0} {
-            set result_state "LINT_ISSUES"
         } else {
-            # Only INFO-level diagnostics
-            set result_state "OK"
+            set result_state "LINT_ISSUES"
         }
     }
 

@@ -286,11 +286,8 @@ check_match "stderr explains valid values" {error\|warning\|info\|any\|none} $st
 
 # -fail_on info is the engine's lowest documented severity and MUST be
 # accepted (it was wrongly rejected while the runner used the outlier
-# name `note`). Against the error-level sandbox it trips rc=1, proving
-# it passes validation and feeds the threshold.
-set out_info [file join $sandbox out_failon_info]
-lassign [run_runner -project_root $sandbox -format csv -outdir $out_info -fail_on info -stop_on_tool_error 0] rc_info stdout_info
-check_eq "-fail_on info: accepted (rc=1 on error-level sandbox)" 1 $rc_info
+# name `note`). Scenario 5 checks it on a project whose only diagnostic
+# is info.
 
 # -fail_on note is no longer a valid severity: it must be rejected rc=2
 # with the same actionable hint the single-file CLI gives.
@@ -420,22 +417,15 @@ check_eq "-manifest with missing file: rc=2" 2 $rc_missing
 check_match "stderr identifies the missing manifest path" {does_not_exist\.yaml} $stderr_missing
 
 # ----------------------------------------------------------------------------
-# Scenario 5: -fail_on must not disagree with the rendered report
+# Scenario 5: info diagnostics count, as in the single-file CLI
 #
-# The runner's per-file classifier
-# marks a file as `OK` when its only diagnostics are info-severity,
-# and every report writer (HTML/MD/text/CSV) hides OK files'
-# diagnostics from the output. If -fail_on any (or any other threshold
-# that includes info) consulted the raw diagnostic list it would
-# produce rc=1 with a visually clean report, leaving CI to fail
-# against a report that shows no findings.
-#
-# The contract this scenario pins is: -fail_on consults exactly the
-# diagnostic set that the reports render. Info-only files therefore
-# contribute nothing to the threshold, no matter the -fail_on level,
-# and CI rc is consistent with the report content.
+# A file whose only diagnostics are info has lint issues: they are
+# counted in the totals, rendered in every report format and consulted
+# by -fail_on. The runner used to classify such a file as OK, leave its
+# diagnostics out of the totals and of every report, and exit 0 under
+# -fail_on info where lint/lint_cli.tcl --fail-on info exits 1.
 # ----------------------------------------------------------------------------
-puts "\n=== Scenario 5: -fail_on never disagrees with the rendered report ==="
+puts "\n=== Scenario 5: info diagnostics count, as in the single-file CLI ==="
 
 set info_only [file join $sandbox info_only]
 file mkdir [file join $info_only config]
@@ -489,32 +479,83 @@ begin
 end architecture;
 }
 
-# -fail_on any on info-only → the runner must exit 0 because the
-# reports don't surface the diagnostic. (Pre-fix the runner exited 1.)
-set io_any [file join $info_only out_any]
-lassign [run_runner -project_root $info_only -format csv -outdir $io_any -fail_on any -stop_on_tool_error 0] rc_io_any stdout_io_any
-check_eq "info-only + -fail_on any: rc=0 (reports hide info on OK files)" 0 $rc_io_any
+# The single-file CLI on the same file and policy: the reference the
+# runner must agree with.
+set io_vhd [file join $info_only src InfoOnly.vhd]
+set io_policy [file join $info_only .aurig lint-policy.json]
+set rc_cli 0
+if {[catch {
+    exec [info nameofexecutable] [file join $repo_root lint lint_cli.tcl] \
+        -input $io_vhd -policy $io_policy --fail-on info
+} out_cli opts_cli]} {
+    set rc_cli [lindex [dict get $opts_cli -errorcode] 2]
+}
+check_eq "\[control\] CLI --fail-on info on the info-only file: rc=1" 1 $rc_cli
+check_match "\[control\] CLI reports the info diagnostic" \
+    {InfoOnly\.vhd:9: info: .*\[signal_naming\]} $out_cli
 
-# CSV must not carry a row for the hidden info diagnostic — proves
-# the report is consistent with the exit code, not just incidentally
-# clean. We read it back and assert there is no `signal_naming` row.
-set csv_io [file join $io_any lint_report.csv]
-check_true "info-only CSV produced" {[file exists $csv_io]}
-set fp [open $csv_io r]
-set csv_io_text [read $fp]
-close $fp
-check_true "info-only CSV has no signal_naming row" \
-    {![regexp {signal_naming} $csv_io_text]}
+# -fail_on info and any include info severity; warning, error and none
+# do not.
+foreach {level expected} {info 1 any 1 warning 0 error 0 none 0} {
+    lassign [run_runner -project_root $info_only -format csv \
+        -outdir [file join $info_only out_$level] -fail_on $level \
+        -stop_on_tool_error 0] rc_io stdout_io
+    check_eq "info-only + -fail_on $level: rc=$expected" $expected $rc_io
+}
 
-# -fail_on error / warning on info-only → also rc=0 (info is below
-# both thresholds in the {info warning error} order). Cheap to pin.
-set io_err [file join $info_only out_err]
-lassign [run_runner -project_root $info_only -format csv -outdir $io_err -fail_on error -stop_on_tool_error 0] rc_io_err stdout_io_err
-check_eq "info-only + -fail_on error: rc=0" 0 $rc_io_err
+# Totals and report content, in every format.
+set io_message {Signal 'BadCaps' should be lowercase with underscores}
+foreach {fmt report} {
+    csv  lint_report.csv
+    text lint_report.txt
+    md   lint_report.md
+    html index.html
+} {
+    set io_out [file join $info_only out_fmt_$fmt]
+    lassign [run_runner -project_root $info_only -format $fmt \
+        -outdir $io_out -fail_on none -stop_on_tool_error 0] rc_io stdout_io
+    check_eq "info-only, -format $fmt: rc=0 under -fail_on none" 0 $rc_io
+    check_match "info-only, -format $fmt: stdout counts no OK file" \
+        {Files OK: 0\n} $stdout_io
+    check_match "info-only, -format $fmt: stdout counts the file with lint issues" \
+        {Files with lint issues: 1\n} $stdout_io
+    check_match "info-only, -format $fmt: stdout counts the info diagnostic" \
+        {Total diagnostics: 1\n} $stdout_io
+    set report_path [file join $io_out $report]
+    set report_text ""
+    if {[file exists $report_path]} {
+        set fp [open $report_path r]
+        fconfigure $fp -encoding utf-8
+        set report_text [read $fp]
+        close $fp
+    }
+    check_true "info-only, -format $fmt: $report shows the info diagnostic" \
+        {[string first $io_message $report_text] >= 0
+         && [regexp {\minfo\M} $report_text]}
+    set io_report($fmt) $report_text
+}
 
-set io_warn [file join $info_only out_warn]
-lassign [run_runner -project_root $info_only -format csv -outdir $io_warn -fail_on warning -stop_on_tool_error 0] rc_io_warn stdout_io_warn
-check_eq "info-only + -fail_on warning: rc=0" 0 $rc_io_warn
+# The summaries inside the reports carry the same counts.
+check_match "info-only, -format md: summary table counts no OK file" \
+    {\| Files OK \| 0 \|} $io_report(md)
+check_match "info-only, -format md: summary table counts the diagnostic" \
+    {\| Total Diagnostics \| 1 \|} $io_report(md)
+check_match "info-only, -format text: summary counts the diagnostic" \
+    {Total Diagnostics: 1\n} $io_report(text)
+check_match "info-only, -format text: the file has STATUS: LINT_ISSUES" \
+    {STATUS: LINT_ISSUES} $io_report(text)
+check_match "info-only, -format csv: one info row for the file" \
+    {InfoOnly\.vhd,9,[0-9]+,info,signal_naming,} $io_report(csv)
+
+# -only_new reclassifies every file after the baseline filter; with an
+# empty baseline the info diagnostic survives and still counts.
+lassign [run_runner -project_root $info_only -format csv \
+    -outdir [file join $info_only out_only_new] -fail_on info \
+    -only_new -baseline [file join $info_only no_baseline.json] \
+    -stop_on_tool_error 0] rc_io stdout_io
+check_eq "info-only, -only_new with an empty baseline: rc=1 under -fail_on info" 1 $rc_io
+check_match "info-only, -only_new with an empty baseline: counts the file with lint issues" \
+    {Files with lint issues: 1\n} $stdout_io
 
 # ----------------------------------------------------------------------------
 # Scenario 6: a collection failure is a hard stop, not a fallback

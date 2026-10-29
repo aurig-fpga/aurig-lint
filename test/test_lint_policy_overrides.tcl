@@ -298,8 +298,7 @@ check_eq "CLI, info then error, latchy.vhd: info" info $latch
 lassign [cli $p_merge $tb_pre] rc latch
 check_eq "CLI, disable then severity, tb_x.vhd: still disabled" {} $latch
 
-# The runner's CSV report has no rows for a file with only info
-# diagnostics, so its overlap checks switch the rule off and on instead.
+# The runner's overlap checks switch the rule off and on.
 foreach {name tb_x_expected expected} {
     later_enable  error
         {src/bfm/x_bfm.vhd warning src/rtl/latchy.vhd warning src/tb/tb_x.vhd error src/tb/x_tb.vhd warning}
