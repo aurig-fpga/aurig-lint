@@ -255,6 +255,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- One decoding for every reader of a VHDL source. The engine's line cache, the
+  `require_meaningful_comments` rule and the code excerpts of the md and html
+  reports (`lint_cli.tcl -report_format`, `run_lint_single_file.tcl`) read
+  sources in the system encoding (cp1252 on Windows), the project runner's
+  source viewer as UTF-8, so the same file showed different text: under
+  cp1252 a UTF-8 accented letter became two characters in the excerpts and a
+  UTF-8 byte order mark three, and the source viewer misread cp1252 bytes
+  that are not valid UTF-8, such as the euro sign. They now all call
+  `::aurig::lint::read_source_file`: UTF-8 when the bytes are valid UTF-8
+  (a leading byte order mark is dropped), otherwise cp1252, whatever the
+  system encoding. Line numbers do not change. `aurig::lint::report` now
+  requires `aurig::lint`.
+
 - `forbid_latch_inference` does not analyse a process that contains a wait
   statement (`wait for`, `wait until`, `wait on` or `wait;`), as it does not
   analyse a clocked process (#57). Such a process is not combinational

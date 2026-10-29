@@ -13,6 +13,9 @@
 # lint ENGINE in lint.tcl differs: its json requires live in the procs that
 # actually parse JSON.)
 package require json
+# The code excerpts read sources with ::aurig::lint::read_source_file, so they
+# show the same text as the engine and the project runner's source viewer.
+package require aurig::lint
 
 namespace eval ::aurig::lint::report {
     variable version "1.0"
@@ -24,9 +27,7 @@ proc ::aurig::lint::report::get_code_excerpt {file_path line_num {context 5}} {
         return [list error "File not found: $file_path"]
     }
 
-    set f [open $file_path r]
-    set all_lines [split [read $f] \n]
-    close $f
+    set all_lines [split [::aurig::lint::read_source_file $file_path] \n]
 
     set total_lines [llength $all_lines]
     set start_line [expr {max(1, $line_num - $context)}]

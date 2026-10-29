@@ -208,6 +208,42 @@ proc ::aurig::lint::read_json_file {path} {
     return $text
 }
 
+# Read a VHDL source file as text. Every place that reads a source (the
+# engine's line cache and rules, the report excerpts, the project runner's
+# source viewer) calls this, so the same file shows the same text everywhere
+# whatever the system encoding.
+#
+# The bytes are decoded as UTF-8 when they are valid UTF-8, and a leading
+# byte order mark U+FEFF is dropped; otherwise as cp1252, the usual Windows
+# encoding of older sources. Tcl's UTF-8 decoder accepts invalid input, so
+# validity is checked on the bytes first. CRLF and CR end a line like LF, as
+# in Tcl's default "auto" translation, so line numbers do not change. The
+# whole file is read: no end-of-file character stops the read.
+#
+# Arguments:
+#   path : Path to the VHDL file
+#
+# Returns: File content as text, lines separated by \n
+proc ::aurig::lint::read_source_file {path} {
+    set fp [open $path rb]
+    try {
+        set bytes [read $fp]
+    } finally {
+        close $fp
+    }
+    if {![regexp {[\x80-\xFF]} $bytes]} {
+        set text $bytes
+    } elseif {[regexp {^(?:[\x00-\x7F]|[\xC2-\xDF][\x80-\xBF]|\xE0[\xA0-\xBF][\x80-\xBF]|[\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}|\xED[\x80-\x9F][\x80-\xBF]|\xF0[\x90-\xBF][\x80-\xBF]{2}|[\xF1-\xF3][\x80-\xBF]{3}|\xF4[\x80-\x8F][\x80-\xBF]{2})*$} $bytes]} {
+        set text [encoding convertfrom utf-8 $bytes]
+        if {[string index $text 0] eq "\uFEFF"} {
+            set text [string range $text 1 end]
+        }
+    } else {
+        set text [encoding convertfrom cp1252 $bytes]
+    }
+    return [string map {\r\n \n \r \n} $text]
+}
+
 # Load rule metadata (defaults). A missing or empty path yields an empty
 # dict, as before: the engine then simply has no built-in rules.
 #
@@ -3157,9 +3193,7 @@ proc ::aurig::lint::cache_file_lines {filename} {
 
     # Read file and cache lines
     if {[catch {
-        set fp [open $filename r]
-        set content [read $fp]
-        close $fp
+        set content [read_source_file $filename]
 
         # Split into lines (preserving empty lines)
         set lines [split $content "\n"]
@@ -4609,12 +4643,10 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
     set template [expr {[dict exists $rule_config message] ? [dict get $rule_config message] : ""}]
 
     # Read file content for comment checking
-    if {[catch {open $filename r} fh]} {
+    if {[catch {::aurig::lint::read_source_file $filename} file_content]} {
         # Cannot read file, skip checks
         return $diagnostics
     }
-    set file_content [read $fh]
-    close $fh
     set file_lines [split $file_content "\n"]
 
     # Check 1: File header documentation

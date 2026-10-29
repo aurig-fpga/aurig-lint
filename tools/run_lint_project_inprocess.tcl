@@ -893,10 +893,8 @@ proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
         return 0
     }
 
-    set fp [open $sourceFile r]
-    fconfigure $fp -encoding utf-8
-    set sourceCode [read $fp]
-    close $fp
+    # The engine's reader, so the page shows the text the reports show
+    set sourceCode [::aurig::lint::read_source_file $sourceFile]
     if {[string index $sourceCode end] eq "\n"} {
         set sourceCode [string range $sourceCode 0 end-1]
     }

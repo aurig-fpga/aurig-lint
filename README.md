@@ -292,6 +292,15 @@ Exit codes: `0` no diagnostics at or above the `--fail-on` threshold (the
 default threshold is `error`, so a warning-only run exits `0`), `1` diagnostics
 at or above the threshold, `2` invalid arguments or runtime error.
 
+### Source file encoding
+
+aurig-lint reads a VHDL source as UTF-8 when its bytes are valid UTF-8 (a
+leading byte order mark is dropped), otherwise as cp1252, whatever the system
+encoding. The rules that read source lines, the code excerpts of the md and
+html reports and the project runner's source viewer all use this reader, so
+a comment shows the same text in every report. The parser in aurig-core
+reads the file on its own, in the system encoding.
+
 ### Whole project
 
 ```sh

@@ -39,10 +39,11 @@ In bash, write `lint=/path/to/aurig-lint/lint/lint_cli.tcl` and
 with its path, such as `pragmas/regs.vhd`. The paths are relative to a work
 folder of your choice; the outputs below were produced in
 `C:\aurig-trial\l15\guide-run`, which appears in the prompts and in absolute
-paths in the output. Create the files as shown (UTF-8), go to the folder in
-the prompt, and run the command. Some examples use files from earlier ones,
-so follow the guide in order. Your output differs only in absolute paths and,
-for the project runner, in timestamps.
+paths in the output. Create the files as shown (UTF-8; VHDL sources may also
+be cp1252, see [Source file encoding](../README.md#source-file-encoding)), go
+to the folder in the prompt, and run the command. Some examples use files
+from earlier ones, so follow the guide in order. Your output differs only in
+absolute paths and, for the project runner, in timestamps.
 
 `$lint` is the single-file CLI and `$runner` the project runner (see
 [Usage](../README.md#usage)). The CLI exit code is `0` when there are no

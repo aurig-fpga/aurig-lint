@@ -84,6 +84,7 @@ jobs:
             test/test_doc_references_exist.tcl
             test/test_tcl_minimum_version.tcl
             test/test_report_encoding.tcl
+            test/test_source_decoding.tcl
             test/test_html_reports_offline.tcl
             test/test_html_report_file_names.tcl
             test/smoke/test_run_lint_single_file.tcl
@@ -194,6 +195,7 @@ jobs:
             'test/test_doc_references_exist.tcl'
             'test/test_tcl_minimum_version.tcl'
             'test/test_report_encoding.tcl'
+            'test/test_source_decoding.tcl'
             'test/test_html_reports_offline.tcl'
             'test/test_html_report_file_names.tcl'
             'test/smoke/test_run_lint_single_file.tcl'
