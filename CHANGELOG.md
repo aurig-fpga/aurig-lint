@@ -87,7 +87,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under `Files with lint issues` instead of `Files OK`, its diagnostics are in
   the totals and in every report, and `-fail_on info` or `any` exits **1**.
   The summary counts of a project with info-only files change, also after
-  `-only_new`.
+  `-only_new`. `tools/run_lint_single_file.tcl` follows the same rule: a file
+  whose only diagnostics are `info` used to get status `OK` and exit **0**; it
+  now gets `LINT_ISSUES` and exits **1**, as for any other diagnostic. Its
+  reports already showed and counted `info`.
 
 - Options with a fixed set of values are validated, like `"severity"`:
   `case` (`keyword_case` rules such as `keyword_lowercase`: `lowercase`,

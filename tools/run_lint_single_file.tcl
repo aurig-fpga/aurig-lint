@@ -23,8 +23,9 @@
 #   -outdir <path>   Output directory (default: ./lint_single_report)
 #
 # Exit codes:
-#   0 - OK (no diagnostics or only INFO-level)
-#   1 - LINT_ISSUES (diagnostics found)
+#   0 - OK (no diagnostics)
+#   1 - LINT_ISSUES (any diagnostic, info included, as in lint/lint_cli.tcl
+#       --fail-on info)
 #   2 - TOOL_ERROR (linter failed)
 #=============================================================================
 
@@ -79,8 +80,8 @@ proc print_usage {} {
     puts "  -outdir <path>   Output directory (default: ./lint_single_report)"
     puts ""
     puts "Exit codes:"
-    puts "  0 - OK (no errors/warnings)"
-    puts "  1 - LINT_ISSUES (errors or warnings found)"
+    puts "  0 - OK (no diagnostics)"
+    puts "  1 - LINT_ISSUES (any diagnostic, info included)"
     puts "  2 - TOOL_ERROR (linter failed to run)"
 }
 
@@ -246,14 +247,11 @@ if {[catch {
         }
     }
 
-    # Determine result state
+    # A file with any diagnostic, info included, has lint issues
     if {$diag_count == 0} {
         set result_state "OK"
-    } elseif {$error_count > 0 || $warning_count > 0} {
-        set result_state "LINT_ISSUES"
     } else {
-        # Only INFO-level diagnostics
-        set result_state "OK"
+        set result_state "LINT_ISSUES"
     }
 }
 

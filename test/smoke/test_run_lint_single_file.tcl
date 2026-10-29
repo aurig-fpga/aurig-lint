@@ -249,6 +249,108 @@ if {[file exists $test5_file]} {
 }
 
 #-----------------------------------------------------------------------------
+# Test 6: A file whose only diagnostic is info has lint issues
+#-----------------------------------------------------------------------------
+# Same contract as lint/lint_cli.tcl and the project runner: info is counted,
+# shown in every report format, and the file is not OK. The runner used to
+# classify an info-only file as OK and exit 0.
+puts ""
+puts "========================================"
+puts "TEST 6: Info-only file"
+puts "========================================"
+
+set test6_dir [file join $test_outdir "test6"]
+file mkdir $test6_dir
+set test6_file [file join $test6_dir "InfoOnly.vhd"]
+set test6_policy [file join $test6_dir "info_policy.json"]
+
+# signal_naming demoted to info, the other default rules off: the BadCaps
+# signal on line 9 gives the only diagnostic.
+set f [open $test6_file w]
+puts -nonewline $f {library ieee;
+use ieee.std_logic_1164.all;
+
+entity InfoOnly is
+  port (a_i : in std_logic);
+end entity;
+
+architecture rtl of InfoOnly is
+  signal BadCaps : std_logic;
+begin
+  BadCaps <= a_i;
+end architecture;
+}
+close $f
+set f [open $test6_policy w]
+puts -nonewline $f {{
+  "rules": {
+    "signal_naming":              { "enabled": true,  "severity": "info", "pattern": "^[a-z][a-z0-9_]*$" },
+    "allowed_libraries":          { "enabled": false },
+    "constant_naming":            { "enabled": false },
+    "generic_naming":             { "enabled": false },
+    "entity_naming":              { "enabled": false },
+    "package_naming":             { "enabled": false },
+    "forbid_nonstandard_arith":   { "enabled": false },
+    "forbid_positional_portmap":  { "enabled": false },
+    "naming_conventions_pack":    { "enabled": false }
+  }
+}}
+close $f
+
+# The single-file CLI on the same file and policy: the reference.
+set cli_rc 0
+if {[catch {
+    exec [info nameofexecutable] [file join $root_dir lint lint_cli.tcl] \
+        -input $test6_file -policy $test6_policy --fail-on info
+} cli_out cli_opts]} {
+    set cli_rc -1
+    set ec [dict get $cli_opts -errorcode]
+    if {[lindex $ec 0] eq "CHILDSTATUS"} {
+        set cli_rc [lindex $ec 2]
+    }
+}
+test_assert {$cli_rc == 1} "\[control\] CLI --fail-on info exits 1 (got: $cli_rc)"
+test_assert {[regexp {InfoOnly\.vhd:9: info: .*\[signal_naming\]} $cli_out]} \
+    "\[control\] CLI reports the info diagnostic"
+
+# Report file and the line that shows the info count, per format.
+set test6_reports {
+    html index.html     {<tr><td>Info</td><td>1</td></tr>}
+    md   lint_report.md  {| Info     | 1 |}
+    text lint_report.txt {  Info:     1}
+}
+foreach {fmt report_name info_row} $test6_reports {
+    set outdir [file join $test6_dir $fmt]
+    set run [run_single test6_$fmt -file $test6_file -policy $test6_policy \
+        -format $fmt -outdir $outdir]
+    show_run $run 1
+    set exit_code [dict get $run exit_code]
+    set status_line [dict get $run status]
+    set stdout_text [dict get $run stdout]
+
+    test_assert {$exit_code == 1} "$fmt: exit code is 1 (LINT_ISSUES) (got: $exit_code)"
+    test_assert {$status_line eq "LINT_ISSUES"} "$fmt: status is LINT_ISSUES (got: $status_line)"
+    test_assert {[string match "*Diagnostics count: 1\n*" $stdout_text]} \
+        "$fmt: console counts the diagnostic"
+    test_assert {[string match "*  Info:            1\n*" $stdout_text]} \
+        "$fmt: console counts it as info"
+
+    set report_path [file join $outdir $report_name]
+    set report ""
+    if {[file exists $report_path]} {
+        set f [open $report_path r]
+        fconfigure $f -encoding utf-8
+        set report [read $f]
+        close $f
+    }
+    test_assert {$report ne ""} "$fmt: report exists at $report_path"
+    test_assert {[string first $info_row $report] >= 0} \
+        "$fmt: report summary counts one info diagnostic"
+    test_assert {[string first "BadCaps" $report] >= 0} \
+        "$fmt: report shows the diagnostic"
+}
+
+#-----------------------------------------------------------------------------
 # Summary
 #-----------------------------------------------------------------------------
 set result [test_summary]

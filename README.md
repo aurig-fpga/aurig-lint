@@ -346,7 +346,10 @@ single-file CLI spells it `--fail-on`.
 As in the single-file CLI, every diagnostic counts, `info` included: it is in
 the totals and in every report format, and `-fail_on info` exits `1` on it. A
 file whose only diagnostics are `info` is listed with the lint issues, not as
-OK.
+OK. `tools/run_lint_single_file.tcl`, a quick report tool for one file, has no
+threshold and follows the same rule: any diagnostic, `info` included, gives
+status `LINT_ISSUES` and exit code `1`; only a file with no diagnostics is `OK`
+(exit code `0`).
 
 ### Using `aurig::lint` from your own Tcl script
 
