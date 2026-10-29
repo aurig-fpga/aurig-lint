@@ -1053,7 +1053,10 @@ same way.
 ### Testbenches and BFMs: no latch or comment checks
 
 `forbid_latch_inference` and `require_meaningful_comments` are on for every
-file, and off for files named `tb_*.vhd`, `*_tb.vhd` or `*_bfm.vhd`:
+file, and off for files named `tb_*.vhd`, `*_tb.vhd` or `*_bfm.vhd`.
+`forbid_latch_inference` never analyses a process that contains a wait
+statement, such as a testbench clock generator, so the override matters for
+the other processes of a testbench, like the one below:
 
 `testbenches/policy.json`:
 

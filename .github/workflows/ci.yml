@@ -69,6 +69,7 @@ jobs:
             test/test_lint_pragma_case.tcl
             test/test_lint_bare_wait.tcl
             test/test_lint_process_diagnostic_lines.tcl
+            test/test_lint_latch_wait_process.tcl
             test/test_lint_require_process_label.tcl
             test/test_lint_reset_message.tcl
             test/test_lint_testbench_patterns.tcl
@@ -178,6 +179,7 @@ jobs:
             'test/test_lint_pragma_case.tcl'
             'test/test_lint_bare_wait.tcl'
             'test/test_lint_process_diagnostic_lines.tcl'
+            'test/test_lint_latch_wait_process.tcl'
             'test/test_lint_require_process_label.tcl'
             'test/test_lint_reset_message.tcl'
             'test/test_lint_testbench_patterns.tcl'

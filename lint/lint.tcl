@@ -3915,6 +3915,13 @@ proc ::aurig::lint::rule::forbid_latch_inference {symbols parse_result filename 
                 continue
             }
 
+            # A process with a wait statement (wait for, wait until, wait on
+            # or a bare wait;) is not combinational logic, skip latch
+            # detection (#57)
+            if {[::aurig::lint::has_wait_statement $body]} {
+                continue
+            }
+
             # Check if process has any conditionals: an if, a case, a loop
             # or a conditional assignment, outside literals and extended
             # identifiers

@@ -255,6 +255,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `forbid_latch_inference` does not analyse a process that contains a wait
+  statement (`wait for`, `wait until`, `wait on` or `wait;`), as it does not
+  analyse a clocked process (#57). Such a process is not combinational
+  logic, but a testbench clock generator driven by `wait for` was reported
+  as a latch, and so was a process starting with `wait until clk = '1';`.
+  A `wait` inside a string or character literal, as in `report "wait;";`,
+  is not a wait statement: such a process is still analysed.
+
 - `forbid_wait_statements` reports a bare `wait;` (suspend forever), like
   `wait for`, `wait until` and `wait on`. A process whose only wait
   statement was `wait;` was not reported. A `wait` inside a string or
