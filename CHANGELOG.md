@@ -255,6 +255,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `forbid_wait_statements` reports a bare `wait;` (suspend forever), like
+  `wait for`, `wait until` and `wait on`. A process whose only wait
+  statement was `wait;` was not reported. A `wait` inside a string or
+  character literal, as in `report "wait for ack";`, is not a wait statement
+  and is no longer reported.
+
 - `forbid_latch_inference` counts signal assignments only. It took every
   name followed by `<=` for an assigned signal, so the left operand of a
   `<=` comparison was one too: a port `cnt` in `if cnt <= 3 then`, in an

@@ -4261,6 +4261,14 @@ proc ::aurig::lint::rule::require_reset_in_clocked_process {symbols parse_result
     return $diagnostics
 }
 
+# Helper: true if a process body contains a wait statement: wait for, wait
+# until, wait on or the bare "wait;" (suspend forever). A "wait" in a string
+# or character literal, or an extended identifier spelled \wait\, is not one
+# (mask_literals); the parser has removed the comments.
+proc ::aurig::lint::has_wait_statement {body} {
+    return [regexp -nocase {\mwait\M\s*(for\M|until\M|on\M|;)} [mask_literals $body]]
+}
+
 # Rule: forbid_wait_statements
 # Flags wait statements in synthesizable code
 proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename rule_id rule_config} {
@@ -4296,8 +4304,8 @@ proc ::aurig::lint::rule::forbid_wait_statements {symbols parse_result filename 
             set proc_line [expr {[dict exists $proc line] ? [dict get $proc line] : 0}]
             set proc_label [expr {[dict exists $proc label] ? [dict get $proc label] : ""}]
 
-            # Search for wait statements
-            if {[regexp -nocase {\mwait\s+(for|until|on)\M} $body match wait_type]} {
+            # Search for wait statements (has_wait_statement)
+            if {[::aurig::lint::has_wait_statement $body]} {
                 set msg "Wait statement found in synthesizable code"
                 if {$proc_label ne ""} {
                     append msg " (process '$proc_label')"
