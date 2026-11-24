@@ -141,6 +141,8 @@ try {
     set fingerprint fp:entity_naming_warning_plain.vhd_1_entity_Dut
     write_file $baseline "{\"schema_version\": 1, \"fingerprints\": \[\"$fingerprint\"\]}"
 
+    set message "R\u00e9viser BadCaps \u0153"
+    set row "<tr><td>5</td><td class=\"diag-warning\">warning</td><td>signal_naming</td><td>$message</td>"
     foreach codec {utf-8 cp1252} {
         foreach path [list $plain $issue] {
             set label "$codec [file tail $path]"
@@ -156,7 +158,6 @@ try {
         lassign [run_encoded $codec $cli -input $suppressed -format json --fail-on any] rc bytes
         check_eq "$codec pragma on signed first line" {0 {}} [list $rc [::json::json2dict $bytes]]
 
-        set message "R\u00e9viser BadCaps \u0153"
         foreach name {utf8 signed legacy} {
             set label "$codec $name"
             set path [file join $project src $name.vhd]
@@ -186,7 +187,6 @@ try {
             -outdir $output -fail_on any] rc
         check_eq "$codec project exit" 1 $rc
         set report [file join $output index.html]
-        set row "<tr><td>5</td><td class=\"diag-warning\">warning</td><td>signal_naming</td><td>$message</td>"
         check_eq "$codec project has the same three line/rule/severity rows" 3 \
             [regexp -all "***=[encoding convertto utf-8 $row]" [read_bytes $report]]
         foreach name {utf8 signed legacy} {
@@ -234,6 +234,75 @@ try {
     check_eq "project refuses a baseline update for a rejected source" 2 $rc
     check_true "baseline still contains the unaffected fingerprint" \
         {[string first $fingerprint [read_bytes $baseline]] >= 0}
+
+    # Reuse the same interpreter and filename, including the report's cached
+    # excerpt path. The second revision changes both the name and its column.
+    set rewritten [file join $sandbox rewritten.vhd]
+    set metadata [file join $repo_root lint metadata.json]
+    set before_line "entity BeforeName is -- first source revision"
+    write_bytes $rewritten "$before_line\nend entity BeforeName;\n"
+    set diagnostics [::aurig::lint::run -input $rewritten -metadata $metadata]
+    check_eq "cache freshness: first diagnostic" {{entity_naming warning 1 7 BeforeName}} \
+        [locations $diagnostics]
+    set report [::aurig::lint::report::format_markdown $diagnostics $rewritten \
+        ::aurig::lint::cache_file_lines]
+    check_true "cache freshness: first excerpt" {[string first $before_line $report] >= 0}
+
+    set after_line "    entity UpdatedName is -- second source revision"
+    write_bytes $rewritten "$bom$after_line\nend entity UpdatedName;\n"
+    set diagnostics [::aurig::lint::run -input $rewritten -metadata $metadata]
+    check_eq "cache freshness: replacement diagnostic and column" \
+        {{entity_naming warning 1 11 UpdatedName}} [locations $diagnostics]
+    set report [::aurig::lint::report::format_markdown $diagnostics $rewritten \
+        ::aurig::lint::cache_file_lines]
+    check_true "cache freshness: replacement excerpt" {[string first $after_line $report] >= 0}
+    check_true "cache freshness: report contains no stale name or excerpt" \
+        {[string first "BeforeName" $report] < 0 && [string first "first source revision" $report] < 0}
+
+    # Put the rejected file first to prove the project visits the next one.
+    set mixed [file join $sandbox mixed_project]
+    write_file [file join $mixed config project.yaml] {schema_version: "1.0"
+project_name: mixed_sources
+project_root: ".."
+top: dut
+file_sets:
+  rtl:
+    - lib: work
+      vhdl_std: "2008"
+      src: [src/a_rejected.vhd, src/z_valid.vhd]
+}
+    write_bytes [file join $mixed src a_rejected.vhd] [read_bytes $invalid]
+    write_bytes [file join $mixed src z_valid.vhd] [encoding convertto cp1252 $source]
+    set mixed_args [list -project_root $mixed -policy $policy -format html \
+        -fail_on none -stop_on_tool_error 0]
+    set output [file join $sandbox mixed_report]
+    lassign [run_encoded utf-8 $runner {*}$mixed_args -outdir $output -verbose] rc stdout
+    check_eq "mixed project: exits 2 with fail_on none" 2 $rc
+    check_true "mixed project: continues to valid file after rejection" \
+        {[string match {*\[1/2\] src/a_rejected.vhd*Status: TOOL_ERROR*\[2/2\] src/z_valid.vhd*Status: LINT_ISSUES*} $stdout]}
+    check_true "mixed project: one lint-issues file and one tool-error file" \
+        {[string match {*Files with lint issues: 1*Files with tool errors: 1*} $stdout]}
+    set index [file join $output index.html]
+    check_bytes "mixed project: rejected file has a tool-error entry" $index \
+        {<h3><span>src/a_rejected.vhd</span><span class="badge badge-error">Tool Error</span>}
+    check_bytes "mixed project: rejected file reports its byte offset" $index {at byte 6}
+    check_bytes "mixed project: valid diagnostic is rendered" $index $row
+    set pages [glob -nocomplain -directory [file join $output sources] *.html]
+    check_eq "mixed project: only the valid file has a viewer" 1 [llength $pages]
+    set page [lindex $pages 0]
+    check_true "mixed project: viewer belongs to the valid file" \
+        {[string match {src__z_valid.vhd_*.html} [file tail $page]]}
+    check_bytes "mixed project: valid viewer renders Windows-1252 comment" $page "-- $comment"
+    check_bytes "mixed project: valid viewer highlights diagnostic line" $page \
+        {class="line sev-warning" id="L5"}
+
+    set original_baseline [read_bytes $baseline]
+    lassign [run_encoded utf-8 $runner {*}$mixed_args -outdir [file join $sandbox mixed_update] \
+        -update_baseline -baseline $baseline] rc stdout stderr
+    check_eq "mixed project: baseline update exits 2" 2 $rc
+    check_true "mixed project: baseline update explicitly refused for a tool error" \
+        {[string match {*refusing to update baseline: 1 file(s) ended in TOOL_ERROR*} $stderr]}
+    check_eq "mixed project: baseline bytes unchanged" $original_baseline [read_bytes $baseline]
 
     # Model a loaded Core with the same package version and no reader.
     set reader ::aurig::core::util::read_vhdl_source
