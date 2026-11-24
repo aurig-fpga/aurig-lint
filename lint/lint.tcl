@@ -3149,12 +3149,16 @@ proc ::aurig::lint::create_diagnostic {rule_id severity message file line col sy
         context_path $context_path]
 }
 
-# Read normalized VHDL text for the engine and renderers.
-proc ::aurig::lint::read_source_text {filename} {
+proc ::aurig::lint::require_source_reader {} {
     if {[info commands ::aurig::core::util::read_vhdl_source] eq ""} {
         return -code error -errorcode {AURIG LINT SOURCE CAPABILITY} \
             "VHDL linting requires an aurig-core checkout with ::aurig::core::util::read_vhdl_source (introduced by aurig-core PR #97). Set TCLLIBPATH to a compatible checkout."
     }
+}
+
+# Read normalized VHDL text for the engine and renderers.
+proc ::aurig::lint::read_source_text {filename} {
+    require_source_reader
     # Avoid opening a directory, device or named pipe as VHDL. Missing paths
     # go through Core so its structured OPEN error is preserved.
     if {[file exists $filename] && ![file isfile $filename]} {

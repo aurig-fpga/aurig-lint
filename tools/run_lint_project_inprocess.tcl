@@ -1237,6 +1237,10 @@ puts ""
 #=============================================================================
 # Collect VHDL Files from Project
 #=============================================================================
+if {[catch {::aurig::lint::require_source_reader} source_err]} {
+    puts stderr "ERROR: $source_err"
+    exit 2
+}
 puts "Collecting VHDL files from project..."
 
 set vhdl_files [list]
