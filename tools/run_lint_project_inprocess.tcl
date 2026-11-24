@@ -888,15 +888,7 @@ proc lint_project_highlight_vhdl {line} {
 # warning > info). The page loads nothing from the network (#2).
 #-----------------------------------------------------------------------------
 proc lint_project_emit_source_viewer {sourceFile outFile fileName diagnostics} {
-    # Read source file
-    if {![file exists $sourceFile]} {
-        return 0
-    }
-
-    set fp [open $sourceFile r]
-    fconfigure $fp -encoding utf-8
-    set sourceCode [read $fp]
-    close $fp
+    set sourceCode [::aurig::lint::read_source_text $sourceFile]
     if {[string index $sourceCode end] eq "\n"} {
         set sourceCode [string range $sourceCode 0 end-1]
     }
@@ -1758,11 +1750,9 @@ if {$opts(format) eq "html"} {
     array set source_viewer_map {}
     foreach result $all_results {
         # Skip source viewer generation for files excluded from linting:
-        # rendering them would defeat the purpose of lint.excludes
-        # (it opens and reads vendor / IP files we explicitly asked
-        # to leave alone). The skipped section in the index lists
-        # them by name and pattern instead.
-        if {[dict get $result status] eq "SKIPPED"} {
+        # the index lists them without reading them. Tool errors are also
+        # listed in the index, with the reason the file could not be linted.
+        if {[dict get $result status] in {SKIPPED TOOL_ERROR}} {
             continue
         }
 
@@ -1775,11 +1765,16 @@ if {$opts(format) eq "html"} {
         set source_html "${safe_name}.html"
         set source_path [file join $sources_dir $source_html]
 
+        # Generate source viewer with diagnostic highlights
+        if {[catch {
+            lint_project_emit_source_viewer $fullpath $source_path $filename $diagnostics
+        } viewer_err]} {
+            puts stderr "ERROR: cannot generate source viewer for $filename: $viewer_err"
+            exit 2
+        }
+
         # Store mapping: the link to the page, its file name percent-encoded
         set source_viewer_map($fullpath) "sources/[lint_project_url_encode $source_html]"
-
-        # Generate source viewer with diagnostic highlights
-        lint_project_emit_source_viewer $fullpath $source_path $filename $diagnostics
     }
     puts "  Generated [array size source_viewer_map] source viewer(s)"
 

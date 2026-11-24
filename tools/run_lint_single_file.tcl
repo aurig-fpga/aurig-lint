@@ -314,10 +314,12 @@ if {$result_state eq "TOOL_ERROR"} {
     # Normal report using report_generator.tcl (if available)
     if {[namespace exists ::aurig::lint::report]} {
         if {$output_format eq "html"} {
-            set report_path [::aurig::lint::report::format_html $diagnostics $input_file $output_dir]
+            set report_path [::aurig::lint::report::format_html $diagnostics $input_file $output_dir \
+                ::aurig::lint::cache_file_lines]
         } elseif {$output_format eq "md"} {
             set report_path [file join $output_dir "lint_report.md"]
-            set md_content [::aurig::lint::report::format_markdown $diagnostics $input_file]
+            set md_content [::aurig::lint::report::format_markdown $diagnostics $input_file \
+                ::aurig::lint::cache_file_lines]
             set f [open $report_path w]
             fconfigure $f -encoding utf-8
             puts $f $md_content

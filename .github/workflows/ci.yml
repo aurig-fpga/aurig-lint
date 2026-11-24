@@ -26,6 +26,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: aurig-fpga/aurig-core
+          # First Core revision verified with the shared VHDL source reader.
+          ref: 90bc534fa3ff9e881d0339a0445e6e3b0ee3c461
           path: aurig-core
 
       - name: Install Tcl 8.6 + tcllib
@@ -84,6 +86,7 @@ jobs:
             test/test_doc_references_exist.tcl
             test/test_tcl_minimum_version.tcl
             test/test_report_encoding.tcl
+            test/test_lint_source_reader.tcl
             test/test_html_reports_offline.tcl
             test/test_html_report_file_names.tcl
             test/smoke/test_run_lint_single_file.tcl
@@ -121,6 +124,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: aurig-fpga/aurig-core
+          # Keep in sync with the Linux job.
+          ref: 90bc534fa3ff9e881d0339a0445e6e3b0ee3c461
           path: aurig-core
 
       # Magicsplat Tcl 1.16.0 (Tcl 8.6.16, tcllib 2.0), the build the
@@ -194,6 +199,7 @@ jobs:
             'test/test_doc_references_exist.tcl'
             'test/test_tcl_minimum_version.tcl'
             'test/test_report_encoding.tcl'
+            'test/test_lint_source_reader.tcl'
             'test/test_html_reports_offline.tcl'
             'test/test_html_report_file_names.tcl'
             'test/smoke/test_run_lint_single_file.tcl'

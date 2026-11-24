@@ -21,7 +21,8 @@ runtime, so you need an `aurig-core` checkout available to run or test the linte
 
 - **Tcl 8.6** with **tcllib** (the `yaml` and `json` packages are required — the
   engine parses rule metadata, user policy, baselines, and project manifests).
-- A local checkout of **`aurig-core`**.
+- A local checkout of **`aurig-core`** with the shared VHDL source reader.
+  Use the test revision in the [README requirements](README.md#requirements).
 
 ## Running the test suite
 

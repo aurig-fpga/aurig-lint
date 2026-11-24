@@ -22,7 +22,11 @@ the parser/util core is **not** bundled here. `aurig-lint` requires it off
   metadata/policy loader and the JSON/report output; `yaml` serves manifest
   reading and project source collection. Project linting needs both.
 - A checkout of [`aurig-core`](https://github.com/aurig-fpga/aurig-core) reachable
-  on `::auto_path`
+  on `::auto_path` with `::aurig::core::util::read_vhdl_source`, introduced by
+  [Core PR #97](https://github.com/aurig-fpga/aurig-core/pull/97). This Lint
+  revision is tested with Core `90bc534fa3ff9e881d0339a0445e6e3b0ee3c461`.
+  Core's `v0.1.0` release predates the reader. Set `TCLLIBPATH` to a compatible
+  Core checkout before linting VHDL.
 
 CI (`ubuntu-latest`, currently Ubuntu 24.04) runs the test suite on Tcl 8.6.14
 with tcllib 1.21 from apt. The Windows walkthrough below was checked on
@@ -291,6 +295,20 @@ Common options:
 Exit codes: `0` no diagnostics at or above the `--fail-on` threshold (the
 default threshold is `error`, so a warning-only run exits `0`), `1` diagnostics
 at or above the threshold, `2` invalid arguments or runtime error.
+
+### VHDL source encoding
+
+Core's reader decodes VHDL as UTF-8 with an optional initial BOM, or as
+Windows-1252 when unsigned input is invalid UTF-8. The parser, lint rules,
+report excerpts and source viewers use the same decoding and LF line
+normalization. Diagnostic lines start at 1 and Tcl character columns start
+at 0. An initial BOM uses no column.
+
+Unreadable or rejected VHDL is a tool error (exit `2`), independent of
+`--fail-on` or the project runner's `-fail_on`. Source errors include the
+filename and the original byte offset where Core reports one. In the Tcl
+engine API, `::aurig::lint::run` propagates the structured Core source error
+code. JSON diagnostics are emitted as UTF-8.
 
 ### Whole project
 
