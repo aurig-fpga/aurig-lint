@@ -15,7 +15,7 @@
 package require json
 
 namespace eval ::aurig::lint::report {
-    variable version "1.0"
+    variable version "2.0"
 }
 
 # Load the source dependency only for excerpts. Report package loading and
@@ -24,7 +24,18 @@ proc ::aurig::lint::report::read_source_lines {file_path} {
     if {![file exists $file_path]} {
         return {}
     }
-    package require aurig::lint
+    set status [catch {package require aurig::lint 0.2.0-0.3.0} version options]
+    if {$status || [regexp {[ab]} $version]} {
+        set message "Source-backed Lint reporting requires stable aurig::lint 0.2.0-0.3.0. Set TCLLIBPATH to compatible aurig-lint and aurig-core checkouts."
+        set loaded [package provide aurig::lint]
+        if {$loaded ne ""} {
+            append message " Loaded aurig::lint $loaded. Start a fresh Tcl interpreter after selecting compatible checkouts."
+        }
+        if {$status} {
+            return -options $options "$message Tcl package error: $version"
+        }
+        return -code error -errorcode {AURIG LINT REPORT SOURCE VERSION} "$message Prereleases are unsupported."
+    }
     return [split [::aurig::lint::read_source_text $file_path] \n]
 }
 

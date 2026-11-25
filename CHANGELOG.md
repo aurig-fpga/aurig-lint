@@ -78,6 +78,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (BREAKING)
 
+- Lint engine 0.2.0 uses the shared Core reader for VHDL. Package loading
+  accepts Core `0.1.0-0.3.0`. Source operations require stable Core
+  `0.2.0-0.3.0` and its reader. Source rejections and dependency failures
+  exit 2 even with a permissive lint threshold.
+- Breaking Tcl report API change. Migrate explicitly versioned callers from
+  `aurig::lint::report 1.0` to `2.0`. Reading source now requires Tcl 8.6
+  and stable compatible Lint and Core packages. Loading with JSON alone and
+  rendering from supplied cached lines remain available.
+
 - Options with a fixed set of values are validated, like `"severity"`:
   `case` (`keyword_case` rules such as `keyword_lowercase`: `lowercase`,
   `uppercase`), `reset_policy` (`either`, `sync`, `async`),

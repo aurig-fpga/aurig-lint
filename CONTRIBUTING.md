@@ -21,8 +21,9 @@ runtime, so you need an `aurig-core` checkout available to run or test the linte
 
 - **Tcl 8.6** with **tcllib** (the `yaml` and `json` packages are required — the
   engine parses rule metadata, user policy, baselines, and project manifests).
-- A local checkout of **`aurig-core`** with the shared VHDL source reader.
-  Use the test revision in the [README requirements](README.md#requirements).
+- A local checkout of stable **`aurig-core` 0.2.x** with the shared VHDL
+  source reader. Use the exact test revision in the
+  [README requirements](README.md#requirements).
 
 ## Running the test suite
 
@@ -31,8 +32,9 @@ variable (a Tcl list of directories prepended to `::auto_path`). Point it at you
 `aurig-core` checkout — typically a sibling directory.
 
 ```sh
-# Clone the dependency next to aurig-lint
+# Clone the dependency next to aurig-lint and select the published candidate once available
 git clone https://github.com/aurig-fpga/aurig-core ../aurig-core
+git -C ../aurig-core checkout --detach c30326cbfc979847d0426eeca4540e12e05eb0ec
 
 # Point TCLLIBPATH at it, then run every test plus the smoke test
 export TCLLIBPATH=/path/to/aurig-core

@@ -33,7 +33,11 @@ package require Tcl 8.6
 # Explicit dependency on the parser stack. The engine calls
 # ::aurig::core::analyze::vhdlscan, which the aurig::core package (an
 # external dependency, found on ::auto_path) loads.
-package require aurig::core
+apply {{} {
+    if {[catch {package require aurig::core 0.1.0-0.3.0} message options]} {
+        return -options $options "$message. Set TCLLIBPATH to a compatible aurig-core checkout. If a conflicting version is loaded, start a fresh Tcl interpreter."
+    }
+}}
 
 # json is a hard dependency of the lint ENGINE: rule metadata, user policy, and
 # baseline files are parsed via ::json::json2dict. It is declared in the procs
@@ -43,7 +47,7 @@ package require aurig::core
 # it is invoked.
 
 namespace eval ::aurig::lint {
-    variable version 0.1.0
+    variable version 0.2.0
 
     # Loaded rules configuration
     variable rules_config {}
@@ -3150,9 +3154,21 @@ proc ::aurig::lint::create_diagnostic {rule_id severity message file line col sy
 }
 
 proc ::aurig::lint::require_source_reader {} {
-    if {[info commands ::aurig::core::util::read_vhdl_source] eq ""} {
+    set status [catch {package require aurig::core 0.2.0-0.3.0} version options]
+    if {$status || [regexp {[ab]} $version]} {
+        set message "VHDL linting requires stable aurig::core 0.2.0-0.3.0. Set TCLLIBPATH to a compatible aurig-core checkout."
+        set loaded [package provide aurig::core]
+        if {$loaded ne ""} {
+            append message " Loaded aurig::core $loaded. Start a fresh Tcl interpreter after selecting compatible checkouts."
+        }
+        if {$status} {
+            return -options $options "$message Tcl package error: $version"
+        }
+        return -code error -errorcode {AURIG LINT SOURCE VERSION} "$message Prereleases are unsupported."
+    }
+    if {![llength [info commands ::aurig::core::util::read_vhdl_source]]} {
         return -code error -errorcode {AURIG LINT SOURCE CAPABILITY} \
-            "VHDL linting requires an aurig-core checkout with ::aurig::core::util::read_vhdl_source (introduced by aurig-core PR #97). Set TCLLIBPATH to a compatible checkout."
+            "Loaded aurig::core $version lacks ::aurig::core::util::read_vhdl_source, required by VHDL linting with Core 0.2.0-0.3.0. Set TCLLIBPATH to a compatible aurig-core checkout. Then start a fresh Tcl interpreter."
     }
 }
 
