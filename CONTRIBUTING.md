@@ -32,9 +32,9 @@ variable (a Tcl list of directories prepended to `::auto_path`). Point it at you
 `aurig-core` checkout — typically a sibling directory.
 
 ```sh
-# Clone the dependency next to aurig-lint and select the published candidate once available
+# Clone the dependency next to aurig-lint and select the verified Core commit
 git clone https://github.com/aurig-fpga/aurig-core ../aurig-core
-git -C ../aurig-core checkout --detach c30326cbfc979847d0426eeca4540e12e05eb0ec
+git -C ../aurig-core checkout --detach c6cd8bb44fea31b4d838452de38395c7772a3f56
 
 # Point TCLLIBPATH at it, then run every test plus the smoke test
 export TCLLIBPATH=/path/to/aurig-core

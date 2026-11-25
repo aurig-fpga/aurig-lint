@@ -41,11 +41,10 @@ Installing tcllib:
 `aurig-lint` resolves `aurig-core` through the native **`TCLLIBPATH`**
 environment variable (a Tcl list of directories prepended to `::auto_path`).
 For the coordinated 0.2.0 development build, use the exact Lint commit from the
-integration record and the matching Core candidate, once both commits are
-available from the source repository:
+integration record and the verified Core 0.2.0 commit on main.
 
 ```sh
-git -C aurig-core checkout --detach c30326cbfc979847d0426eeca4540e12e05eb0ec
+git -C aurig-core checkout --detach c6cd8bb44fea31b4d838452de38395c7772a3f56
 ```
 
 Point Tcl at the checkout directory containing `pkgIndex.tcl`. Enclose list
