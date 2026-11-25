@@ -21,8 +21,12 @@ the parser/util core is **not** bundled here. `aurig-lint` requires it off
 - **Tcl 8.6** and **tcllib** (`yaml` + `json`) — `json` serves the rule
   metadata/policy loader and the JSON/report output; `yaml` serves manifest
   reading and project source collection. Project linting needs both.
-- A checkout of [`aurig-core`](https://github.com/aurig-fpga/aurig-core) reachable
-  on `::auto_path`
+- Lint 0.2.0 loads Core in the Tcl range `0.1.0-0.3.0` for package
+  initialization and metadata/configuration work. VHDL operations require a
+  stable Core in `0.2.0-0.3.0` with `::aurig::core::util::read_vhdl_source`.
+  The upper bound is exclusive. Alpha and beta packages are rejected for
+  source operations. Point `TCLLIBPATH` at a compatible Core checkout and
+  start a fresh Tcl interpreter if an incompatible Core is already loaded.
 
 CI (`ubuntu-latest`, currently Ubuntu 24.04) runs the test suite on Tcl 8.6.14
 with tcllib 1.21 from apt. The Windows walkthrough below was checked on
@@ -35,7 +39,16 @@ Installing tcllib:
 - **Windows** — see [Installation on Windows](#installation-on-windows).
 
 `aurig-lint` resolves `aurig-core` through the native **`TCLLIBPATH`**
-environment variable (a Tcl list of directories prepended to `::auto_path`):
+environment variable (a Tcl list of directories prepended to `::auto_path`).
+For the coordinated 0.2.0 development build, use the exact Lint commit from the
+integration record and the verified Core 0.2.0 commit on main.
+
+```sh
+git -C aurig-core checkout --detach c6cd8bb44fea31b4d838452de38395c7772a3f56
+```
+
+Point Tcl at the checkout directory containing `pkgIndex.tcl`. Enclose list
+elements containing spaces in braces.
 
 ```sh
 # Linux / macOS / WSL (bash)
@@ -104,7 +117,8 @@ C:\aurig\
   aurig-lint\
 ```
 
-This is the sibling layout CI uses.
+This is the sibling layout CI uses. Select the exact Core and Lint commits
+described in [Requirements](#requirements) before proceeding.
 
 ### 4. Check the interpreter
 
@@ -292,6 +306,22 @@ Exit codes: `0` no diagnostics at or above the `--fail-on` threshold (the
 default threshold is `error`, so a warning-only run exits `0`), `1` diagnostics
 at or above the threshold, `2` invalid arguments or runtime error.
 
+### VHDL source encoding
+
+Core's reader decodes VHDL as UTF-8 with an optional initial BOM, or as
+Windows-1252 when unsigned input is invalid UTF-8. The parser, lint rules,
+report excerpts and source viewers use the same decoding and LF line
+normalization. Diagnostic lines start at 1 and Tcl character columns start
+at 0. An initial BOM uses no column.
+
+Unreadable or rejected VHDL and incompatible source dependencies are tool
+errors (exit `2`), independent of `--fail-on` or the project runner's
+`-fail_on`. A rejected source can now cause exit `2` in cases that
+previously returned success or produced a threshold-controlled finding. Source errors include the
+filename and the original byte offset where Core reports one. In the Tcl
+engine API, `::aurig::lint::run` propagates the structured Core source error
+code. JSON diagnostics are emitted as UTF-8.
+
 ### Whole project
 
 ```sh
@@ -359,8 +389,20 @@ $env:TCLLIBPATH = "C:/aurig/aurig-core C:/aurig/aurig-lint"
 set TCLLIBPATH=C:/aurig/aurig-core C:/aurig/aurig-lint
 ```
 
-`package require aurig::lint` then loads `aurig::lint` and, through it,
-`aurig::core`.
+`package require aurig::lint 0.2.0-0.3.0` loads the engine and its base Core
+dependency.
+
+### Migrating the Tcl report package to 2.0
+
+Change `package require aurig::lint::report 1.0` to
+`package require aurig::lint::report 2.0` when moving to this checkout.
+The 2.0 package loads with Tcllib JSON alone. Rule export and rendering with
+supplied source lines do not load the engine or Core. Source-backed excerpts
+and rendering require Tcl 8.6, a stable Lint engine in `0.2.0-0.3.0`, and
+compatible stable Core with the shared reader. Treat rejected sources as Tcl
+errors and check the result before publishing reports. Missing paths still
+return the documented missing-source result. Start a fresh interpreter when
+switching from report 1.x or from an incompatible loaded engine or Core.
 
 ## Rules
 

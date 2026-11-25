@@ -97,7 +97,11 @@ set prc [catch {$pos eval {package require aurig::lint}} pver]
 
 ok "POSITIVE: package require aurig::lint succeeds (core reachable on auto_path)" \
     {$prc == 0}
-ok "POSITIVE: reports lint version 0.1.0" {$pver eq "0.1.0"}
+ok "POSITIVE: reports lint version 0.2.0" {$pver eq "0.2.0"}
+ok "POSITIVE: engine index and runtime agree" {[$pos eval {expr {
+    [package ifneeded aurig::lint 0.2.0] ne "" &&
+    $::aurig::lint::version eq [package provide aurig::lint]
+}}]}
 ok "POSITIVE: requiring lint transitively pulled aurig::core" \
     {[$pos eval {expr {![catch {package present aurig::core}]}}]}
 
@@ -149,6 +153,80 @@ ok "POSITIVE: signal_naming fired on the CamelCase signal BadSignal1" \
     {[lsearch -exact $rule_ids signal_naming] >= 0}
 
 interp delete $pos
+
+# Each child isolates the selected version from the real Core on the parent path.
+foreach {version reader accepted} {
+    0.1.0 1 0
+    0.2.7 1 1
+    0.2.0a1 1 0
+    0.2.0b1 1 0
+    0.2.7 0 0
+} {
+    set child [interp create]
+    $child eval [list set auto_path [linsert $strip_core 0 $lint_root]]
+    $child eval [list package provide aurig::core $version]
+    if {$reader} {
+        $child eval {
+            namespace eval ::aurig::core::util {}
+            proc ::aurig::core::util::read_vhdl_source {path} {return [dict create text synthetic]}
+        }
+    }
+    set load [catch {$child eval [list source [file join $lint_root lint lint.tcl]]} message]
+    ok "direct-source engine loads with Core $version" {$load == 0}
+    set status [catch {$child eval [list ::aurig::lint::read_source_text $fixture]} message]
+    ok "source operation for Core $version (reader present: $reader)" {$status == !$accepted}
+    if {$accepted} {
+        ok "source operation calls the selected reader" {$message eq "synthetic"}
+    } else {
+        ok "source failure explains the required Core and how to switch" {
+            [string match *0.2.0-0.3.0* $message] &&
+            [string match "*$version*" $message] &&
+            [string match *TCLLIBPATH*fresh*interpreter* $message]
+        }
+    }
+    interp delete $child
+}
+
+# The report leaf loads without Core or the engine, including through source.
+foreach entry {index direct} {
+    set child [interp create]
+    $child eval [list set auto_path [linsert $strip_core 0 $lint_root]]
+    if {$entry eq "index"} {
+        set oldRc [catch {$child eval {package require aurig::lint::report 1.0}}]
+        ok "report 1.x requirement rejects the 2.0-only checkout" {$oldRc == 1}
+        set status [catch {$child eval {package require aurig::lint::report 2.0}} message]
+        ok "indexed report 2.0 resolves" {$status == 0}
+        if {$status != 0} {
+            $child eval {package require aurig::lint::report}
+        }
+    } else {
+        $child eval [list source [file join $lint_root lint report_generator.tcl]]
+    }
+    ok "report version 2.0 agrees with runtime via $entry" {[$child eval {expr {
+        [package provide aurig::lint::report] eq "2.0" &&
+        $::aurig::lint::report::version eq "2.0"
+    }}]}
+    ok "supplied lines need neither Core nor engine via $entry" {[$child eval {expr {
+        [::aurig::lint::report::excerpt_from_lines {one two} 2 1] eq {{1 one 0} {2 two 1}} &&
+        [package provide aurig::core] eq "" && [package provide aurig::lint] eq ""
+    }}]}
+    set missing [$child eval [list ::aurig::lint::report::get_code_excerpt "${fixture}.missing" 1]]
+    ok "missing report source retains its result via $entry" {[lindex $missing 0] eq "error"}
+    interp delete $child
+}
+
+foreach version {0.1.0 0.2.0a1 0.2.0b1 0.3.0 1.0.0} {
+    set child [interp create]
+    $child eval [list set auto_path [linsert $strip_core 0 $lint_root]]
+    $child eval {package require aurig::lint::report}
+    $child eval [list package provide aurig::lint $version]
+    set status [catch {$child eval [list ::aurig::lint::report::get_code_excerpt $fixture 1]} message]
+    ok "source-backed report rejects Lint $version with dependency guidance" {
+        $status == 1 && [string match "*0.2.0-0.3.0*" $message] &&
+        [string match "*$version*" $message] && [string match *TCLLIBPATH*fresh*interpreter* $message]
+    }
+    interp delete $child
+}
 file delete -force $sandbox
 
 # ---------------------------------------------------------------------------

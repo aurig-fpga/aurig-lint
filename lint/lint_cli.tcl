@@ -576,7 +576,7 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
             -policy $opts(-policy) \
             -project_root $opts(-project_root) \
             -mode $opts(-mode)]
-    } err]} {
+    } err options]} {
         # Special-case ONLY the missing tcllib `json` dependency. The engine does
         # `package require json` (lint.tcl) for metadata/policy parsing; when
         # tcllib is absent that throws errorCode {TCL PACKAGE UNFOUND}. Discriminate
@@ -585,13 +585,14 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
         # naming tcllib/json and suppress the raw stack trace for THIS path only.
         # Every OTHER unexpected engine error still surfaces its $::errorInfo, so a
         # real bug is never masked by a blanket suppression.
-        if {[lrange $::errorCode 0 2] eq {TCL PACKAGE UNFOUND}
+        set category [lrange [dict get $options -errorcode] 0 2]
+        if {$category eq {TCL PACKAGE UNFOUND}
                 && [string match -nocase "*json*" $err]} {
             print_missing_tcllib
             return 2
         }
         puts stderr "Error: Lint engine failed: $err"
-        if {$::errorInfo ne ""} {
+        if {$category ni {{AURIG CORE SOURCE} {AURIG LINT SOURCE}} && $::errorInfo ne ""} {
             puts stderr $::errorInfo
         }
         return 2
@@ -649,7 +650,8 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
         } elseif {$fmt eq "md"} {
             # Generate Markdown report
             if {[catch {
-                set md_content [::aurig::lint::report::format_markdown $diagnostics $opts(-input)]
+                set md_content [::aurig::lint::report::format_markdown $diagnostics $opts(-input) \
+                    ::aurig::lint::cache_file_lines]
                 set f [open $out_path w]
                 fconfigure $f -encoding utf-8
                 puts $f $md_content
@@ -666,7 +668,8 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
         } elseif {$fmt eq "html"} {
             # Generate HTML report
             if {[catch {
-                set html_file [::aurig::lint::report::format_html $diagnostics $opts(-input) $out_path]
+                set html_file [::aurig::lint::report::format_html $diagnostics $opts(-input) $out_path \
+                    ::aurig::lint::cache_file_lines]
                 puts stderr "HTML report generated: $html_file"
 
                 # Still output summary to console
@@ -683,7 +686,13 @@ proc ::aurig::lint::cli::main {argv script_anchor} {
     } elseif {$opts(-format) eq "text"} {
         set error_count [format_text $diagnostics]
     } else {
-        set error_count [format_json $diagnostics]
+        set stdout_encoding [fconfigure stdout -encoding]
+        fconfigure stdout -encoding utf-8
+        try {
+            set error_count [format_json $diagnostics]
+        } finally {
+            fconfigure stdout -encoding $stdout_encoding
+        }
     }
 
     # Exit with appropriate code based on --fail-on threshold

@@ -15,7 +15,28 @@
 package require json
 
 namespace eval ::aurig::lint::report {
-    variable version "1.0"
+    variable version "2.0"
+}
+
+# Load the source dependency only for excerpts. Report package loading and
+# rule exports still require only json.
+proc ::aurig::lint::report::read_source_lines {file_path} {
+    if {![file exists $file_path]} {
+        return {}
+    }
+    set status [catch {package require aurig::lint 0.2.0-0.3.0} version options]
+    if {$status || [regexp {[ab]} $version]} {
+        set message "Source-backed Lint reporting requires stable aurig::lint 0.2.0-0.3.0. Set TCLLIBPATH to compatible aurig-lint and aurig-core checkouts."
+        set loaded [package provide aurig::lint]
+        if {$loaded ne ""} {
+            append message " Loaded aurig::lint $loaded. Start a fresh Tcl interpreter after selecting compatible checkouts."
+        }
+        if {$status} {
+            return -options $options "$message Tcl package error: $version"
+        }
+        return -code error -errorcode {AURIG LINT REPORT SOURCE VERSION} "$message Prereleases are unsupported."
+    }
+    return [split [::aurig::lint::read_source_text $file_path] \n]
 }
 
 # Extract code excerpt with context lines around a specific line
@@ -24,10 +45,10 @@ proc ::aurig::lint::report::get_code_excerpt {file_path line_num {context 5}} {
         return [list error "File not found: $file_path"]
     }
 
-    set f [open $file_path r]
-    set all_lines [split [read $f] \n]
-    close $f
+    return [list ok [excerpt_from_lines [read_source_lines $file_path] $line_num $context]]
+}
 
+proc ::aurig::lint::report::excerpt_from_lines {all_lines line_num context} {
     set total_lines [llength $all_lines]
     set start_line [expr {max(1, $line_num - $context)}]
     set end_line [expr {min($total_lines, $line_num + $context)}]
@@ -39,7 +60,7 @@ proc ::aurig::lint::report::get_code_excerpt {file_path line_num {context 5}} {
         lappend excerpt [list $i $line_text $is_target]
     }
 
-    return [list ok $excerpt]
+    return $excerpt
 }
 
 # HTML escape
@@ -115,7 +136,7 @@ proc ::aurig::lint::report::count_by_rule {diagnostics} {
 }
 
 # Generate Markdown report with code excerpts
-proc ::aurig::lint::report::format_markdown {diagnostics input_file} {
+proc ::aurig::lint::report::format_markdown {diagnostics input_file {get_lines read_source_lines}} {
     set output ""
 
     # Header
@@ -162,6 +183,7 @@ proc ::aurig::lint::report::format_markdown {diagnostics input_file} {
             append output "### $file\n\n"
             append output "**$count issue(s):**\n\n"
 
+            set all_lines [{*}$get_lines $file]
             foreach diag $file_diags {
                 set line [dict get $diag line]
                 set sev [dict get $diag severity]
@@ -174,9 +196,8 @@ proc ::aurig::lint::report::format_markdown {diagnostics input_file} {
                 append output "**Message:** $msg  \n\n"
 
                 # Code excerpt
-                set excerpt_result [get_code_excerpt $file $line 3]
-                if {[lindex $excerpt_result 0] eq "ok"} {
-                    set excerpt [lindex $excerpt_result 1]
+                set excerpt [excerpt_from_lines $all_lines $line 3]
+                if {$excerpt ne ""} {
                     append output "```vhdl\n"
                     foreach entry $excerpt {
                         lassign $entry num text is_target
@@ -202,7 +223,7 @@ proc ::aurig::lint::report::format_markdown {diagnostics input_file} {
 }
 
 # Generate HTML report with sidebar navigation
-proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
+proc ::aurig::lint::report::format_html {diagnostics input_file output_dir {get_lines read_source_lines}} {
     file mkdir $output_dir
 
     set html ""
@@ -316,6 +337,7 @@ proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
 
             append html "    <h2 id=\"$anchor\">[html_escape $file] <span style=\"font-size: 14px; color: #95a5a6;\">($count issue(s))</span></h2>\n"
 
+            set all_lines [{*}$get_lines $file]
             foreach diag $file_diags {
                 set line [dict get $diag line]
                 set sev [dict get $diag severity]
@@ -331,9 +353,8 @@ proc ::aurig::lint::report::format_html {diagnostics input_file output_dir} {
                 append html "      <div class=\"message\">[html_escape $msg]</div>\n"
 
                 # Code excerpt
-                set excerpt_result [get_code_excerpt $file $line 3]
-                if {[lindex $excerpt_result 0] eq "ok"} {
-                    set excerpt [lindex $excerpt_result 1]
+                set excerpt [excerpt_from_lines $all_lines $line 3]
+                if {$excerpt ne ""} {
                     append html "      <div class=\"code-excerpt\">\n"
                     foreach entry $excerpt {
                         lassign $entry num text is_target

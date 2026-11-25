@@ -33,7 +33,11 @@ package require Tcl 8.6
 # Explicit dependency on the parser stack. The engine calls
 # ::aurig::core::analyze::vhdlscan, which the aurig::core package (an
 # external dependency, found on ::auto_path) loads.
-package require aurig::core
+apply {{} {
+    if {[catch {package require aurig::core 0.1.0-0.3.0} message options]} {
+        return -options $options "$message. Set TCLLIBPATH to a compatible aurig-core checkout. If a conflicting version is loaded, start a fresh Tcl interpreter."
+    }
+}}
 
 # json is a hard dependency of the lint ENGINE: rule metadata, user policy, and
 # baseline files are parsed via ::json::json2dict. It is declared in the procs
@@ -43,7 +47,7 @@ package require aurig::core
 # it is invoked.
 
 namespace eval ::aurig::lint {
-    variable version 0.1.0
+    variable version 0.2.0
 
     # Loaded rules configuration
     variable rules_config {}
@@ -149,10 +153,18 @@ proc ::aurig::lint::run {args} {
     }
     set rules_config [apply_overrides $config $opts(-input) $opts(-project_root)]
 
-    # Parse the input file using existing parser
-    if {[catch {
+    # Load the lines once for rules, locations and suppressions. Core's
+    # file-based parser uses the same reader for its own input.
+    cache_file_lines $opts(-input)
+    try {
         set parse_result [::aurig::core::analyze::vhdlscan -in $opts(-input)]
-    } err]} {
+    } trap {AURIG CORE SOURCE} {err options} {
+        return -options $options $err
+    } on error {err options} {
+        # The file may have disappeared since the first read.
+        if {![file isfile $opts(-input)]} {
+            return -options $options $err
+        }
         # In doc mode, parser errors are warnings; in lint mode, they're errors
         set severity [expr {$mode eq "doc" ? "warning" : "error"}]
         return [list [create_diagnostic \
@@ -3141,34 +3153,49 @@ proc ::aurig::lint::create_diagnostic {rule_id severity message file line col sy
         context_path $context_path]
 }
 
-# Cache file contents as list of lines for efficient lookups
+proc ::aurig::lint::require_source_reader {} {
+    set status [catch {package require aurig::core 0.2.0-0.3.0} version options]
+    if {$status || [regexp {[ab]} $version]} {
+        set message "VHDL linting requires stable aurig::core 0.2.0-0.3.0. Set TCLLIBPATH to a compatible aurig-core checkout."
+        set loaded [package provide aurig::core]
+        if {$loaded ne ""} {
+            append message " Loaded aurig::core $loaded. Start a fresh Tcl interpreter after selecting compatible checkouts."
+        }
+        if {$status} {
+            return -options $options "$message Tcl package error: $version"
+        }
+        return -code error -errorcode {AURIG LINT SOURCE VERSION} "$message Prereleases are unsupported."
+    }
+    if {![llength [info commands ::aurig::core::util::read_vhdl_source]]} {
+        return -code error -errorcode {AURIG LINT SOURCE CAPABILITY} \
+            "Loaded aurig::core $version lacks ::aurig::core::util::read_vhdl_source, required by VHDL linting with Core 0.2.0-0.3.0. Set TCLLIBPATH to a compatible aurig-core checkout. Then start a fresh Tcl interpreter."
+    }
+}
+
+# Read normalized VHDL text for the engine and renderers.
+proc ::aurig::lint::read_source_text {filename} {
+    require_source_reader
+    # Avoid opening a directory, device or named pipe as VHDL. Missing paths
+    # go through Core so its structured OPEN error is preserved.
+    if {[file exists $filename] && ![file isfile $filename]} {
+        return -code error -errorcode {AURIG LINT SOURCE NOT_REGULAR} \
+            "Input file is not a regular file: $filename"
+    }
+    set source [::aurig::core::util::read_vhdl_source $filename]
+    return [dict get $source text]
+}
+
+# Cache file contents as a list of lines for efficient lookups.
 #
 # Arguments:
 #   filename : Path to source file
 #
-# Returns: List of lines (1-based indexing)
+# Returns: List of lines (Tcl list indexed from 0)
 proc ::aurig::lint::cache_file_lines {filename} {
     variable file_cache
 
-    # Return cached version if available
-    if {[info exists file_cache($filename)]} {
-        return $file_cache($filename)
-    }
-
-    # Read file and cache lines
-    if {[catch {
-        set fp [open $filename r]
-        set content [read $fp]
-        close $fp
-
-        # Split into lines (preserving empty lines)
-        set lines [split $content "\n"]
-
-        # Cache for future lookups
-        set file_cache($filename) $lines
-    } err]} {
-        # If file can't be read, return empty list
-        return {}
+    if {![info exists file_cache($filename)]} {
+        set file_cache($filename) [split [read_source_text $filename] \n]
     }
 
     # Return the cached lines
@@ -4608,14 +4635,7 @@ proc ::aurig::lint::rule::require_meaningful_comments {symbols parse_result file
     # A non-empty message replaces the text of every diagnostic of the rule
     set template [expr {[dict exists $rule_config message] ? [dict get $rule_config message] : ""}]
 
-    # Read file content for comment checking
-    if {[catch {open $filename r} fh]} {
-        # Cannot read file, skip checks
-        return $diagnostics
-    }
-    set file_content [read $fh]
-    close $fh
-    set file_lines [split $file_content "\n"]
+    set file_lines [::aurig::lint::cache_file_lines $filename]
 
     # Check 1: File header documentation
     if {$file_header_required} {
